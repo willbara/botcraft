@@ -5,7 +5,7 @@
 | Command | What it covers |
 |---|---|
 | `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
-| `./gradlew runGametest` | Headless server, 25 GameTests (below). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/mcfriends.json` to see AI traces. |
+| `./gradlew runGametest` | Headless server, 26 GameTests (below). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/mcfriends.json` to see AI traces. |
 
 | GameTest | Milestone | Passes when |
 |---|---|---|
@@ -28,10 +28,11 @@
 | `jumpsGap` | 8 | It sprint-jumps a 2-block gap between platforms. |
 | `smeltsIronForPickaxe` | 9 | "craft an iron pickaxe" with raw iron: it crafts and places a furnace, smelts, crafts a table and the pickaxe. |
 | `huntsAndCooks` | 9 | "kill 1 cow and then cook the beef" (four cows present): it hunts, places a furnace and cooks. |
-| `harvestsAndReplants` | 10 | It harvests 7 ripe wheat (leaving 2 unripe), collects the drops and replants all spots. |
-| `makesFarm` | 10 | "make a 3x3 farm": it clears grass, tills and plants 9 seeds. |
 | `freeModeArmsItself` | 11 | Told "do your own thing" with nothing, it chops a tree and crafts itself a sword. |
 | `digsShelter` | 11 | It digs three blocks down and roofs itself in. |
+| `orderEndsFreeMode` | 13 | Giving any order ends free mode and drops the companion's own jobs. |
+| `friendSharesLogs` | 13 | Missing wood for a crafting table, a companion asks a friend, who brings logs. |
+| `givesToFriendOnLedge` | 13 | "X, give Y your logs" reaches Y even though Y is on a ledge. |
 | `companionsBanterAndShare` | 12 | Two companions banter, and the one told about an iron sighting remembers it. |
 | `fellsWholeTallTree` | 7 | Asked for only 2 logs from a 9-log tree with an empty inventory, it digs dirt, pillars up, fells the whole trunk, digs the pillar down and collects at least 7 logs. |
 
@@ -109,10 +110,9 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] Walk up a ladder or across a 1–2 block gap. Bob follows (ladder climbing, parkour).
 - [ ] Watch him walk across a field. He goes straight rather than zig-zagging.
 
-### 10. Mechanics and farming
+### 10. Mechanics
 - [ ] "Bob, craft an iron pickaxe" from nothing. He gets wood, makes tools, mines stone and iron, crafts and places a furnace, smelts, then crafts the pickaxe.
 - [ ] "Bob, get us some food" with cows nearby. He hunts and cooks. Named, leashed or fenced animals are left alone.
-- [ ] "Bob, make a 4x4 farm" near water. He crafts a hoe (and finds seeds) if needed, tills and plants. Later, "Bob, harvest and replant this farm".
 
 ### 11. Free mode
 - [ ] "Bob, do your own thing". Over the next minutes he announces and pursues goals (sword, pickaxe, wood, stone tools, a bed, a farm). Check `/companion info Bob`.
@@ -124,6 +124,13 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] Leave two idle companions near each other for a few minutes. They greet and banter, and sometimes one tells the other where it found ore.
 - [ ] Hurt a companion with a mob while another armed one is nearby. The second comes to help ("Hang on Bob, I'm coming!").
 - [ ] Put a `config/mcfriends-dialogue.json` with `{"greeting": ["Ahoy {player}!"]}` and restart. Companions greet with your line.
+
+### 13. Targets, sharing, robustness
+- [ ] "Bob, mine some iron" with no ore in sight. He looks for a cave first ("looking in a cave" in his status) instead of digging straight down.
+- [ ] Two companions, one with logs, one without. Tell the second to craft a crafting table. It asks the first, who brings logs over.
+- [ ] "alex go to steve", "bob follow alex", "steve, give alex your logs".
+- [ ] Typos and shorthand: "bob folow me", "bob mien some coal", "bob where r u".
+- [ ] "Bob, do your own thing", then any order. He stops his own plans and follows.
 
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.
