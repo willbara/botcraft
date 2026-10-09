@@ -297,6 +297,13 @@ public class Companion {
 		if (task instanceof com.mcfriends.brain.task.HuntTask h) {
 			return "hunted " + h.kills() + (h.kills() == 1 ? " animal" : " animals");
 		}
+		if (task instanceof com.mcfriends.brain.task.HarvestTask hv) {
+			return "harvested " + hv.harvested() + " crops and replanted them";
+		}
+		if (task instanceof com.mcfriends.brain.task.MakeFarmTask mf) {
+			return "planted a " + mf.size() + "x" + mf.size() + " farm (" + mf.planted() + " seeds)"
+				+ (mf.noWater() ? "; there's no water nearby so it'll grow slowly" : "");
+		}
 		if (task instanceof DeliverTask d) {
 			return "gave you " + d.given() + " " + d.label();
 		}

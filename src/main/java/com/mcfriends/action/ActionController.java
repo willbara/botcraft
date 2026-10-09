@@ -249,7 +249,17 @@ public class ActionController {
 		if (p.isSneaking() != sneak) {
 			p.setSneaking(sneak);
 		}
+		// Never jump on farmland: landing on it tramples it back to dirt.
+		if (jumpOnce && !holdJump && onFarmland(p)) {
+			jumpOnce = false;
+		}
 		p.setJumping(holdJump || (jumpOnce && (p.isOnGround() || p.isTouchingWater())));
+	}
+
+	private static boolean onFarmland(CompanionPlayer p) {
+		var w = p.getWorld();
+		BlockPos at = p.getBlockPos();
+		return w.getBlockState(at).isOf(net.minecraft.block.Blocks.FARMLAND) || w.getBlockState(at.down()).isOf(net.minecraft.block.Blocks.FARMLAND);
 	}
 
 	// =========================================================================================
@@ -277,7 +287,7 @@ public class ActionController {
 		if (eye.squaredDistanceTo(center) > BLOCK_REACH * BLOCK_REACH) {
 			return null;
 		}
-		BlockHitResult hit = p.getWorld().raycast(new RaycastContext(eye, center, RaycastContext.ShapeType.OUTLINE,
+		BlockHitResult hit = p.getWorld().raycast(new RaycastContext(eye, center, RaycastContext.ShapeType.COLLIDER,
 			RaycastContext.FluidHandling.NONE, p));
 		if (hit.getType() == HitResult.Type.BLOCK && !hit.getBlockPos().equals(pos)) {
 			return hit.getBlockPos();
@@ -290,7 +300,7 @@ public class ActionController {
 		CompanionPlayer p = player();
 		Vec3d eye = p.getEyePos();
 		Vec3d center = Vec3d.ofCenter(pos);
-		BlockHitResult hit = p.getWorld().raycast(new RaycastContext(eye, center, RaycastContext.ShapeType.OUTLINE,
+		BlockHitResult hit = p.getWorld().raycast(new RaycastContext(eye, center, RaycastContext.ShapeType.COLLIDER,
 			RaycastContext.FluidHandling.NONE, p));
 		return String.format("eye %s dist %.2f hit %s %s", eye, Math.sqrt(eye.squaredDistanceTo(center)), hit.getType(),
 			hit.getType() == HitResult.Type.BLOCK ? hit.getBlockPos().toShortString() + " " + p.getWorld().getBlockState(hit.getBlockPos()).getBlock() : "");
@@ -304,7 +314,7 @@ public class ActionController {
 		if (eye.squaredDistanceTo(center) > BLOCK_REACH * BLOCK_REACH) {
 			return false;
 		}
-		BlockHitResult hit = p.getWorld().raycast(new RaycastContext(eye, center, RaycastContext.ShapeType.OUTLINE,
+		BlockHitResult hit = p.getWorld().raycast(new RaycastContext(eye, center, RaycastContext.ShapeType.COLLIDER,
 			RaycastContext.FluidHandling.NONE, p));
 		return hit.getType() == HitResult.Type.MISS || hit.getBlockPos().equals(pos);
 	}
@@ -453,6 +463,33 @@ public class ActionController {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Right-click a block face with an item from the inventory (till with a hoe, plant seeds on
+	 * farmland, pour a water bucket). Sneaks so the clicked block's own action never triggers.
+	 */
+	public boolean useItemOn(BlockPos block, Direction face, Predicate<ItemStack> which) {
+		CompanionPlayer p = player();
+		if (!canReachBlock(block)) {
+			return false;
+		}
+		int slot = Inventories.find(p.getInventory(), which);
+		if (slot < 0) {
+			return false;
+		}
+		Inventories.select(p, slot);
+		Vec3d hitPos = Vec3d.ofCenter(block).add(Vec3d.of(face.getVector()).multiply(0.5));
+		lookAt(hitPos);
+		BlockHitResult hit = new BlockHitResult(hitPos, face, block, false);
+		boolean wasSneaking = p.isSneaking();
+		p.setSneaking(true);
+		ActionResult r = p.interactionManager.interactBlock(p, p.getServerWorld(), p.getMainHandStack(), Hand.MAIN_HAND, hit);
+		p.setSneaking(wasSneaking);
+		if (r.isAccepted()) {
+			p.swingHand(Hand.MAIN_HAND);
+		}
+		return r.isAccepted();
 	}
 
 	// =========================================================================================

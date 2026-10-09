@@ -584,4 +584,84 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtHunter");
 		});
 	}
+
+	static void grassArena(TestContext ctx, int size) {
+		for (int x = -1; x <= size; x++) {
+			for (int z = -1; z <= size; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.GRASS_BLOCK);
+				for (int y = 1; y <= 4; y++) {
+					boolean wall = x == -1 || z == -1 || x == size || z == size;
+					ctx.setBlockState(x, y, z, wall && y <= 2 ? Blocks.STONE_BRICKS : Blocks.AIR);
+				}
+			}
+		}
+	}
+
+	/** Farming: harvests ripe wheat (leaves unripe), collects, replants from the dropped seeds. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "farm_harvest")
+	public void harvestsAndReplants(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtFarmer");
+		grassArena(ctx, 10);
+		BlockState farmland = Blocks.FARMLAND.getDefaultState().with(net.minecraft.block.FarmlandBlock.MOISTURE, 7);
+		for (int x = 3; x <= 5; x++) {
+			for (int z = 3; z <= 5; z++) {
+				ctx.setBlockState(x, 0, z, farmland);
+				boolean ripe = !(x == 5 && z >= 4);
+				ctx.setBlockState(x, 1, z, ((net.minecraft.block.CropBlock) Blocks.WHEAT).withAge(ripe ? 7 : 2));
+			}
+		}
+		ctx.setBlockState(4, 0, 7, Blocks.WATER);
+		ctx.assertTrue(m.spawn("GtFarmer", "makena", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(4.5, 1, 1.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtFarmer");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "harvest and replant the farm", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			int wheat = count(c, net.minecraft.item.Items.WHEAT);
+			int crops = 0;
+			StringBuilder tiles = new StringBuilder();
+			for (int x = 3; x <= 5; x++) {
+				for (int z = 3; z <= 5; z++) {
+					BlockPos at = ctx.getAbsolutePos(new BlockPos(x, 1, z));
+					boolean crop = ctx.getWorld().getBlockState(at).isOf(Blocks.WHEAT);
+					crops += crop ? 1 : 0;
+					tiles.append(crop ? "W" : ctx.getWorld().getBlockState(at.down()).isOf(Blocks.FARMLAND) ? "F" : "D");
+				}
+			}
+			ctx.assertTrue(wheat >= 7 && crops == 9 && c.jobs().isIdle(), "wheat " + wheat + ", tiles " + tiles + "; seeds "
+				+ count(c, net.minecraft.item.Items.WHEAT_SEEDS) + "; " + c.describeActivity());
+			cleanup(m, "GtFarmer");
+		});
+	}
+
+	/** Farming: "make a 3x3 farm" clears grass, tills with the hoe and plants all nine seeds. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "farm_make")
+	public void makesFarm(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtTiller");
+		grassArena(ctx, 10);
+		ctx.setBlockState(4, 1, 4, Blocks.GRASS);
+		ctx.setBlockState(5, 1, 5, Blocks.GRASS);
+		ctx.assertTrue(m.spawn("GtTiller", "noor", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(4.5, 1, 2.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtTiller");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.WOODEN_HOE, 1);
+		give(c, net.minecraft.item.Items.WHEAT_SEEDS, 9);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "make a 3x3 farm", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			int planted = 0;
+			for (int x = -1; x <= 10; x++) {
+				for (int z = -1; z <= 10; z++) {
+					BlockPos at = ctx.getAbsolutePos(new BlockPos(x, 1, z));
+					if (ctx.getWorld().getBlockState(at).isOf(Blocks.WHEAT) && ctx.getWorld().getBlockState(at.down()).isOf(Blocks.FARMLAND)) {
+						planted++;
+					}
+				}
+			}
+			ctx.assertTrue(planted == 9 && c.jobs().isIdle(), "planted " + planted + "; " + c.describeActivity());
+			cleanup(m, "GtTiller");
+		});
+	}
 }

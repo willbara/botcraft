@@ -8,7 +8,7 @@ package com.mcfriends.chat;
 public record Intent(Type type, String item, int count) {
 	public enum Type {
 		FOLLOW, STOP, COME_HERE, DEFEND, CANCEL,
-		GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT,
+		GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT, FARM, HARVEST,
 		HOME_SET, HOME_GO, SLEEP,
 		WHERE, INVENTORY, STATS, FOUND, HELP, STATUS,
 		GREETING, THANKS, UNKNOWN;
@@ -16,7 +16,7 @@ public record Intent(Type type, String item, int count) {
 		/** Orders change behaviour; only the owner may give them. */
 		public boolean isOrder() {
 			return switch (this) {
-				case FOLLOW, STOP, COME_HERE, DEFEND, CANCEL, GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT, HOME_SET, HOME_GO, SLEEP -> true;
+				case FOLLOW, STOP, COME_HERE, DEFEND, CANCEL, GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT, FARM, HARVEST, HOME_SET, HOME_GO, SLEEP -> true;
 				default -> false;
 			};
 		}
