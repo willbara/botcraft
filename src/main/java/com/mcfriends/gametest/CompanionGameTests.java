@@ -1039,4 +1039,96 @@ public class CompanionGameTests implements FabricGameTest {
 		cleanup(m, names.toArray(new String[0]));
 		ctx.complete();
 	}
+
+	/** Low on air at the bottom of a pool: it drops what it's doing and comes up to breathe. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 300, batchId = "breathe")
+	public void surfacesForAir(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtGasp");
+		for (int x = 0; x <= 6; x++) {
+			for (int z = 0; z <= 6; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				boolean wall = x == 0 || z == 0 || x == 6 || z == 6;
+				for (int y = 1; y <= 9; y++) {
+					ctx.setBlockState(x, y, z, wall ? (y <= 6 ? Blocks.STONE : Blocks.AIR) : y <= 6 ? Blocks.WATER : Blocks.AIR);
+				}
+			}
+		}
+		ctx.assertTrue(m.spawn("GtGasp", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtGasp");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().setAir(60);
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(c.player().isAlive() && !c.player().isSubmergedInWater() && c.player().getAir() > 200,
+				"still under: y " + c.player().getY() + ", air " + c.player().getAir() + "; " + c.describeActivity());
+			cleanup(m, "GtGasp");
+		});
+	}
+
+	/** Dying in water: it comes back at home, on dry ground, alive (not stuck in a death animation). */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 400, batchId = "respawn_safe")
+	public void respawnsSafelyAtHome(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtPhoenix");
+		flatArena(ctx, 12);
+		for (int x = 1; x <= 4; x++) {
+			for (int z = 1; z <= 4; z++) {
+				ctx.setBlockState(x, 1, z, Blocks.WATER);
+				ctx.setBlockState(x, 2, z, Blocks.WATER);
+			}
+		}
+		ctx.assertTrue(m.spawn("GtPhoenix", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 2.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtPhoenix");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.data.owner = null;
+		BlockPos home = ctx.getAbsolutePos(new BlockPos(9, 1, 9));
+		c.memory().setPlace("home", home, c.dimension(), ctx.getWorld().getTime());
+		var first = c.player();
+		first.kill();
+		ctx.addInstantFinalTask(() -> {
+			var p = c.player();
+			ctx.assertTrue(p != null && p != first, "not respawned yet");
+			ctx.assertTrue(p.isAlive() && p.getHealth() > 0 && p.deathTime == 0, "came back dead: health " + p.getHealth());
+			ctx.assertTrue(!p.isTouchingWater() && p.getBlockPos().getSquaredDistance(home) < 3 * 3, "respawned at " + p.getBlockPos() + " (home " + home + ")");
+			cleanup(m, "GtPhoenix");
+		});
+	}
+
+	/** Asked for two, it still mines the whole vein, including blocks joined only at the corners. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1200, batchId = "whole_vein")
+	public void minesWholeVein(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtVein");
+		solidGround(ctx, Blocks.STONE);
+		for (int x = 1; x <= 7; x++) {
+			for (int z = 1; z <= 3; z++) {
+				for (int y = 5; y <= 6; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR); // a room carved into the top of the stone
+				}
+			}
+		}
+		// A diagonal vein in the room's back wall (z = 4), exposed only at its first block.
+		BlockPos[] vein = {new BlockPos(3, 5, 4), new BlockPos(4, 6, 5), new BlockPos(5, 5, 6), new BlockPos(6, 6, 5), new BlockPos(4, 4, 5)};
+		for (BlockPos b : vein) {
+			ctx.setBlockState(b, Blocks.IRON_ORE);
+		}
+		ctx.assertTrue(m.spawn("GtVein", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 5, 2.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtVein");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.data.owner = null;
+		c.data.mode = "follow";
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		c.jobs().replace(java.util.List.of("mine iron 2"));
+		ctx.addInstantFinalTask(() -> {
+			int left = 0;
+			for (BlockPos b : vein) {
+				if (ctx.getBlockState(b).isOf(Blocks.IRON_ORE)) {
+					left++;
+				}
+			}
+			ctx.assertTrue(left == 0, left + " ore left in the vein; has " + count(c, net.minecraft.item.Items.RAW_IRON) + " raw iron; " + c.describeActivity());
+			cleanup(m, "GtVein");
+		});
+	}
 }

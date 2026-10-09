@@ -14,6 +14,7 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.GameRules;
+import com.mcfriends.entity.SafeSpot;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
@@ -70,6 +71,9 @@ public final class CompanionManager {
 		for (Companion c : instance.companions.values()) {
 			CompanionPlayer p = c.player();
 			if (p != null) {
+				if (p.isDead()) {
+					healForSave(p);
+				}
 				FakePlayers.disconnect(p, "Server closed");
 				c.setPlayer(null);
 			}
@@ -338,6 +342,9 @@ public final class CompanionManager {
 			if (c.deadTicks > DEATH_LINGER_TICKS) {
 				// No mixin-free way to run vanilla respawn for a custom player class (respawnPlayer
 				// constructs a plain ServerPlayerEntity), so the companion leaves and rejoins.
+				// Heal first so the saved playerdata isn't "dead": a player that appears with 0
+				// health starts its death animation on clients and never stops it.
+				healForSave(p);
 				FakePlayers.disconnect(p, "Died");
 				c.setPlayer(null);
 				c.respawnAtTick = tickCount + CompanionConfig.get().respawnDelayTicks;
@@ -349,17 +356,36 @@ public final class CompanionManager {
 
 	private void respawn(Companion c) {
 		c.respawnAtTick = -1;
-		ServerPlayerEntity owner = c.owner();
-		ServerWorld world;
-		Vec3d pos;
-		if (owner != null && !owner.isDead()) {
-			world = owner.getServerWorld();
-			pos = owner.getPos();
-		} else {
-			world = server.getOverworld();
-			BlockPos spawn = world.getSpawnPos();
-			pos = Vec3d.ofBottomCenter(world.getTopPosition(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, spawn));
+		ServerWorld world = server.getOverworld();
+		BlockPos at = null;
+		// Like a player: our bed, else home, else with the owner (only if they're somewhere safe:
+		// not spectating inside a flooded cave), else world spawn. Never into water, lava or a wall.
+		for (String placeName : new String[]{"bed", "home"}) {
+			var place = c.memory().place(placeName);
+			if (at == null && place != null) {
+				ServerWorld w = worldFor(place.dim);
+				BlockPos safe = w == null ? null : SafeSpot.near(w, place.pos(), 6);
+				if (safe != null) {
+					world = w;
+					at = safe;
+				}
+			}
 		}
+		ServerPlayerEntity owner = c.owner();
+		if (at == null && owner != null && !owner.isDead() && !owner.isSpectator() && owner.isOnGround() && !owner.isTouchingWater()) {
+			BlockPos safe = SafeSpot.near(owner.getServerWorld(), owner.getBlockPos(), 4);
+			if (safe != null) {
+				world = owner.getServerWorld();
+				at = safe;
+			}
+		}
+		if (at == null) {
+			world = server.getOverworld();
+			BlockPos spawn = world.getTopPosition(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, world.getSpawnPos());
+			BlockPos safe = SafeSpot.near(world, spawn, 8);
+			at = safe != null ? safe : spawn;
+		}
+		Vec3d pos = Vec3d.ofBottomCenter(at);
 		try {
 			c.setPlayer(FakePlayers.connect(server, c.data, world, pos, 0.0F));
 			reviveIfDead(c, true);
@@ -367,6 +393,25 @@ public final class CompanionManager {
 		} catch (RuntimeException e) {
 			MCFriends.LOG.error("Failed to respawn companion {}", c.name(), e);
 		}
+	}
+
+	@Nullable
+	private ServerWorld worldFor(String dim) {
+		for (ServerWorld w : server.getWorlds()) {
+			if (w.getRegistryKey().getValue().toString().equals(dim)) {
+				return w;
+			}
+		}
+		return null;
+	}
+
+	/** Make a dead companion "alive" just before it leaves, so its saved playerdata is too. */
+	private static void healForSave(CompanionPlayer p) {
+		p.setHealth(p.getMaxHealth());
+		p.deathTime = 0;
+		p.hurtTime = 0;
+		p.extinguish();
+		p.setAir(p.getMaxAir());
 	}
 
 	/** Saved playerdata of a dead player has Health 0; reset it like vanilla respawn would. */

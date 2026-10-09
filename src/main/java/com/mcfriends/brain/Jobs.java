@@ -171,6 +171,12 @@ public final class Jobs {
 		if (stack.isIn(net.minecraft.registry.tag.ItemTags.WOOL)) {
 			return "hunt sheep " + n; // each sheep drops a block of wool
 		}
+		if (item == net.minecraft.item.Items.LEATHER) {
+			return "hunt cow " + Math.max(1, n); // 0-2 each
+		}
+		if (item == net.minecraft.item.Items.FEATHER) {
+			return "hunt chicken " + Math.max(1, n);
+		}
 		if (Smelting.smeltable(c.server, item)) {
 			return "smelt " + ItemNames.id(item) + " " + n;
 		}

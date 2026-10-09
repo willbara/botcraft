@@ -33,6 +33,7 @@ public class Perception {
 
 	private final Companion companion;
 	private final BlockScanner scanner;
+	private final Surroundings surroundings = new Surroundings();
 
 	private long now;
 	private long threatsAt = -1000;
@@ -47,6 +48,14 @@ public class Perception {
 
 	public void tick(long serverTick) {
 		this.now = serverTick;
+		if (companion.player() != null) {
+			surroundings.tick(companion.player());
+		}
+	}
+
+	/** What's right around us (ore, water, lava, air), kept up to date a layer per tick. */
+	public Surroundings surroundings() {
+		return surroundings;
 	}
 
 	public BlockScanner blocks() {

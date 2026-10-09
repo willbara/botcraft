@@ -75,6 +75,9 @@ public class MineTask extends Task {
 	private List<BlockPos> buried = List.of();
 	private int caveSearches;
 	private int explores;
+	/** Moving to reach the next block of a vein; time spent finishing a vein after we had enough. */
+	private int repositionTicks;
+	private int overtime;
 	private int failures;
 	private Direction exploreDir;
 	@Nullable
@@ -146,7 +149,12 @@ public class MineTask extends Task {
 		CompanionPlayer p = c.player();
 		countProgress(p);
 		if (gathered >= wanted) {
-			return Status.SUCCESS;
+			// A player finishes the vein they're on (and picks up the drops) rather than leaving
+			// half of it in the wall.
+			boolean midVein = (phase == Phase.MINE && !vein.isEmpty()) || phase == Phase.COLLECT;
+			if (!midVein || ++overtime > 20 * 45) {
+				return Status.SUCCESS;
+			}
 		}
 		if (!hasPickaxe(p)) {
 			if (!askedForPickaxe) {
@@ -162,6 +170,10 @@ public class MineTask extends Task {
 			return fail("I couldn't get to any " + kind.noun());
 		}
 		phaseTicks++;
+		if (ticks() % 10 == 0 && (phase == Phase.APPROACH || phase == Phase.CHOOSE || phase == Phase.CAVE || phase == Phase.EXPLORE)
+			&& grabOnTheWay(p)) {
+			return Status.RUNNING;
+		}
 		return switch (phase) {
 			case SCAN -> scan(p);
 			case CHOOSE -> choose(p);
@@ -204,6 +216,21 @@ public class MineTask extends Task {
 
 	private Status scan(CompanionPlayer p) {
 		ServerWorld world = p.getServerWorld();
+		if (phaseTicks == 1 && kind != OreKind.STONE) {
+			// More of it right where we are (the rest of this vein, one just behind the wall)?
+			// That beats walking off to the next one we can see.
+			BlockPos here = p.getBlockPos();
+			List<BlockPos> local = new ArrayList<>();
+			for (BlockPos b : c.perception().surroundings().ores(kind, here)) {
+				if (b.getSquaredDistance(here) <= 7 * 7 && !blacklist.contains(b) && kind.blocks().test(world.getBlockState(b))) {
+					local.add(b);
+				}
+			}
+			if (!local.isEmpty()) {
+				AiLog.log(c.name(), "mine {}: {} more right around here", kind.word, local.size());
+				return chooseAmong(p, local);
+			}
+		}
 		if (phaseTicks == 1) {
 			c.perception().blocks().start(kind.blocks(), SCAN_RADIUS, 24, 12);
 		}
@@ -272,6 +299,57 @@ public class MineTask extends Task {
 		return Status.RUNNING;
 	}
 
+	/**
+	 * Walking somewhere (to a vein further off, a cave, exploring) and the ore we want is right
+	 * here in reach and in sight: take it now instead of walking past.
+	 */
+	private boolean grabOnTheWay(CompanionPlayer p) {
+		ServerWorld world = p.getServerWorld();
+		BlockPos eye = BlockPos.ofFloored(p.getEyePos());
+		BlockPos best = null;
+		for (BlockPos b : c.perception().surroundings().ores(kind, eye)) {
+			if (b.getSquaredDistance(eye) > 5 * 5) {
+				break; // nearest first: the rest are out of reach
+			}
+			if (blacklist.contains(b) || b.equals(target) || !kind.blocks().test(world.getBlockState(b)) || wet(world, b)) {
+				continue;
+			}
+			if (c.actions().canReachBlock(b)) {
+				best = b;
+				break;
+			}
+		}
+		if (best == null) {
+			return false;
+		}
+		AiLog.log(c.name(), "mine {}: {} right here at {}, taking it", kind.word, kind.noun(), best.toShortString());
+		c.nav().stop();
+		target = best;
+		com.mcfriends.brain.Claims.claim(c, best);
+		collectVein(world);
+		setPhase(Phase.MINE);
+		return true;
+	}
+
+	private static boolean nextToLava(ServerWorld world, BlockPos pos) {
+		for (Direction d : Direction.values()) {
+			if (world.getFluidState(pos.offset(d)).isIn(net.minecraft.registry.tag.FluidTags.LAVA)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Next to water or lava: mining it means swimming, or letting the fluid in. */
+	private static boolean wet(ServerWorld world, BlockPos pos) {
+		for (Direction d : Direction.values()) {
+			if (!world.getFluidState(pos.offset(d)).isEmpty()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static boolean exposed(ServerWorld world, BlockPos pos) {
 		for (Direction d : Direction.values()) {
 			var s = world.getBlockState(pos.offset(d));
@@ -289,6 +367,12 @@ public class MineTask extends Task {
 		BlockPos from = p.getBlockPos();
 		// Leave veins someone else is already working alone (unless that's all there is).
 		List<BlockPos> sorted = new ArrayList<>(com.mcfriends.brain.Claims.spreadOut(c, candidates, b -> b, 6));
+		// Ore by water (behind a waterfall, at the bottom of a flooded cave) only when there's no dry ore.
+		ServerWorld w = p.getServerWorld();
+		List<BlockPos> dry = sorted.stream().filter(b -> !wet(w, b)).toList();
+		if (!dry.isEmpty()) {
+			sorted = new ArrayList<>(dry);
+		}
 		sorted.sort(Comparator.comparingDouble(b -> b.getSquaredDistance(from) + 3.0 * (b.getY() - from.getY()) * (b.getY() - from.getY())));
 		choices = sorted.subList(0, Math.min(MAX_CHOICES, sorted.size()));
 		List<Goal> goals = new ArrayList<>();
@@ -441,11 +525,23 @@ public class MineTask extends Task {
 			if (digThrough(p, next)) {
 				return Status.RUNNING;
 			}
-			vein.pop();
-			if (vein.isEmpty() && next.getSquaredDistance(p.getBlockPos()) < 8 * 8) {
-				return goTo(next); // the rest of the vein is just further in
+			// The rest of the vein is a step or two further: move over rather than leave it.
+			Navigator.State ns = c.nav().state();
+			if (repositionTicks == 0 || ns == Navigator.State.IDLE) {
+				c.nav().moveTo(reachGoal(next), false);
+			}
+			if (++repositionTicks > 20 * 15 || ns == Navigator.State.FAILED
+				|| (ns == Navigator.State.ARRIVED && !c.actions().canReachBlock(next))) {
+				AiLog.log(c.name(), "mine {}: can't get at {} in this vein, leaving it", kind.word, next.toShortString());
+				blacklist.add(vein.pop());
+				repositionTicks = 0;
+				c.nav().stop();
 			}
 			return Status.RUNNING;
+		}
+		if (repositionTicks > 0) {
+			repositionTicks = 0;
+			c.nav().stop();
 		}
 		ActionController.MineResult r = c.actions().mineBlock(next);
 		if (r == ActionController.MineResult.FAILED || phaseTicks > 20 * 20) {
@@ -535,14 +631,14 @@ public class MineTask extends Task {
 		Deque<BlockPos> queue = new ArrayDeque<>();
 		queue.add(target);
 		seen.add(target);
-		int limit = kind == OreKind.STONE ? Math.min(8, wanted - gathered + 1) : 16;
+		int limit = kind == OreKind.STONE ? Math.min(8, wanted - gathered + 1) : 24;
 		while (!queue.isEmpty() && out.size() < limit) {
 			BlockPos cur = queue.poll();
 			out.add(cur);
-			for (Direction d : Direction.values()) {
-				BlockPos n = cur.offset(d);
-				if (seen.add(n) && kind.blocks().test(world.getBlockState(n)) && !blacklist.contains(n)) {
-					queue.add(n);
+			// Veins connect diagonally too (that's how they look in the wall).
+			for (BlockPos n : BlockPos.iterate(cur.add(-1, -1, -1), cur.add(1, 1, 1))) {
+				if (seen.add(n.toImmutable()) && kind.blocks().test(world.getBlockState(n)) && !blacklist.contains(n) && !nextToLava(world, n)) {
+					queue.add(n.toImmutable());
 				}
 			}
 		}

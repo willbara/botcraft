@@ -2,6 +2,7 @@ package com.mcfriends.brain;
 
 /** What a drive wants. Interrupting objectives preempt (pause) the current base activity. */
 public enum Objective {
+	BREATHE(true),
 	FIGHT(true),
 	FLEE(true),
 	RETREAT(true),

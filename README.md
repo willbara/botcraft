@@ -108,7 +108,11 @@ Item names are resolved against the game. Wood words mean chopping, ores and sto
   Natural terrain only, never next to fluids, never through walls.
 - **Crafting and smelting**: a recipe planner over the server's own recipes. Missing materials become gather, mine, hunt or smelt jobs, so "craft an iron pickaxe" works from nothing. It uses a free furnace (never one holding your items) or places its own.
 - **Hunting**: adult, unnamed, un-leashed, not-penned animals only, and never the last pair of a species nearby. Raw meat gets cooked.
+- **Awareness**: each companion keeps a rolling picture of everything within 8 blocks (one layer per tick, so it's cheap): ore of every kind, water, lava, and where to come up for air. Tasks ask it "anything here?" instead of scanning.
+- **Mining whole veins**: it mines every block of the vein it's on, including blocks joined only at the corners, steps over to reach the rest, and finishes the vein even past the requested count. After each vein it checks for more right where it is before walking to the next one, and grabs any of the ore it's after that it passes within reach. Ore next to water (behind a waterfall, in a flooded cave) is only chosen when there's no dry ore, and ore next to lava is left alone.
+- **Water**: paths avoid swimming (especially fully underwater) and currents. When its air drops below half it stops everything and swims to the nearest air.
 - **Picking up after itself**: every block a companion breaks and every animal or mob it kills marks a drop spot. Before starting its next job (and now and then when idle) it collects anything of its own still lying around: logs that fell out of reach, ore that dropped into a hole, its broken crafting table, meat. Items someone else threw (your drops, a friend's delivery) are never taken. Anything it can't reach is let go of, and the log says what it picked up and what it missed.
+- **Dying**: it respawns at its bed, else home, else next to you if you're standing somewhere safe (not spectating in a flooded cave), else world spawn, always on dry, solid ground. It never comes back looking dead.
 - **Not getting lost**: in follow mode with nobody to follow (you're offline, in spectator, or in another dimension), a companion that's done or whose job failed heads home if it's more than 24 blocks away. If it can't find a path back to you (for example deep in a cave), it uses the teleport-to-owner fallback after a few failed tries.
 - **Getting out of caves**: when the way out is above and the normal search fails underground, it digs straight up like a player: it breaks the block overhead, jumps, and places a block underneath. It stops before fluids, falling blocks or anything that isn't natural terrain.
 - **Looking further**: chopping and hunting don't give up when nothing is in range. They go to a remembered spot, climb to the surface if underground, or walk about 40–48 blocks in one direction and look again (up to 5 trips).
@@ -217,7 +221,7 @@ Interrupt objectives (fight, flee, retreat, eat) are pushed on top of the stack 
 ## Development
 
 - `./gradlew build`: compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest`: runs a headless server with 36 GameTests covering movement, pathfinding (shafts, ladders, parkour, diving, digging out), gathering, mining, crafting, smelting, hunting, combat, free mode, shelter, chat, banter, sharing, spreading out, tool prep, searching for animals, picking up drops and heading home when lost. It resets its world on every run.
+- `./gradlew runGametest`: runs a headless server with 39 GameTests covering movement, pathfinding (shafts, ladders, parkour, diving, digging out, surfacing for air), gathering, mining, crafting, smelting, hunting, combat, free mode, shelter, chat, banter, sharing, spreading out, tool prep, searching for animals, picking up drops, heading home when lost, whole veins and safe respawns. It resets its world on every run.
 - `./gradlew runServer`: dev dedicated server in `run/server`. Type commands into the console.
 - To see AI decisions, set `verboseAiLogging: true` and grep `latest.log` for `[<name>]`.
 
