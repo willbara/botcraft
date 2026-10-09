@@ -72,7 +72,9 @@ public class FollowOwnerTask extends Task {
 			moving = true;
 		}
 		if (moving) {
-			if (d <= comfy && visible) {
+			// Settle only on solid ground at about the owner's height (not hanging off a ladder).
+			boolean settled = (p.isOnGround() || p.isTouchingWater()) && Math.abs(owner.getY() - p.getY()) < 1.5;
+			if (d <= comfy && visible && settled) {
 				moving = false;
 				c.nav().stop();
 			} else {

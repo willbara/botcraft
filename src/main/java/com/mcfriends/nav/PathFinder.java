@@ -4,6 +4,7 @@ import com.mcfriends.util.TickBudget;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -12,23 +13,71 @@ import java.util.List;
 import java.util.PriorityQueue;
 
 /**
- * Time-sliced A* over feet positions. Call {@link #step(int)} once per tick until it stops
- * returning SEARCHING. Never loads chunks (see {@link Terrain}).
+ * Time-sliced A* over feet positions with a Baritone-style movement set and costs in game
+ * ticks. Call {@link #step(int)} once per tick until it stops returning SEARCHING. Never loads
+ * chunks (see {@link Terrain}).
  *
- * <p>Moves: walk (8 directions, no corner cutting), jump up 1, drop up to 3 (deeper only
- * into water), swim, walk through wooden doors/gates, and optionally break the feet/head
- * blocks or place a block to bridge a gap. Costs are roughly "ticks / 5" so that a
- * 1-block walk costs 1.
+ * <p>Movements from each node:
+ * <ul>
+ *   <li>traverse (4 dirs), optionally mining what's in the way or placing a block to bridge;</li>
+ *   <li>diagonal (4 dirs), only through open space;</li>
+ *   <li>ascend one block (4 dirs), mining head room / the target if allowed;</li>
+ *   <li>descend / fall (4 dirs) up to the safe fall height, deeper only into water;</li>
+ *   <li>downward: mine the block underneath and drop into it;</li>
+ *   <li>pillar: jump and place a block underneath (needs throwaway blocks);</li>
+ *   <li>ladder/vine climbing up and down; swimming;</li>
+ *   <li>parkour: sprint-jump a 1-2 block gap on the same level.</li>
+ * </ul>
+ * Breaking is gated by {@link BreakPolicy} (via Terrain), placing by a budget of blocks we carry.
  */
 public class PathFinder {
 	public enum Status { SEARCHING, FOUND, PARTIAL, FAILED }
 
-	private static final int[][] DIRS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
-	private static final int MAX_SAFE_FALL = 3;
-	private static final int MAX_WATER_FALL = 12;
-	private static final double HEURISTIC_WEIGHT = 1.15; // slightly greedy: faster, near-optimal
+	// Costs in ticks (Baritone ActionCosts).
+	public static final double WALK = 4.633;
+	public static final double SPRINT = 3.564;
+	public static final double WATER_COST = 9.091;
+	public static final double JUMP = 6.0;
+	public static final double JUMP_PENALTY = 2.0;
+	public static final double LADDER_UP = 8.511;
+	public static final double LADDER_DOWN = 6.667;
+	public static final double PLACE = 20.0;
+	public static final double WALK_OFF = 3.706;
+	public static final double CENTER = 0.927;
+	public static final double DOOR_COST = 8.0;
+	/** Heuristic ticks per block: slightly above sprint cost, i.e. a little greedy. */
+	private static final double H_PER_BLOCK = 4.0;
+	private static final double[] FALL_TICKS = new double[64];
 
-	public record Options(boolean allowBreak, boolean allowBridge, boolean allowDig, int maxNodes, int maxRange) {
+	static {
+		// Ticks to fall n blocks from rest: vanilla gravity 0.08/tick, drag 0.98.
+		double y = 0;
+		double v = 0;
+		int n = 1;
+		for (int tick = 1; n < FALL_TICKS.length && tick < 400; tick++) {
+			v = (v - 0.08) * 0.98;
+			y += v;
+			while (n < FALL_TICKS.length && -y >= n) {
+				FALL_TICKS[n++] = tick;
+			}
+		}
+	}
+
+	private static final Direction[] CARDINALS = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
+	private static final int[][] DIAGONALS = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+	private static final int MAX_WATER_FALL = 20;
+
+	/**
+	 * @param allowBreak   mine blocks in the way (still subject to BreakPolicy)
+	 * @param allowPlace   place throwaway blocks (bridges, pillars)
+	 * @param allowParkour jump gaps
+	 * @param placeBudget  how many blocks we carry to place
+	 * @param maxFall      highest safe fall (3 = no damage)
+	 */
+	public record Options(boolean allowBreak, boolean allowPlace, boolean allowParkour, int placeBudget, int maxNodes, int maxRange, int maxFall) {
+		public static Options basic(int maxNodes, int maxRange) {
+			return new Options(false, false, true, 0, maxNodes, maxRange, 3);
+		}
 	}
 
 	private static final class Node {
@@ -38,15 +87,17 @@ public class PathFinder {
 		double f;
 		Node parent;
 		MoveType type;
-		BlockPos aux;
+		@Nullable
+		BlockPos place;
 		List<BlockPos> breaks = List.of();
+		int placed;
 		boolean closed;
 
 		Node(BlockPos pos, double g, double h) {
 			this.pos = pos;
 			this.g = g;
 			this.h = h;
-			this.f = g + h * HEURISTIC_WEIGHT;
+			this.f = g + h;
 		}
 	}
 
@@ -70,11 +121,19 @@ public class PathFinder {
 		this.options = options;
 		this.start = start.toImmutable();
 		this.avoid = avoid;
-		this.startNode = new Node(this.start, 0, goal.heuristic(this.start));
+		this.startNode = new Node(this.start, 0, h(this.start));
 		startNode.type = MoveType.START;
 		nodes.put(this.start.asLong(), startNode);
 		open.add(startNode);
 		best = startNode;
+	}
+
+	public static double fallTicks(int blocks) {
+		return FALL_TICKS[Math.min(Math.max(blocks, 1), FALL_TICKS.length - 1)];
+	}
+
+	private double h(BlockPos pos) {
+		return goal.heuristic(pos) * H_PER_BLOCK;
 	}
 
 	public Status status() {
@@ -127,7 +186,7 @@ public class PathFinder {
 
 	/** Out of nodes: fall back to the path toward the node closest to the goal. */
 	private void finish() {
-		if (best != startNode && best.h < startNode.h - 1.0) {
+		if (best != startNode && best.h < startNode.h - H_PER_BLOCK) {
 			result = build(best);
 			status = Status.PARTIAL;
 		} else {
@@ -135,131 +194,263 @@ public class PathFinder {
 		}
 	}
 
+	/** How much closer the best node got to the goal (blocks), for deciding whether to escape. */
+	public double progress() {
+		return (startNode.h - best.h) / H_PER_BLOCK;
+	}
+
 	private List<PathStep> build(Node end) {
 		List<PathStep> steps = new ArrayList<>();
 		for (Node n = end; n != null && n != startNode; n = n.parent) {
-			double floor = n.type == MoveType.BRIDGE || n.type == MoveType.BREAK ? n.pos.getY() : terrain.floorY(n.pos);
-			steps.add(new PathStep(n.pos, n.type, floor, n.aux, n.breaks));
+			double floor = n.place != null || !n.breaks.isEmpty() || n.type == MoveType.PILLAR ? n.pos.getY() : terrain.floorY(n.pos);
+			if (terrain.isClimbable(n.pos) || terrain.isWater(n.pos)) {
+				floor = n.pos.getY();
+			}
+			steps.add(new PathStep(n.pos, n.type, floor, n.place, n.breaks));
 		}
 		Collections.reverse(steps);
 		return steps;
 	}
 
+	// ---- movements -------------------------------------------------------------------------------
+
 	private void expand(Node cur) {
 		BlockPos p = cur.pos;
-		double curFloor = terrain.floorY(p);
 		boolean inWater = terrain.isWater(p);
+		for (Direction d : CARDINALS) {
+			traverse(cur, p, d, inWater);
+			ascend(cur, p, d);
+			descend(cur, p, d);
+			parkour(cur, p, d, inWater);
+		}
+		for (int[] d : DIAGONALS) {
+			diagonal(cur, p, d[0], d[1]);
+		}
+		up(cur, p, inWater);
+		down(cur, p, inWater);
+	}
 
-		for (int[] d : DIRS) {
-			boolean diag = d[0] != 0 && d[1] != 0;
-			double base = diag ? 1.414 : 1.0;
-			BlockPos t = p.add(d[0], 0, d[1]);
-			if (!inRange(t)) {
+	/** Solid under this node to stand on / place against, counting a block we planned to place there. */
+	private boolean solidBelow(Node cur) {
+		BlockPos below = cur.pos.down();
+		return (cur.place != null && cur.place.equals(below)) || terrain.placeableAgainst(below);
+	}
+
+	private boolean usable(BlockPos t) {
+		return inRange(t) && terrain.kind(t) != Terrain.UNLOADED;
+	}
+
+	private boolean deadly(BlockPos t) {
+		byte k = terrain.kind(t);
+		return k == Terrain.LAVA || k == Terrain.DANGER;
+	}
+
+	/** Cost of clearing the given cells; +inf if not allowed. Adds what must be mined to breaks. */
+	private double clearCost(List<BlockPos> breaks, BlockPos... cells) {
+		double c = 0;
+		for (BlockPos b : cells) {
+			if (terrain.passable(b)) {
 				continue;
 			}
-			if (diag && !(terrain.clearBody(p.add(d[0], 0, 0)) && terrain.clearBody(p.add(0, 0, d[1])))) {
-				continue; // would clip a corner
+			if (!options.allowBreak() || deadly(b) || terrain.isDoor(b)) {
+				return Double.POSITIVE_INFINITY;
 			}
-			if (terrain.kind(t) == Terrain.UNLOADED) {
-				continue;
+			double bc = terrain.breakCost(b);
+			if (bc == Double.POSITIVE_INFINITY) {
+				return bc;
 			}
+			c += bc;
+			breaks.add(b.toImmutable());
+		}
+		return c;
+	}
 
-			// Same level.
-			if (terrain.standable(t)) {
-				double rise = terrain.floorY(t) - curFloor;
-				double door = terrain.isDoor(t) || terrain.isDoor(t.up()) ? (diag ? Double.NaN : 1.5) : 0;
-				if (Double.isNaN(door)) {
-					continue;
-				}
-				if (rise <= 0.6) {
-					add(cur, t, base + door + terrain.hazard(t), terrain.isWater(t) ? MoveType.SWIM : MoveType.WALK, null);
-				} else if (rise <= 1.25 && terrain.passable(p.up(2))) {
-					add(cur, t, base + 1.5 + door + terrain.hazard(t), MoveType.JUMP, null);
-				}
-				continue;
+	private void traverse(Node cur, BlockPos p, Direction d, boolean inWater) {
+		BlockPos t = p.offset(d);
+		if (!usable(t) || deadly(t) || deadly(t.up())) {
+			return;
+		}
+		List<BlockPos> breaks = new ArrayList<>(2);
+		double cost = clearCost(breaks, t.up(), t);
+		if (cost == Double.POSITIVE_INFINITY) {
+			return;
+		}
+		double door = terrain.isDoor(t) || terrain.isDoor(t.up()) ? DOOR_COST : 0;
+		boolean water = terrain.isWater(t);
+		BlockPos place = null;
+		if (!terrain.support(t.down()) && !water && !terrain.isClimbable(t)) {
+			// Nothing to stand on: bridge it if we can, otherwise this is a descend.
+			if (!options.allowPlace() || cur.placed >= options.placeBudget() || inWater || !terrain.replaceable(t.down())
+				|| !solidBelow(cur) || !breaks.isEmpty()) {
+				return;
 			}
-
-			// Jump up one block.
-			BlockPos up = t.up();
-			if (!diag && terrain.standable(up) && terrain.passable(p.up(2)) && !terrain.isDoor(up) && !terrain.isDoor(up.up())
-				&& terrain.floorY(up) - curFloor <= 1.25) {
-				add(cur, up, base + 1.5 + terrain.hazard(up), MoveType.JUMP, null);
-				continue;
+			place = t.down().toImmutable();
+			cost += PLACE;
+		}
+		double rise = place != null || !breaks.isEmpty() || cur.place != null ? 0 : terrain.floorY(t) - terrain.floorY(p);
+		MoveType type = place != null ? MoveType.BRIDGE : water ? MoveType.SWIM : MoveType.WALK;
+		if (rise > 0.6) {
+			if (rise > 1.25 || !terrain.passable(p.up(2))) {
+				return;
 			}
+			type = MoveType.JUMP;
+			cost += JUMP;
+		}
+		cost += (water || inWater ? WATER_COST : WALK) + door + terrain.hazard(t);
+		add(cur, t, cost, type, place, breaks);
+	}
 
-			// Walk off an edge.
-			if (terrain.clearBody(t)) {
-				boolean landed = false;
-				for (int k = 1; k <= MAX_WATER_FALL; k++) {
-					BlockPos down = t.down(k);
-					byte kind = terrain.kind(down);
-					if (kind == Terrain.UNLOADED || kind == Terrain.LAVA || kind == Terrain.DANGER) {
-						break;
-					}
-					if (terrain.standable(down)) {
-						boolean water = terrain.isWater(down);
-						if (k <= MAX_SAFE_FALL || water) {
-							add(cur, down, base + k * 0.5 + terrain.hazard(down), MoveType.FALL, null);
-						}
-						landed = true;
-						break;
-					}
-					if (!terrain.passable(down)) {
-						break;
-					}
-				}
-				if (!landed && options.allowBridge() && !diag && !inWater && terrain.placeableAgainst(p.down())
-					&& (terrain.kind(t.down()) == Terrain.AIR || terrain.kind(t.down()) == Terrain.WATER)) {
-					add(cur, t, base + 6.0, MoveType.BRIDGE, t.down());
-				}
-				continue;
+	private void diagonal(Node cur, BlockPos p, int dx, int dz) {
+		BlockPos t = p.add(dx, 0, dz);
+		if (!usable(t) || !terrain.standable(t) || terrain.isDoor(t) || terrain.isDoor(t.up()) || terrain.isClimbable(t)) {
+			return;
+		}
+		if (!terrain.clearBody(p.add(dx, 0, 0)) || !terrain.clearBody(p.add(0, 0, dz))) {
+			return; // would clip a corner
+		}
+		double rise = terrain.floorY(t) - terrain.floorY(p);
+		if (rise > 0.6 || rise < -0.6) {
+			return;
+		}
+		double base = terrain.isWater(t) ? WATER_COST : WALK;
+		add(cur, t, base * Math.sqrt(2) + terrain.hazard(t), terrain.isWater(t) ? MoveType.SWIM : MoveType.WALK, null, List.of());
+	}
+
+	private void ascend(Node cur, BlockPos p, Direction d) {
+		BlockPos t = p.offset(d);
+		BlockPos u = t.up();
+		if (!usable(u) || !terrain.support(t) || deadly(u) || deadly(u.up()) || terrain.isClimbable(p)) {
+			return;
+		}
+		List<BlockPos> breaks = new ArrayList<>(3);
+		double cost = clearCost(breaks, p.up(2), u.up(), u);
+		if (cost == Double.POSITIVE_INFINITY || terrain.isDoor(u) || terrain.isDoor(u.up())) {
+			return;
+		}
+		if (breaks.contains(u.up()) && terrain.isFalling(u.up(2))) {
+			return; // sand would fall on our head
+		}
+		if (breaks.isEmpty() && terrain.floorY(u) - terrain.floorY(p) > 1.25) {
+			return;
+		}
+		add(cur, u, cost + JUMP + JUMP_PENALTY + WALK + terrain.hazard(u), MoveType.JUMP, null, breaks);
+	}
+
+	private void descend(Node cur, BlockPos p, Direction d) {
+		BlockPos t = p.offset(d);
+		if (!usable(t) || deadly(t) || deadly(t.up()) || terrain.support(t.down()) || terrain.isWater(t) || terrain.isClimbable(t)) {
+			return; // standable (traverse) or not a ledge
+		}
+		List<BlockPos> breaks = new ArrayList<>(2);
+		double cost = clearCost(breaks, t.up(), t);
+		if (cost == Double.POSITIVE_INFINITY) {
+			return;
+		}
+		for (int k = 1; k <= MAX_WATER_FALL; k++) {
+			BlockPos below = t.down(k);
+			byte kind = terrain.kind(below);
+			if (kind == Terrain.UNLOADED || kind == Terrain.LAVA || kind == Terrain.DANGER) {
+				return;
 			}
-
-			// Blocked: dig through (cardinal only, needs a floor).
-			if (options.allowBreak() && !diag && terrain.support(t.down())) {
-				double c = terrain.breakCost(t) + terrain.breakCost(t.up());
-				if (terrain.kind(t) == Terrain.DANGER || terrain.kind(t.up()) == Terrain.DANGER) {
-					c = Double.POSITIVE_INFINITY;
+			if (terrain.standable(below)) {
+				boolean soft = terrain.isWater(below) || terrain.isClimbable(below);
+				if (k > options.maxFall() && !soft) {
+					return;
 				}
-				if (c < Double.POSITIVE_INFINITY) {
-					add(cur, t, base + c, MoveType.BREAK, null, blocked(t.up(), t));
+				if (k > 1 && !breaks.isEmpty()) {
+					return; // only dig into a one-block step down
 				}
+				add(cur, below, cost + WALK_OFF + fallTicks(k) + CENTER + terrain.hazard(below), MoveType.FALL, null, breaks);
+				return;
 			}
-
-			// Dig mode: tunnel up one level (a staircase), clearing head room as needed.
-			if (options.allowDig() && !diag && terrain.kind(t) == Terrain.SOLID && terrain.support(t)) {
-				BlockPos u = t.up();
-				if (terrain.clearable(p.up(2)) && terrain.clearable(u) && terrain.clearable(u.up())
-					&& terrain.kind(u.up(2)) != Terrain.LAVA && terrain.kind(u.up(2)) != Terrain.WATER) {
-					double c = terrain.breakCost(p.up(2)) + terrain.breakCost(u) + terrain.breakCost(u.up());
-					List<BlockPos> br = blocked(p.up(2), u.up(), u);
-					if (!br.isEmpty() && c < Double.POSITIVE_INFINITY) {
-						add(cur, u, base + 1.5 + c, MoveType.BREAK, null, br);
-					}
-				}
+			if (!terrain.passable(below)) {
+				return;
 			}
 		}
+	}
 
-		// Dig mode: dig straight down one block (never onto lava/water or over a drop).
-		if (options.allowDig() && !inWater) {
-			BlockPos d = p.down();
-			if (terrain.kind(d) == Terrain.SOLID && terrain.support(d.down()) && terrain.breakCost(d) < Double.POSITIVE_INFINITY
-				&& inRange(d) && terrain.kind(d.down()) != Terrain.LAVA) {
-				add(cur, d, 5.0 + terrain.breakCost(d), MoveType.BREAK, null, List.of(d.toImmutable()));
+	private void parkour(Node cur, BlockPos p, Direction d, boolean inWater) {
+		if (!options.allowParkour() || inWater || !(terrain.support(p.down()) || solidBelow(cur)) || !terrain.passable(p.up(2))) {
+			return;
+		}
+		BlockPos first = p.offset(d);
+		if (!usable(first) || terrain.support(first.down()) || !terrain.clearBody(first) || terrain.isWater(first.down())) {
+			return; // not a gap
+		}
+		for (int dist = 2; dist <= 3; dist++) {
+			BlockPos gap = p.offset(d, dist - 1);
+			if (!terrain.clearBody(gap) || !terrain.passable(gap.up(2)) || terrain.support(gap.down())) {
+				return;
+			}
+			BlockPos land = p.offset(d, dist);
+			if (!usable(land) || deadly(land)) {
+				return;
+			}
+			if (terrain.standable(land) && !terrain.isWater(land) && Math.abs(terrain.floorY(land) - terrain.floorY(p)) < 0.1
+				&& terrain.passable(land.up(2))) {
+				add(cur, land, SPRINT * dist + JUMP + JUMP_PENALTY + terrain.hazard(land), MoveType.PARKOUR, null, List.of());
+				return;
 			}
 		}
+	}
 
-		// Vertical swimming.
+	private void up(Node cur, BlockPos p, boolean inWater) {
+		BlockPos u = p.up();
+		if (!usable(u) || deadly(u) || deadly(u.up())) {
+			return;
+		}
+		if (terrain.isClimbable(p) && (terrain.isClimbable(u) || terrain.passable(u))) {
+			if (terrain.passable(u.up()) || terrain.isClimbable(u.up())) {
+				add(cur, u, LADDER_UP, MoveType.CLIMB, null, List.of());
+			}
+			return;
+		}
 		if (inWater) {
-			BlockPos up = p.up();
-			if (terrain.standable(up) || (terrain.isWater(up) && inRange(up))) {
-				add(cur, up, 1.5, MoveType.SWIM, null);
+			if (terrain.isWater(u) || terrain.standable(u)) {
+				add(cur, u, WATER_COST, MoveType.SWIM, null, List.of());
 			}
-			BlockPos down = p.down();
-			if (terrain.isWater(down)) {
-				add(cur, down, 1.5, MoveType.SWIM, null);
-			}
+			return;
 		}
+		// Pillar: jump and place a block where our feet were.
+		if (!options.allowPlace() || cur.placed >= options.placeBudget() || !solidBelow(cur) || !terrain.replaceable(p)) {
+			return;
+		}
+		List<BlockPos> breaks = new ArrayList<>(1);
+		double cost = clearCost(breaks, u.up());
+		if (cost == Double.POSITIVE_INFINITY || (!breaks.isEmpty() && terrain.isFalling(u.up(2)))) {
+			return;
+		}
+		add(cur, u, cost + JUMP + JUMP_PENALTY + PLACE, MoveType.PILLAR, p.toImmutable(), breaks);
+	}
+
+	private void down(Node cur, BlockPos p, boolean inWater) {
+		BlockPos d = p.down();
+		if (!usable(d) || deadly(d)) {
+			return;
+		}
+		if (terrain.isClimbable(d)) {
+			add(cur, d, LADDER_DOWN, MoveType.CLIMB, null, List.of());
+			return;
+		}
+		if (inWater) {
+			if (terrain.isWater(d)) {
+				add(cur, d, WATER_COST, MoveType.SWIM, null, List.of());
+			}
+			return;
+		}
+		if (!options.allowBreak() || terrain.kind(d) != Terrain.SOLID || terrain.isClimbable(p)) {
+			return;
+		}
+		BlockPos under = d.down();
+		boolean landing = terrain.support(under) || terrain.isWater(under) || terrain.isClimbable(under);
+		if (!landing || terrain.kind(under) == Terrain.LAVA) {
+			return; // never dig straight down into the unknown
+		}
+		double bc = terrain.breakCost(d);
+		if (bc == Double.POSITIVE_INFINITY) {
+			return;
+		}
+		add(cur, d, bc + fallTicks(1) + CENTER, MoveType.DOWNWARD, null, List.of(d.toImmutable()));
 	}
 
 	private boolean inRange(BlockPos t) {
@@ -267,22 +458,7 @@ public class PathFinder {
 		return Math.abs(t.getX() - start.getX()) <= r && Math.abs(t.getZ() - start.getZ()) <= r && Math.abs(t.getY() - start.getY()) <= r;
 	}
 
-	/** The given positions that are not passable yet (to be mined, in order). */
-	private List<BlockPos> blocked(BlockPos... positions) {
-		List<BlockPos> out = new ArrayList<>();
-		for (BlockPos b : positions) {
-			if (!terrain.passable(b)) {
-				out.add(b.toImmutable());
-			}
-		}
-		return out;
-	}
-
-	private void add(Node from, BlockPos pos, double cost, MoveType type, @Nullable BlockPos aux) {
-		add(from, pos, cost, type, aux, List.of());
-	}
-
-	private void add(Node from, BlockPos pos, double cost, MoveType type, @Nullable BlockPos aux, List<BlockPos> breaks) {
+	private void add(Node from, BlockPos pos, double cost, MoveType type, @Nullable BlockPos place, List<BlockPos> breaks) {
 		long key = pos.asLong();
 		if (avoid.contains(key)) {
 			return;
@@ -290,18 +466,19 @@ public class PathFinder {
 		double g = from.g + cost;
 		Node n = nodes.get(key);
 		if (n == null) {
-			n = new Node(pos.toImmutable(), g, goal.heuristic(pos));
+			n = new Node(pos.toImmutable(), g, h(pos));
 			nodes.put(key, n);
 		} else if (n.closed || g >= n.g - 1e-6) {
 			return;
 		} else {
 			n.g = g;
-			n.f = g + n.h * HEURISTIC_WEIGHT;
+			n.f = g + n.h;
 		}
 		n.parent = from;
 		n.type = type;
-		n.aux = aux == null ? null : aux.toImmutable();
+		n.place = place;
 		n.breaks = breaks;
+		n.placed = from.placed + (place != null ? 1 : 0);
 		open.add(n); // duplicates are skipped later via the closed flag
 	}
 }

@@ -10,6 +10,7 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.DoorBlock;
 import net.minecraft.block.FenceGateBlock;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.state.property.Properties;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
@@ -25,15 +26,22 @@ import java.util.Random;
  * Plans (time-sliced) and follows a path to a {@link Goal}. Tasks call {@link #moveTo} every
  * tick or whenever their goal changes and read {@link #state()}.
  *
- * <p>Stuck handling: if we make no progress toward the current step for ~1.5 s we first try
- * a jump + random strafe, then re-plan, and give up (FAILED) after repeated failures or when
- * the path's time limit runs out. Positions where we got stuck are avoided by re-plans.
+ * <p>Executes every {@link MoveType}: walking (with string-pulling so it cuts straight across
+ * open ground instead of zig-zagging node to node), jumps, falls, swimming, doors, mining
+ * blocks in the way, bridging, pillaring, ladder climbing and parkour jumps.
+ *
+ * <p><b>Escape mode:</b> if no (good) path is found, e.g. the classic "dug myself into a hole",
+ * the search is retried allowing us to dig through natural terrain and pillar up with
+ * throwaway blocks, like a player would. Built blocks are still never broken.
+ *
+ * <p>Stuck handling: no progress for ~1.5 s -> wiggle (jump + strafe) -> re-plan avoiding the
+ * spot -> give up (FAILED) after repeated failures or when the path's time limit runs out.
  */
 public class Navigator {
 	public enum State { IDLE, SEARCHING, MOVING, ARRIVED, FAILED }
 
 	private static final int NO_PROGRESS_TICKS = 30;
-	private static final int MAX_STUCK = 4;
+	private static final int MAX_STUCK = 5;
 	private static final int SEARCH_RANGE = 96;
 
 	private final Companion companion;
@@ -50,13 +58,14 @@ public class Navigator {
 	private boolean partial;
 	private int index;
 	private boolean sprint;
-	private boolean allowBridge = true;
+	private boolean allowPlace = true;
+	private String failReason = "";
 	private boolean digMode;
+	private boolean escape;
 	/** We started the current block-break (so stop() may abort it; tasks' own mining is left alone). */
 	private boolean miningForPath;
 	private int breaksThisStep;
 	private int breakStepIndex = -1;
-	private String failReason = "";
 
 	private double bestDist;
 	private int noProgress;
@@ -66,6 +75,7 @@ public class Navigator {
 	private int pathTicks;
 	private int pathTimeLimit;
 	private int doorWait;
+	private int pillarStage;
 	private final LongOpenHashSet avoid = new LongOpenHashSet();
 	private final List<BlockPos> openedDoors = new ArrayList<>();
 
@@ -91,6 +101,10 @@ public class Navigator {
 		return state == State.SEARCHING || state == State.MOVING;
 	}
 
+	public boolean escaping() {
+		return escape;
+	}
+
 	/** Start (or keep) navigating to the goal. Re-issuing an equal goal keeps the current path. */
 	public void moveTo(Goal newGoal, boolean sprint) {
 		this.sprint = sprint;
@@ -99,8 +113,9 @@ public class Navigator {
 		}
 		this.goal = newGoal;
 		this.stuckCount = 0;
+		this.escape = false;
 		this.avoid.clear();
-		this.allowBridge = CompanionConfig.get().allowBridging;
+		this.allowPlace = CompanionConfig.get().allowBridging;
 		plan();
 	}
 
@@ -123,6 +138,8 @@ public class Navigator {
 		goal = null;
 		finder = null;
 		path = null;
+		escape = false;
+		actions.sneak(false);
 		if (miningForPath) {
 			actions.abortMining();
 			miningForPath = false;
@@ -135,13 +152,15 @@ public class Navigator {
 			return;
 		}
 		BlockPos start = feet(p);
-		Terrain terrain = new Terrain(p.getServerWorld(), digMode);
+		boolean dig = digMode || escape;
+		Terrain terrain = new Terrain(p.getServerWorld(), dig, p.getInventory());
 		// If we're standing somewhere odd (half in a block, mid-air) start from the nearest standable spot.
 		if (!terrain.standable(start) && terrain.standable(start.up())) {
 			start = start.up();
 		}
-		boolean canBridge = allowBridge && Inventories.count(p.getInventory(), Inventories::isThrowaway) > 0;
-		PathFinder.Options opts = new PathFinder.Options(true, canBridge, digMode, CompanionConfig.get().maxPathNodes, SEARCH_RANGE);
+		int blocks = Inventories.count(p.getInventory(), Inventories::isThrowaway);
+		boolean place = (allowPlace || escape) && blocks > 0;
+		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, 3);
 		finder = new PathFinder(terrain, start, goal, opts, avoid);
 		path = null;
 		state = State.SEARCHING;
@@ -166,18 +185,32 @@ public class Navigator {
 		}
 	}
 
+	/** Underground or walled in: a player would dig/tower out rather than give up. */
+	private boolean boxedIn(CompanionPlayer p) {
+		ServerWorld w = p.getServerWorld();
+		BlockPos f = feet(p);
+		return !w.isSkyVisible(f.up()) || !w.isSkyVisible(f.up(3));
+	}
+
 	private void tickSearch(CompanionPlayer p) {
 		if (finder == null) {
 			state = State.FAILED;
 			return;
 		}
 		PathFinder.Status s = finder.step(CompanionConfig.get().pathNodesPerTick);
+		boolean poor = s == PathFinder.Status.FAILED || (s == PathFinder.Status.PARTIAL && finder.progress() < 3);
+		if (poor && !escape && !digMode) {
+			AiLog.log(companion.name(), "no good path{}: escape mode (dig natural terrain, pillar)", boxedIn(p) ? " (underground)" : "");
+			escape = true;
+			plan();
+			return;
+		}
 		switch (s) {
 			case FOUND, PARTIAL -> {
 				path = finder.result();
 				partial = s == PathFinder.Status.PARTIAL;
-				AiLog.log(companion.name(), "path {} with {} steps ({} nodes expanded)", partial ? "partial" : "found",
-					path.size(), finder.expanded());
+				AiLog.log(companion.name(), "path {} with {} steps ({} nodes expanded){}", partial ? "partial" : "found",
+					path.size(), finder.expanded(), escape ? " [escape]" : "");
 				finder = null;
 				if (path.isEmpty()) {
 					state = goal != null && goal.isGoal(feet(p)) ? State.ARRIVED : State.FAILED;
@@ -186,7 +219,11 @@ public class Navigator {
 				}
 				index = 0;
 				pathTicks = 0;
-				pathTimeLimit = 100 + path.size() * 25;
+				pathTimeLimit = 100;
+				for (PathStep st : path) {
+					pathTimeLimit += 25 + st.breaks().size() * 60 + (st.place() != null ? 20 : 0);
+				}
+				pillarStage = 0;
 				resetProgress();
 				state = State.MOVING;
 			}
@@ -212,8 +249,9 @@ public class Navigator {
 			return;
 		}
 		BlockPos here = feet(p);
-		if (goal.isGoal(here) && p.isOnGround() || goal.isGoal(here) && p.isTouchingWater()) {
+		if (goal.isGoal(here) && (p.isOnGround() || p.isTouchingWater() || p.isClimbing())) {
 			state = State.ARRIVED;
+			actions.sneak(false);
 			return;
 		}
 		if (++pathTicks > pathTimeLimit) {
@@ -225,6 +263,7 @@ public class Navigator {
 		for (int i = Math.min(path.size() - 1, index + 4); i >= index; i--) {
 			if (isAt(p, path.get(i))) {
 				index = i + 1;
+				pillarStage = 0;
 				resetProgress();
 				break;
 			}
@@ -248,17 +287,47 @@ public class Navigator {
 			return;
 		}
 
-		if (handleObstacles(p, step)) {
-			return; // busy mining / placing / opening
+		if (handleDoors(p, step) || handleBreaks(p, step) || handleBridge(p, step)) {
+			return; // busy opening / mining / placing
 		}
 
+		double rise = step.floorY() - p.getY();
 		Vec3d target = step.center();
-		actions.moveTo(target);
+		double hd = Math.sqrt(sq(target.x - p.getX()) + sq(target.z - p.getZ()));
+		switch (step.type()) {
+			case PILLAR -> {
+				pillar(p, step);
+				progress(p, Math.abs(rise) + hd, step);
+				return;
+			}
+			case CLIMB -> {
+				actions.moveTo(target, 0.6);
+				if (rise > 0) {
+					actions.holdJump();
+				}
+				progress(p, Math.abs(rise) + hd, step);
+				return;
+			}
+			case PARKOUR -> {
+				actions.moveTo(target);
+				actions.sprint(true);
+				PathStep prev = index > 0 ? path.get(index - 1) : null;
+				Vec3d from = prev != null ? prev.center() : Vec3d.ofBottomCenter(feet(p));
+				double run = Math.sqrt(sq(p.getX() - from.x) + sq(p.getZ() - from.z));
+				if (p.isOnGround() && run > 0.25) {
+					actions.jump(); // take off from the edge of the block
+				}
+				progress(p, hd, step);
+				return;
+			}
+			default -> {
+			}
+		}
+
+		// Walking: aim at the farthest of the next few steps reachable in a straight line.
+		actions.moveTo(lookahead(p, target));
 		int remaining = path.size() - index;
 		actions.sprint(sprint && remaining > 4 && step.type() != MoveType.BRIDGE);
-
-		double rise = step.floorY() - p.getY();
-		double hd = Math.sqrt(sq(target.x - p.getX()) + sq(target.z - p.getZ()));
 		if (p.isTouchingWater()) {
 			if (rise > -0.3 || p.isSubmergedInWater()) {
 				actions.holdJump();
@@ -266,28 +335,74 @@ public class Navigator {
 		} else if (p.isOnGround() && ((rise > 0.6 && hd < 1.6) || (p.horizontalCollision && rise > -0.5))) {
 			actions.jump();
 		}
+		progress(p, hd + Math.abs(rise) * 0.5, step);
+	}
 
-		// Progress / stuck detection.
-		double dist = hd + Math.abs(rise) * 0.5;
+	private void progress(CompanionPlayer p, double dist, PathStep step) {
 		if (dist < bestDist - 0.1) {
 			bestDist = dist;
 			noProgress = 0;
-		} else if (++noProgress > NO_PROGRESS_TICKS) {
-			stuck(p, "no progress toward " + step.pos().toShortString());
+		} else if (++noProgress > NO_PROGRESS_TICKS + (step.type() == MoveType.PILLAR ? 30 : 0)) {
+			stuck(p, "no progress toward " + step.pos().toShortString() + " (" + step.type() + ")");
 		}
+	}
+
+	/**
+	 * String pulling: if the next steps are plain walking on the same level and the straight line
+	 * to them crosses only standable ground, head for the farthest one directly.
+	 */
+	private Vec3d lookahead(CompanionPlayer p, Vec3d target) {
+		if (path == null || p.isTouchingWater() || !p.isOnGround()) {
+			return target;
+		}
+		Terrain t = new Terrain(p.getServerWorld());
+		Vec3d best = target;
+		for (int i = index; i < Math.min(path.size(), index + 5); i++) {
+			PathStep s = path.get(i);
+			if (s.type() != MoveType.WALK || !s.breaks().isEmpty() || s.place() != null || Math.abs(s.floorY() - p.getY()) > 0.3) {
+				break;
+			}
+			if (i > index && !straightClear(t, p.getPos(), s.center())) {
+				break;
+			}
+			best = s.center();
+		}
+		return best;
+	}
+
+	private static boolean straightClear(Terrain t, Vec3d from, Vec3d to) {
+		Vec3d d = to.subtract(from);
+		int n = (int) Math.ceil(d.horizontalLength() / 0.3);
+		for (int i = 1; i <= n; i++) {
+			Vec3d pt = from.add(d.multiply((double) i / n));
+			// Check the body's footprint corners, not just the centre line.
+			for (double ox : new double[]{-0.3, 0.3}) {
+				for (double oz : new double[]{-0.3, 0.3}) {
+					BlockPos b = BlockPos.ofFloored(pt.x + ox, from.y + 0.5, pt.z + oz);
+					if (!t.standable(b) || t.isWater(b) || t.hazard(b) > 0 || Math.abs(t.floorY(b) - from.y) > 0.3) {
+						return false;
+					}
+				}
+			}
+		}
+		return true;
 	}
 
 	private boolean isAt(CompanionPlayer p, PathStep s) {
 		double dx = p.getX() - (s.pos().getX() + 0.5);
 		double dz = p.getZ() - (s.pos().getZ() + 0.5);
 		double dy = p.getY() - s.floorY();
+		if (s.type() == MoveType.PILLAR || s.type() == MoveType.CLIMB) {
+			return dx * dx + dz * dz < 0.5 * 0.5 && dy > -0.2 && dy < 0.9 && (p.isOnGround() || p.isClimbing());
+		}
 		return dx * dx + dz * dz < 0.45 * 0.45 && dy > -0.6 && dy < 0.9;
 	}
 
-	/** Doors, blocks to break and gaps to bridge. Returns true while busy with them. */
-	private boolean handleObstacles(CompanionPlayer p, PathStep step) {
+	// ---- step parts ------------------------------------------------------------------------------
+
+	/** Open wooden doors / gates in the way (feet or head level). */
+	private boolean handleDoors(CompanionPlayer p, PathStep step) {
 		var world = p.getServerWorld();
-		// Open wooden doors / gates in the way (feet or head level).
 		for (BlockPos pos : new BlockPos[]{step.pos(), step.pos().up()}) {
 			BlockState s = world.getBlockState(pos);
 			if ((s.getBlock() instanceof DoorBlock && DoorBlock.canOpenByHand(s)) || s.getBlock() instanceof FenceGateBlock) {
@@ -299,7 +414,8 @@ public class Navigator {
 					if (actions.canReachBlock(pos)) {
 						actions.lookAt(Vec3d.ofCenter(pos));
 						if (actions.useBlock(pos)) {
-							BlockPos lower = s.getBlock() instanceof DoorBlock && s.get(Properties.DOUBLE_BLOCK_HALF) == net.minecraft.block.enums.DoubleBlockHalf.UPPER ? pos.down() : pos;
+							BlockPos lower = s.getBlock() instanceof DoorBlock
+								&& s.get(Properties.DOUBLE_BLOCK_HALF) == net.minecraft.block.enums.DoubleBlockHalf.UPPER ? pos.down() : pos;
 							if (!openedDoors.contains(lower)) {
 								openedDoors.add(lower);
 							}
@@ -312,69 +428,114 @@ public class Navigator {
 				break;
 			}
 		}
+		return false;
+	}
 
-		if (step.type() == MoveType.BREAK) {
-			if (breakStepIndex != index) {
-				breakStepIndex = index;
-				breaksThisStep = 0;
-			}
-			for (BlockPos pos : step.breaks()) {
-				BlockState s = world.getBlockState(pos);
-				if (s.getCollisionShape(world, pos).isEmpty() && s.getFluidState().isEmpty()) {
-					continue;
-				}
-				if (!s.getFluidState().isEmpty()) {
-					avoid.add(step.pos().asLong());
-					stuck(p, "fluid in the way at " + pos.toShortString());
-					return true;
-				}
-				if (!BreakPolicy.canBreakForNav(world, pos, s, digMode)) {
-					avoid.add(step.pos().asLong());
-					stuck(p, "may not break " + s.getBlock().getName().getString());
-					return true;
-				}
-				if (!actions.canReachBlock(pos)) {
-					actions.moveTo(Vec3d.ofBottomCenter(step.pos()));
-					return true;
-				}
-				ActionController.MineResult r = actions.mineBlock(pos);
-				miningForPath = r == ActionController.MineResult.IN_PROGRESS;
-				if (r == ActionController.MineResult.DONE && ++breaksThisStep > 12) {
-					avoid.add(step.pos().asLong());
-					stuck(p, "blocks keep falling in at " + pos.toShortString()); // e.g. a gravel column
-					return true;
-				}
-				if (r == ActionController.MineResult.FAILED) {
-					avoid.add(step.pos().asLong());
-					stuck(p, "could not mine " + pos.toShortString());
-				}
-				resetProgress();
-				return true;
-			}
+	/** Mine the blocks this step needs cleared, in order. */
+	private boolean handleBreaks(CompanionPlayer p, PathStep step) {
+		if (step.breaks().isEmpty()) {
+			return false;
 		}
-
-		if (step.type() == MoveType.BRIDGE && step.aux() != null) {
-			BlockPos under = step.aux();
-			if (world.getBlockState(under).isReplaceable()) {
-				// Creep to the edge while sneaking (sneaking stops us walking off), look down, place.
-				actions.sneak(true);
-				Vec3d edge = Vec3d.ofBottomCenter(step.pos()).add(p.getPos()).multiply(0.5);
-				actions.moveTo(edge, 0.6);
-				actions.lookAt(Vec3d.ofCenter(under));
-				if (actions.canReachBlock(under) && p.getPos().squaredDistanceTo(Vec3d.ofBottomCenter(step.pos())) < 1.6 * 1.6) {
-					if (!actions.placeBlock(under, Inventories::isThrowaway)) {
-						if (Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0) {
-							allowBridge = false;
-						}
-						stuck(p, "could not place bridge block");
-					}
-				}
-				resetProgress();
+		var world = p.getServerWorld();
+		if (breakStepIndex != index) {
+			breakStepIndex = index;
+			breaksThisStep = 0;
+		}
+		for (BlockPos pos : step.breaks()) {
+			BlockState s = world.getBlockState(pos);
+			if (s.getCollisionShape(world, pos).isEmpty() && s.getFluidState().isEmpty()) {
+				continue;
+			}
+			if (!s.getFluidState().isEmpty()) {
+				avoid.add(step.pos().asLong());
+				stuck(p, "fluid in the way at " + pos.toShortString());
 				return true;
 			}
-			actions.sneak(false);
+			if (!BreakPolicy.canBreakForNav(world, pos, s, digMode || escape)) {
+				avoid.add(step.pos().asLong());
+				stuck(p, "may not break " + s.getBlock().getName().getString());
+				return true;
+			}
+			if (!actions.canReachBlock(pos)) {
+				BlockPos block = actions.obstruction(pos);
+				if (block != null && BreakPolicy.canBreakForNav(world, block, world.getBlockState(block), digMode || escape)) {
+					actions.mineBlock(block); // something else hides it: dig that first
+					miningForPath = true;
+				} else {
+					actions.moveTo(Vec3d.ofBottomCenter(step.pos()), 0.5);
+				}
+				return true;
+			}
+			ActionController.MineResult r = actions.mineBlock(pos);
+			miningForPath = r == ActionController.MineResult.IN_PROGRESS;
+			if (r == ActionController.MineResult.DONE && ++breaksThisStep > 12) {
+				avoid.add(step.pos().asLong());
+				stuck(p, "blocks keep falling in at " + pos.toShortString()); // e.g. a gravel column
+				return true;
+			}
+			if (r == ActionController.MineResult.FAILED) {
+				avoid.add(step.pos().asLong());
+				stuck(p, "could not mine " + pos.toShortString());
+			}
+			resetProgress();
+			return true;
 		}
 		return false;
+	}
+
+	/** Bridge: creep to the edge sneaking, look down, place the block under the next step. */
+	private boolean handleBridge(CompanionPlayer p, PathStep step) {
+		if (step.type() != MoveType.BRIDGE || step.place() == null) {
+			return false;
+		}
+		var world = p.getServerWorld();
+		BlockPos under = step.place();
+		if (!world.getBlockState(under).isReplaceable()) {
+			actions.sneak(false);
+			return false;
+		}
+		actions.sneak(true);
+		Vec3d edge = Vec3d.ofBottomCenter(step.pos()).add(p.getPos()).multiply(0.5);
+		actions.moveTo(edge, 0.6);
+		actions.lookAt(Vec3d.ofCenter(under));
+		if (actions.canReachBlock(under) && p.getPos().squaredDistanceTo(Vec3d.ofBottomCenter(step.pos())) < 1.6 * 1.6) {
+			if (!actions.placeBlock(under, Inventories::isThrowaway)) {
+				if (Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0) {
+					allowPlace = false;
+				}
+				stuck(p, "could not place bridge block");
+			}
+		}
+		resetProgress();
+		return true;
+	}
+
+	/** Tower up one block: centre, look down, jump, place under our feet at the top of the jump. */
+	private void pillar(CompanionPlayer p, PathStep step) {
+		BlockPos place = step.place();
+		if (place == null) {
+			return;
+		}
+		Vec3d center = Vec3d.ofBottomCenter(place);
+		actions.moveTo(center, 0.3);
+		actions.lookAt(p.getPos().add(0, -2, 0));
+		if (!p.getWorld().getBlockState(place).isReplaceable()) {
+			return; // placed: we're standing on it, isAt() will advance
+		}
+		if (pillarStage == 0) {
+			if (p.isOnGround()) {
+				actions.jump();
+				pillarStage = 1;
+			}
+		} else if (p.getY() >= place.getY() + 1.02) {
+			if (actions.placeBlock(place, Inventories::isThrowaway)) {
+				pillarStage = 0;
+			} else if (Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0) {
+				stuck(p, "out of blocks to pillar with");
+			}
+		} else if (p.isOnGround() && p.getY() < place.getY() + 0.5) {
+			pillarStage = 0; // landed without placing: jump again
+		}
 	}
 
 	private void closeDoorsBehind(CompanionPlayer p) {
@@ -412,13 +573,14 @@ public class Navigator {
 		actions.abortMining();
 		miningForPath = false;
 		actions.sneak(false);
+		pillarStage = 0;
 		resetProgress();
 		if (stuckCount >= MAX_STUCK) {
 			failReason = why;
 			state = State.FAILED;
 			return;
 		}
-		if (stuckCount == 1 && !why.startsWith("may not") && !why.startsWith("could not")) {
+		if (stuckCount == 1 && !why.startsWith("may not") && !why.startsWith("could not") && !why.startsWith("out of")) {
 			// Wiggle: jump and strafe a little in a random direction, then carry on.
 			float angle = random.nextFloat() * MathHelper.TAU;
 			recoveryDir = new Vec3d(MathHelper.cos(angle), 0, MathHelper.sin(angle));
@@ -427,6 +589,9 @@ public class Navigator {
 		}
 		if (path != null && index < path.size()) {
 			avoid.add(path.get(index).pos().asLong());
+		}
+		if (stuckCount >= 3 && !escape && !digMode) {
+			escape = true;
 		}
 		plan();
 	}
