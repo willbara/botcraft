@@ -70,8 +70,21 @@ public final class IntentParser {
 	private static final Pattern COME = Pattern.compile("\\bcome\\b");
 	private static final Pattern STATUS = Pattern.compile(
 		"\\b(status|what are you doing|what'?re you doing|whatcha doing|wyd|what'?s up|how are you|how r u|you ok|are you ok|you good|health|hungry|report|how'?s it going|what are you up to|doing\\?)");
+	private static final Pattern JOKE = Pattern.compile("\\b(tell (me |us )?(a |another )?joke|make me laugh|something funny|know any jokes)\\b");
+	private static final Pattern WHO = Pattern.compile("\\b(who are you|what'?s your name|what is your name|introduce yourself|who r u)\\b");
+	private static final Pattern TIME = Pattern.compile("\\b(what time is it|what'?s the time|is it (day|night)|what day is it)\\b");
+	private static final Pattern FAVORITE = Pattern.compile("\\b(?:what'?s|what is|whats) your fav(?:ou?rite)? ([a-z]+(?: [a-z]+)?)");
+	private static final Pattern OPINION = Pattern.compile("\\b(?:do you (?:like|love|hate|enjoy)|what do you think (?:of|about)|how do you feel about|thoughts on) (.+)");
+	private static final Pattern FEELING = Pattern.compile("\\b(how do you feel|how are you feeling|are you (happy|sad|bored|lonely|tired|scared))\\b");
+	private static final Pattern LOVE = Pattern.compile("(\\bi love you\\b|\\blove you\\b|<3|\\bily\\b)");
+	private static final Pattern BYE = Pattern.compile("^(bye|goodbye|good night|gn|see you|see ya|cya|later|gtg|logging off|night)\\b|\\b(goodbye|see you later|gotta go)\\b");
+	private static final Pattern SORRY = Pattern.compile("\\b(sorry|my bad|apologi[sz]e)\\b");
+	private static final Pattern COMPLIMENT = Pattern.compile(
+		"\\b(you'?re (awesome|great|amazing|the best|cool|smart|a legend|so good)|you are (awesome|great|amazing|the best|cool|smart)|good (job|work|boy|girl|bot)|well done|nice (one|work|job)|great job|you rock|legend)\\b");
+	private static final Pattern INSULT = Pattern.compile(
+		"\\b(you suck|you stink|you'?re (dumb|stupid|useless|bad|trash|annoying)|you are (dumb|stupid|useless|bad|trash)|stupid|idiot|dumb|useless|bad bot|noob|trash)\\b");
 	private static final Pattern GREETING = Pattern.compile("^(hi|hello|hey|yo|sup|hiya|howdy|greetings|good (morning|evening|afternoon))\\b");
-	private static final Pattern THANKS = Pattern.compile("\\b(thanks|thank you|thx|ty|good job|well done|nice work|great job|good (boy|girl|bot))\\b");
+	private static final Pattern THANKS = Pattern.compile("\\b(thanks|thank you|thx|ty|cheers|much appreciated)\\b");
 
 	/** Words dropped from the start of an item phrase. */
 	private static final Pattern LEAD_FILLER = Pattern.compile(
@@ -110,6 +123,25 @@ public final class IntentParser {
 				rest = m.replaceAll(" ");
 			}
 		}
+		if (addressed.isEmpty()) {
+			// Typos: "bobb, follow me", "herobrin stop". Only as a direct address (first or last word).
+			String[] words = rest.trim().split("[ ,]+");
+			if (words.length > 0) {
+				for (String name : companionNames) {
+					String n = name.toLowerCase(Locale.ROOT);
+					String first = words[0].replace("@", "");
+					String last = words[words.length - 1].replace("@", "");
+					String hit = n.length() >= 4 && first.length() >= 3 && editDistance(first, n) == 1 ? words[0]
+						: n.length() >= 4 && last.length() >= 3 && editDistance(last, n) == 1 ? words[words.length - 1] : null;
+					if (hit != null) {
+						addressed.add(name);
+						direct = true;
+						rest = rest.replaceFirst(Pattern.quote(hit), " ");
+						break;
+					}
+				}
+			}
+		}
 		if (addressed.isEmpty() && ALL_WORDS.matcher(rest).find()) {
 			addressed.add(ALL);
 			direct = true;
@@ -133,6 +165,29 @@ public final class IntentParser {
 			intents.add(Intent.of(Intent.Type.UNKNOWN));
 		}
 		return new Parsed(addressed, intents, append, direct);
+	}
+
+	/** Levenshtein distance, early-out above 2. */
+	static int editDistance(String a, String b) {
+		if (Math.abs(a.length() - b.length()) > 2) {
+			return 3;
+		}
+		int[] prev = new int[b.length() + 1];
+		int[] cur = new int[b.length() + 1];
+		for (int j = 0; j <= b.length(); j++) {
+			prev[j] = j;
+		}
+		for (int i = 1; i <= a.length(); i++) {
+			cur[0] = i;
+			for (int j = 1; j <= b.length(); j++) {
+				int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+				cur[j] = Math.min(Math.min(cur[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+			}
+			int[] t = prev;
+			prev = cur;
+			cur = t;
+		}
+		return prev[b.length()];
 	}
 
 	static List<String> clauses(String text) {
@@ -259,8 +314,43 @@ public final class IntentParser {
 		if (COME.matcher(text).find()) {
 			return Intent.of(Intent.Type.COME_HERE);
 		}
+		Matcher fav = FAVORITE.matcher(text);
+		if (fav.find()) {
+			return new Intent(Intent.Type.FAVORITE, fav.group(1).trim(), -1);
+		}
+		Matcher op = OPINION.matcher(text);
+		if (op.find()) {
+			return new Intent(Intent.Type.OPINION, phrase(op.group(1)), -1);
+		}
+		if (JOKE.matcher(text).find()) {
+			return Intent.of(Intent.Type.JOKE);
+		}
+		if (WHO.matcher(text).find()) {
+			return Intent.of(Intent.Type.WHO);
+		}
+		if (TIME.matcher(text).find()) {
+			return Intent.of(Intent.Type.TIME);
+		}
+		if (FEELING.matcher(text).find()) {
+			return Intent.of(Intent.Type.FEELING);
+		}
 		if (STATUS.matcher(text).find()) {
 			return Intent.of(Intent.Type.STATUS);
+		}
+		if (LOVE.matcher(text).find()) {
+			return Intent.of(Intent.Type.LOVE);
+		}
+		if (INSULT.matcher(text).find()) {
+			return Intent.of(Intent.Type.INSULT);
+		}
+		if (COMPLIMENT.matcher(text).find()) {
+			return Intent.of(Intent.Type.COMPLIMENT);
+		}
+		if (SORRY.matcher(text).find()) {
+			return Intent.of(Intent.Type.SORRY);
+		}
+		if (BYE.matcher(text).find()) {
+			return Intent.of(Intent.Type.BYE);
 		}
 		if (THANKS.matcher(text).find()) {
 			return Intent.of(Intent.Type.THANKS);

@@ -33,16 +33,31 @@ public class Speech {
 	private long now;
 	private long lastSpoke = -1000;
 	private final java.util.List<String> spokenKeys = new java.util.ArrayList<>();
+	/** Raw template lines said recently, so we don't repeat ourselves. */
+	private final ArrayDeque<String> recentLines = new ArrayDeque<>();
+	private Voice voice;
 
 	public Speech(Companion c) {
 		this.c = c;
 	}
 
+	public Voice voice() {
+		if (voice == null) {
+			voice = Voice.of(c.data.uuid.getLeastSignificantBits() ^ c.data.name.hashCode(), c.data.chattiness, c.data.bravery);
+		}
+		return voice;
+	}
+
 	public void tick(long serverTick) {
 		now = serverTick;
-		Line next = queue.peek();
+		Line next = null;
+		for (Line l : queue) {
+			if (next == null || l.due() < next.due()) {
+				next = l;
+			}
+		}
 		if (next != null && now >= next.due() && now - lastSpoke >= MIN_GAP_TICKS) {
-			queue.poll();
+			queue.remove(next);
 			broadcast(next.text());
 			spokenKeys.add(next.key());
 			if (spokenKeys.size() > 20) {
@@ -76,18 +91,28 @@ public class Speech {
 	}
 
 	private boolean say(String key, @Nullable ServerPlayerEntity to, Map<String, String> extra) {
-		if (!CompanionConfig.get().chatEnabled || queue.size() > 4) {
+		return sayIn(key, to, extra, 0);
+	}
+
+	/** Say something after {@code delay} ticks (plus typing time): used for back-and-forth banter. */
+	public boolean sayIn(String key, @Nullable ServerPlayerEntity to, Map<String, String> extra, int delay) {
+		if (!CompanionConfig.get().chatEnabled || queue.size() > 5) {
 			return false;
 		}
 		Map<String, String> vars = vars(to);
 		vars.putAll(extra);
 		String variant = c.data.bravery > 0.65F ? "brave" : c.data.bravery < 0.35F ? "timid" : "";
-		String text = Templates.pick(key, variant, vars, random);
-		if (text.isEmpty()) {
+		String raw = Templates.pick(key, variant, vars, random, recentLines::contains);
+		if (raw.isEmpty()) {
 			return false;
 		}
+		recentLines.addLast(raw);
+		while (recentLines.size() > 40) {
+			recentLines.removeFirst();
+		}
+		String text = voice().apply(Templates.fill(raw, vars), random);
 		int typing = 8 + text.length() / 2 + random.nextInt(10);
-		queue.add(new Line(key, text, now + typing));
+		queue.add(new Line(key, text, now + delay + typing));
 		AiLog.log(c.name(), "will say [{}] '{}'", key, text);
 		return true;
 	}
@@ -112,6 +137,7 @@ public class Speech {
 		v.put("name", c.name());
 		v.put("owner", c.data.ownerName != null ? c.data.ownerName : "nobody");
 		v.put("player", to != null ? to.getGameProfile().getName() : (c.data.ownerName != null ? c.data.ownerName : "friend"));
+		v.put("nick", voice().nickFor(v.get("player"), random));
 		if (p != null) {
 			int hp = Math.round(p.getHealth());
 			int food = p.getHungerManager().getFoodLevel();

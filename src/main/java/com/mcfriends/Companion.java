@@ -204,7 +204,13 @@ public class Companion {
 		AiLog.log(name(), "spawned ({}), personality {}", reason, brain.personality().summary());
 		speech.tick(now);
 		switch (reason) {
-			case "new" -> speech.event("event.hello", Map.of(), 0, 1.0F);
+			case "new" -> {
+				speech.event("event.hello", Map.of(), 0, 1.0F);
+				CompanionManager m = CompanionManager.get();
+				if (m != null) {
+					com.mcfriends.chat.Social.onSpawn(this, m.all());
+				}
+			}
 			case "respawned", "summoned" -> speech.event("event.back", Map.of(), 0, 0.7F);
 			default -> {
 			}
@@ -215,6 +221,10 @@ public class Companion {
 		AiLog.log(name(), "died");
 		nav.stop();
 		memory.count("deaths", 1);
+		CompanionManager m = CompanionManager.get();
+		if (m != null) {
+			com.mcfriends.chat.Social.onDeath(this, m.all());
+		}
 		if (player != null) {
 			memory.setPlace("last_death", player.getBlockPos(), dimension(), player.getWorld().getTime());
 		}
@@ -237,14 +247,20 @@ public class Companion {
 	public void onKill(LivingEntity victim) {
 		AiLog.log(name(), "killed {}", victim.getType().getUntranslatedName());
 		memory.count("killed_" + victim.getType().getUntranslatedName(), 1);
+		CompanionManager m = CompanionManager.get();
+		if (m != null) {
+			com.mcfriends.chat.Social.onKill(this, victim, m.all());
+		}
 		speech.event("event.kill", Map.of("mob", mobName(victim)), 15 * 20, 0.35F);
 	}
 
 	/** Brain callback when an interrupt (fight, flee, eat...) starts. */
 	public void onInterruptStarted(Objective objective, Task task) {
 		if (objective == Objective.FIGHT && task instanceof FightTask) {
-			LivingEntity t = perception.nearestThreat();
-			if (t != null) {
+			net.minecraft.entity.mob.MobEntity t = perception.nearestThreat();
+			if (t != null && t.getTarget() instanceof CompanionPlayer friend && friend != player) {
+				speech.event("social.help", Map.of("friend", friend.getGameProfile().getName(), "mob", mobName(t)), 20 * 30, 0.7F);
+			} else if (t != null) {
 				speech.event("event.fight", Map.of("mob", mobName(t)), 40 * 20, 0.3F);
 			}
 		} else if (objective == Objective.FLEE && perception.nearestCreeper(10) == null) {
