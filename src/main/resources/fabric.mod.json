@@ -5,7 +5,6 @@
   "name": "MCFriends",
   "description": "Offline, server-side AI companions that look and act like players.",
   "authors": ["will"],
-  "license": "MIT",
   "environment": "*",
   "entrypoints": {
     "main": ["com.mcfriends.MCFriends"],

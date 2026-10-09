@@ -15,8 +15,18 @@ import net.minecraft.util.math.BlockPos;
  * connection is not registered with the network IO, so we call it from {@link #tick()}.
  */
 public class CompanionPlayer extends ServerPlayerEntity {
+	private FakeClientConnection fakeConnection;
+
 	public CompanionPlayer(MinecraftServer server, ServerWorld world, GameProfile profile) {
 		super(server, world, profile);
+	}
+
+	void setFakeConnection(FakeClientConnection connection) {
+		this.fakeConnection = connection;
+	}
+
+	FakeClientConnection fakeConnection() {
+		return fakeConnection;
 	}
 
 	@Override

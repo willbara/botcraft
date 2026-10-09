@@ -77,6 +77,11 @@ jar {
 	}
 }
 
+// Let the dev server read console commands (./gradlew runServer, then type commands).
+tasks.matching { it.name == 'runServer' }.configureEach {
+	standardInput = System.in
+}
+
 // Fresh world for every GameTest run so companions from earlier runs aren't restored.
 tasks.matching { it.name == 'runGametest' }.configureEach {
 	doFirst {
