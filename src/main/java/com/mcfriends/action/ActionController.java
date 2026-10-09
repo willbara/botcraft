@@ -568,6 +568,9 @@ public class ActionController {
 			ItemEntity e = p.dropItem(taken, false, true);
 			if (e != null) {
 				e.setPickupDelay(10);
+				if (reserveFor != null) {
+					e.setOwner(reserveFor);
+				}
 			}
 		}
 		if (dropped > 0) {
@@ -581,6 +584,15 @@ public class ActionController {
 		lookAt(receiver);
 		applyLook(player()); // snap closer before throwing so the items fly the right way
 		applyLook(player());
-		return dropItems(which, count);
+		reserveFor = receiver.getUuid();
+		try {
+			return dropItems(which, count);
+		} finally {
+			reserveFor = null;
+		}
 	}
+
+	/** While handing items over: only this player may pick them up (nobody else in a crowd grabs them). */
+	@Nullable
+	private java.util.UUID reserveFor;
 }

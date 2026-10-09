@@ -106,7 +106,14 @@ Item names are resolved against the game. Wood words mean chopping, ores and sto
   Natural terrain only, never next to fluids, never through walls.
 - **Crafting and smelting**: a recipe planner over the server's own recipes. Missing materials become gather, mine, hunt or smelt jobs, so "craft an iron pickaxe" works from nothing. It uses a free furnace (never one holding your items) or places its own.
 - **Hunting**: adult, unnamed, un-leashed, not-penned animals only, and never the last pair of a species nearby. Raw meat gets cooked.
-- **Helping each other**: when a job is missing something (wood for a craft, coal for the furnace, the right pickaxe, food), a companion first asks the nearest friend who can spare it ("Hey Ann, could you spare 3 logs?"). The friend pauses their own job, brings it over, and goes back to work. Only spares are given, and tools only if they have two. Companions never jump on farmland (yours stays safe).
+- **Helping each other**: when a job is missing something worth a trip (coal, ores or ingots, gems, wool, a pickaxe, food), a companion asks the nearest *idle or free-roaming* friend who can spare it ("Hey Ann, could you spare 3 coal?"). The friend brings it over and goes back to what they were doing.
+  - Cheap things (cobblestone, logs, dirt, planks, sticks) it always gets itself.
+  - At most one request every 3 minutes, and the same item at most every 10 minutes.
+  - A helper helps one companion at a time, then gets a 2-minute breather, and is never pulled off one of your orders.
+  - Handed-over items can only be picked up by the recipient.
+  - If nothing arrives, the companion quietly gets it itself.
+
+  Only spares are given, and tools only if the friend has two. Companions never jump on farmland (yours stays safe).
 - **Sleep**: it goes to bed when you do (so the night can skip). In free mode with no bed, an armed companion guards home, and an unarmed one **digs in**: three blocks down, roofed, until morning.
 - **Free mode / Life planner**: a player-like routine around home:
   - night: bed or shelter;
@@ -116,7 +123,7 @@ Item names are resolved against the game. Wood words mean chopping, ores and sto
   - otherwise it revisits a remembered cave or wanders.
 
   It says what it's doing; a goal that fails is put aside for a while. **Any order ends free mode** (back to following you), so its plans never compete with yours. In follow mode it only does light tool upkeep near you. Tune with `initiative`.
-- **Memory** (`<world>/mcfriends/memory/<name>.json`): places (home, bed, farm, furnace, last death), ore/tree/diamond sightings, lifetime stats, biomes visited, people met.
+- **Memory** (`<world>/mcfriends/memory/<name>.json`): places (home, bed, furnace, last death), ore/tree/diamond sightings, lifetime stats, biomes visited, people met.
 - **Speech**:
   - Lines come from `dialogue.json`, a large pool with no repeats.
   - Each companion has its own voice (casual or proper, calm or excited, filler words, emoticons, a nickname for you), so the same line sounds different from different companions.

@@ -21,7 +21,8 @@ public class AwaitTask extends Task {
 	private final Predicate<ItemStack> what;
 	private final int count;
 	private final String from;
-	private int start = -1;
+	private final int start;
+	private int friendGoneTicks;
 	private final Pickup pickup = new Pickup();
 	private final Glances glances = new Glances();
 
@@ -30,6 +31,7 @@ public class AwaitTask extends Task {
 		this.what = Jobs.deliverable(key);
 		this.count = Math.max(1, count);
 		this.from = from;
+		this.start = Inventories.count(c.player().getInventory(), what);
 	}
 
 	@Override
@@ -51,9 +53,6 @@ public class AwaitTask extends Task {
 	protected Status onTick() {
 		CompanionPlayer p = c.player();
 		int have = Inventories.count(p.getInventory(), what);
-		if (start < 0) {
-			start = have;
-		}
 		if (have - start >= count) {
 			c.speech().event("share.thanks", Map.of("friend", from), 20 * 30, 0.7F);
 			return Status.SUCCESS;
@@ -67,13 +66,17 @@ public class AwaitTask extends Task {
 		}
 		ServerPlayerEntity friend = ChatRouter.findByName(c, from);
 		glances.tick(c, friend);
-		// Keep waiting while the friend is still on their way to us (up to 2 minutes).
+		// Keep waiting while the friend is still on their way; once they're done (or gave up), give
+		// the throw a few seconds to land and then carry on either way. Never fail the plan over it:
+		// the job we were waiting for just gathers the thing itself if it's still missing.
 		var m = com.mcfriends.CompanionManager.get();
 		var friendC = m == null ? null : m.byName(from);
 		boolean coming = friendC != null && friendC.brain().job() instanceof DeliverTask dt && dt.recipientName().equalsIgnoreCase(c.name());
-		if (ticks() > 20 * (coming ? 120 : 60)) {
-			// Took too long: carry on (our job will gather it the hard way if it still needs to).
-			return have > start ? Status.SUCCESS : fail(from + " didn't make it");
+		if (!coming && ++friendGoneTicks > 20 * 6) {
+			return quietSuccess();
+		}
+		if (ticks() > 20 * 90) {
+			return quietSuccess();
 		}
 		return Status.RUNNING;
 	}
