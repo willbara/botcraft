@@ -1,6 +1,8 @@
 package com.mcfriends;
 
+import com.mcfriends.chat.ChatRouter;
 import com.mcfriends.command.CompanionCommand;
+import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import com.mcfriends.config.CompanionConfig;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -20,6 +22,7 @@ public class MCFriends implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STOPPING.register(CompanionManager::onServerStopping);
 		ServerLifecycleEvents.SERVER_STOPPED.register(CompanionManager::onServerStopped);
 		ServerTickEvents.END_SERVER_TICK.register(CompanionManager::onEndTick);
+		ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> ChatRouter.onChat(sender, message.getSignedContent()));
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> CompanionCommand.register(dispatcher));
 		LOG.info("MCFriends initialized (max companions {}, chat {}, griefing {})",
 			CompanionConfig.get().maxCompanions, CompanionConfig.get().chatEnabled, CompanionConfig.get().griefing);

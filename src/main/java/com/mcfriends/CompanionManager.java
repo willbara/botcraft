@@ -82,6 +82,7 @@ public final class CompanionManager {
 			try {
 				c.setPlayer(FakePlayers.connect(server, data, null, null, 0.0F));
 				reviveIfDead(c, false);
+				c.onSpawned("restored");
 			} catch (RuntimeException e) {
 				MCFriends.LOG.error("Failed to restore companion {}", data.name, e);
 			}
@@ -173,7 +174,7 @@ public final class CompanionManager {
 		c.respawnAtTick = -1;
 		companions.put(key(name), c);
 		save();
-		c.onSpawned(existing == null);
+		c.onSpawned(existing == null ? "new" : "summoned");
 		return null;
 	}
 
@@ -238,7 +239,12 @@ public final class CompanionManager {
 		}
 		tickCount++;
 		TickBudget.begin(CompanionConfig.get().tickBudgetMs);
-		for (Companion c : new ArrayList<>(companions.values())) {
+		// Rotate the starting companion so a shared, exhausted budget doesn't always starve the same one.
+		List<Companion> order = new ArrayList<>(companions.values());
+		if (!order.isEmpty()) {
+			java.util.Collections.rotate(order, (int) (tickCount % order.size()));
+		}
+		for (Companion c : order) {
 			try {
 				tickCompanion(c);
 			} catch (RuntimeException e) {
@@ -297,7 +303,7 @@ public final class CompanionManager {
 		try {
 			c.setPlayer(FakePlayers.connect(server, c.data, world, pos, 0.0F));
 			reviveIfDead(c, true);
-			c.onSpawned(false);
+			c.onSpawned("respawned");
 		} catch (RuntimeException e) {
 			MCFriends.LOG.error("Failed to respawn companion {}", c.name(), e);
 		}
