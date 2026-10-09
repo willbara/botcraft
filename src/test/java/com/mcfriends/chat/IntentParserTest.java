@@ -234,4 +234,27 @@ class IntentParserTest {
 		assertEquals(Intent.Type.HOME_GO, chained.get(chained.size() - 1).type());
 		assertEquals(Intent.Type.SLEEP, type("bob go to sleep"));
 	}
+
+	@Test
+	void flexibleOrders() {
+		assertEquals(Intent.Type.STATUS, type("zob what's your task"));
+		assertEquals(Intent.Type.STATUS, type("dog what you doing"));
+		assertEquals(Intent.Type.STATUS, type("bob what are you working on"));
+		assertEquals(Intent.Type.STATUS, type("bob whats the plan"));
+		assertEquals(Intent.Type.BRING, type("bob i need some iron"));
+		assertEquals(Intent.Type.BRING, type("bob I'm hungry"));
+		assertEquals(Intent.Type.GATHER, type("bob we need coal"));
+		assertEquals(Intent.Type.HUNT, type("bob we're out of food"));
+		assertEquals(Intent.Type.GATHER, type("bob wood"));
+		assertEquals(Intent.Type.GATHER, type("bob some wood please"));
+		assertEquals(Intent.Type.CRAFT, type("bob iron pickaxe please"));
+		assertEquals(Intent.Type.GATHER, type("bob grab some stone"));
+		assertEquals(10, IntentParser.parse("bob could you grab me 10 logs", List.of("bob")).intent().count());
+		assertEquals("sword", IntentParser.parse("bob make yourself a sword", List.of("bob")).intent().item());
+		assertEquals(Intent.Type.CANCEL, type("bob drop everything and come here"));
+		var after = IntentParser.parse("bob after you get logs make a crafting table", List.of("bob")).intents();
+		assertEquals(Intent.Type.GATHER, after.get(0).type());
+		assertEquals(Intent.Type.CRAFT, after.get(1).type());
+		assertEquals("food", IntentParser.parse("bob get me something to eat", List.of("bob")).intent().item());
+	}
 }

@@ -16,7 +16,24 @@ public final class Drives {
 	}
 
 	public static List<Drive> all() {
-		return List.of(Drives::safety, Drives::health, Drives::hunger, Drives::sleep, Drives::owner, Drives::night, Drives::work, Drives::idle);
+		return List.of(Drives::breath, Drives::safety, Drives::health, Drives::hunger, Drives::sleep, Drives::owner, Drives::night, Drives::work, Drives::idle);
+	}
+
+	/** Head under water and the air running out: get to air before anything else. */
+	static void breath(Companion c, Brain b, Scores out) {
+		var p = c.player();
+		if (p == null || !p.isSubmergedInWater()) {
+			// Keep breathing until the air bar is back, or we'd dive straight back in.
+			if (p != null && b.currentObjective() == Objective.BREATHE && p.getAir() < p.getMaxAir() - 20) {
+				out.propose(Objective.BREATHE, 0.9F, "getting my breath back");
+			}
+			return;
+		}
+		int air = p.getAir();
+		int max = p.getMaxAir();
+		if (air < max / 2) {
+			out.propose(Objective.BREATHE, air < max / 4 ? 0.99F : 0.9F, "air " + air + "/" + max);
+		}
 	}
 
 	/** Melee damage at which we consider ourselves armed (wooden/gold sword = 4, any axe more). */

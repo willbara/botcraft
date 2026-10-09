@@ -152,5 +152,12 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] "bob, make an iron pickaxe and then come home" goes home at the end, not to where you stood.
 - [ ] Eight companions near one small wood: "everyone get 8 logs". None says "no trees nearby".
 
+### 16. Awareness, water, respawning, phrasing
+- [ ] Free mode in a cave system: companions finish each vein they start, including diagonal blocks, before moving on, and mine ore they pass within reach.
+- [ ] A vein behind a waterfall next to a dry one: the dry one gets mined.
+- [ ] Push a companion into deep water and hold it under. Below half air it stops and swims up to the nearest air.
+- [ ] Let a companion die (in water if you like). It comes back at its bed or home, on dry ground, with no red "dying" animation.
+- [ ] Phrasings: "bob what's your task", "bob what you doing", "bob I need some iron" (he brings it), "bob we're out of food" (he hunts and cooks), "bob wood", "bob iron pickaxe please", "bob grab 10 logs", "bob after you get logs make a crafting table".
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.

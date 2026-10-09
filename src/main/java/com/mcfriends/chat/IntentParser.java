@@ -32,9 +32,9 @@ public final class IntentParser {
 	private static final Pattern CLAUSE_SPLIT = Pattern.compile(
 		"\\s*(?:,?\\s*\\band then\\b|,?\\s*\\bthen\\b|,?\\s*\\bafter that\\b|,?\\s*\\bafterwards\\b|,?\\s*\\band also\\b|;|\\.)\\s*");
 	private static final Pattern AND_VERB = Pattern.compile(
-		"\\s*(?:,|\\band\\b)\\s*(?=(go|get|mine|chop|gather|collect|craft|make|come|follow|bring|give|stay|stop|defend|protect|sleep|dig|find|fetch|cut|build|head|return|wait)\\b)");
+		"\\s*(?:,|\\band\\b)\\s*(?=(go|get|grab|mine|chop|gather|collect|craft|make|come|follow|bring|give|stay|stop|defend|protect|sleep|dig|find|fetch|cut|build|head|return|wait|smelt|cook|hunt)\\b)");
 
-	private static final Pattern CANCEL = Pattern.compile("\\b(never ?mind|cancel( that| it)?|forget (it|that|about it)|scratch that|abort|drop it)\\b");
+	private static final Pattern CANCEL = Pattern.compile("\\b(never ?mind|cancel( that| it)?|forget (it|that|about it)|scratch that|abort|drop it|drop everything|stop everything)\\b");
 	private static final Pattern FREE = Pattern.compile(
 		"\\b(do (your|ur) own thing|go play|you'?re free|live (your|ur) life|be free|go explore|explore|do whatever|have fun|you can go|dismissed|at ease|free roam|play minecraft|go survive)\\b");
 	private static final Pattern HOME_SET = Pattern.compile(
@@ -55,10 +55,17 @@ public final class IntentParser {
 	private static final Pattern HUNT = Pattern.compile(
 		"\\b(hunt(ing)?|go hunting|kill (some |a |an |the |\\d+ |a few )?(cows?|pigs?|sheep|chickens?|rabbits?|animals?)|get (us |me )?(some )?(food|meat|dinner|lunch))\\b");
 	private static final Pattern SMELT = Pattern.compile("\\b(smelt|cook|roast|bake|grill|fry)\\b");
+	/** Wishes: "i need some iron", "we're out of coal", "i'm hungry" (someone should do something about it). */
+	private static final Pattern NEED = Pattern.compile(
+		"^(?:(i|we)(?: really| still| kinda| also)? (?:need|want|could use|would like|'d like|wanna have)|(?:i'?m|we'?re|i am|we are) (?:out of|low on|short on|running low on|running out of)|(?:can|could|may) (i|we) (?:have|get|borrow))\\b");
+	private static final Pattern HUNGRY = Pattern.compile("^(?:i'?m|i am|we'?re|we are)(?: so| really| very| kinda)? (?:hungry|starving|starved)\\b");
+	/** Just naming a thing ("wood", "iron pickaxe please"): a request for it. */
+	private static final Pattern ITEM_ONLY = Pattern.compile(
+		"^(?:(?:some|a|an|more|\\d+|a few|a stack of)\\s+)?((?:oak |birch |spruce |dark oak |jungle |acacia |cherry |mangrove )?(?:wood|logs?|planks?|sticks?|coal|charcoal|iron|iron ingots?|raw iron|gold|copper|diamonds?|emeralds?|redstone|lapis|stone|cobble(?:stone)?|food|meat|steak|beef|pork|chicken|mutton|torch(?:es)?|furnace|crafting table|chest|bed|(?:wooden|stone|iron|golden|gold|diamond) (?:pickaxe|sword|axe|shovel|hoe|helmet|chestplate|leggings|boots)|(?:pickaxe|sword|axe|shovel)))(?:\\s+(?:please|pls|thanks|now))*$");
 	private static final Pattern BRING = Pattern.compile("\\b(bring|fetch me|deliver)\\b");
 	private static final Pattern CRAFT = Pattern.compile("\\b(craft|make|build|create)\\b");
 	private static final Pattern MINE = Pattern.compile("\\b(mine|dig|mining|go mining|look for|search for|find)\\b");
-	private static final Pattern GATHER = Pattern.compile("\\b(gather|collect|chop|harvest|lumberjack|cut down|cut|get|fetch|farm)\\b");
+	private static final Pattern GATHER = Pattern.compile("\\b(gather|collect|chop|harvest|lumberjack|cut down|cut|get|fetch|farm|grab|pick up)\\b");
 	private static final Pattern STOP = Pattern.compile(
 		"\\b(stop|stay|wait|halt|freeze|hold (on|up|still|position)|don'?t move|stand still|stop following|don'?t follow|stay here|stay put|chill)\\b");
 	private static final Pattern COME_HERE = Pattern.compile(
@@ -66,7 +73,7 @@ public final class IntentParser {
 	private static final Pattern FOLLOW = Pattern.compile("\\b(follow|come with|come along|with me|let'?s go|tag along|keep up|stick with me)\\b");
 	private static final Pattern COME = Pattern.compile("\\bcome\\b");
 	private static final Pattern STATUS = Pattern.compile(
-		"\\b(status|what are you doing|what'?re you doing|whatcha doing|wyd|what'?s up|how are you|how r u|you ok|are you ok|you good|health|hungry|report|how'?s it going|what are you up to|doing\\?)");
+		"\\b(status|what are you doing|what'?re you doing|what (are )?(you|u) doing|whatcha doing|wyd|what'?s up|how are you|how r u|you ok|are you ok|you good|health|are you hungry|you hungry|report|how'?s it going|what are you up to|whatcha up to|what are you working on|what'?re you working on|what'?s your (task|job|plan)|what is your (task|job|plan)|what'?s the plan|what is the plan|what'?s going on|you busy|are you busy|doing\\?)");
 	private static final Pattern JOKE = Pattern.compile("\\b(tell (me |us )?(a |another )?joke|make me laugh|something funny|know any jokes)\\b");
 	private static final Pattern WHO = Pattern.compile("\\b(who are you|what'?s your name|what is your name|introduce yourself|who r u)\\b");
 	private static final Pattern TIME = Pattern.compile("\\b(what time is it|what'?s the time|is it (day|night)|what day is it)\\b");
@@ -85,7 +92,7 @@ public final class IntentParser {
 
 	/** Words dropped from the start of an item phrase. */
 	private static final Pattern LEAD_FILLER = Pattern.compile(
-		"^(?:(?:me|us|for|some|a|an|the|few|couple|of|to|more|another|any|up|out|down|go|lots|bunch|stack|stacks|your|my|our|those|these|his|her|its|all|all of|\\d+|one|two|three|four|five|six|seven|eight|nine|ten|dozen|twelve|fifteen|twenty|thirty|fifty|of)\\s+)+");
+		"^(?:(?:me|us|yourself|myself|ourselves|you|for|some|a|an|the|few|couple|of|to|more|another|any|up|out|down|go|lots|bunch|stack|stacks|your|my|our|those|these|his|her|its|all|all of|\\d+|one|two|three|four|five|six|seven|eight|nine|ten|dozen|twelve|fifteen|twenty|thirty|fifty|of)\\s+)+");
 	private static final Pattern TRAIL_FILLER = Pattern.compile(
 		"\\s+(?:for me|for us|please|pls|now|too|again|here|over here|right now|quickly|asap|real quick|if you can|from (the )?\\w+)$");
 
@@ -374,7 +381,25 @@ public final class IntentParser {
 		return prev[b.length()];
 	}
 
+	private static final Pattern AFTER_YOU = Pattern.compile("^(?:after|once|when) (?:you(?:'ve| have| are done| finish)?|u) (.+)$");
+	private static final Pattern NEXT_VERB = Pattern.compile(
+		"(?:,\\s*|\\s)(?:then\\s+)?(?=(go|get|grab|mine|chop|gather|collect|craft|make|come|follow|bring|give|stay|stop|sleep|dig|find|fetch|build|head|return|wait|smelt|cook|hunt|put|place)\\b)");
+
 	static List<String> clauses(String text) {
+		// "after you get logs, make a table": the first thing named happens first.
+		Matcher after = AFTER_YOU.matcher(text);
+		if (after.find()) {
+			String body = after.group(1);
+			Matcher v = NEXT_VERB.matcher(body);
+			// Skip the verb the clause starts with: we want the second action.
+			while (v.find()) {
+				if (v.start() > 0) {
+					List<String> out = new ArrayList<>(clauses(body.substring(0, v.start()).trim()));
+					out.addAll(clauses(body.substring(v.end()).trim()));
+					return out;
+				}
+			}
+		}
 		List<String> out = new ArrayList<>();
 		for (String part : CLAUSE_SPLIT.split(text)) {
 			for (String sub : AND_VERB.split(part)) {
@@ -395,7 +420,8 @@ public final class IntentParser {
 	}
 
 	public static Intent intent(String clause) {
-		String text = clause.replace(" , ", " ").replace(",", " ").replaceAll("\\s+", " ").trim();
+		String text = clause.replace(" , ", " ").replace(",", " ").replaceAll("\\s+", " ").trim()
+			.replaceAll("\\b(something|anything) to eat\\b|\\bsome grub\\b|\\bgrub\\b", "food");
 		if (text.isEmpty()) {
 			return Intent.of(Intent.Type.UNKNOWN);
 		}
@@ -429,6 +455,30 @@ public final class IntentParser {
 		}
 		if (HELP.matcher(text).find() && !GATHER.matcher(text).find()) {
 			return Intent.of(Intent.Type.HELP);
+		}
+		if (HUNGRY.matcher(text).find()) {
+			return new Intent(Intent.Type.BRING, "food", -1);
+		}
+		Matcher need = NEED.matcher(text);
+		if (need.find()) {
+			String item = phrase(text.substring(need.end()));
+			if (item.matches("(some |any )?(food|something to eat|anything to eat|meat)")) {
+				item = "food";
+			}
+			if (!item.isEmpty()) {
+				// "i need X" is for me (bring it over); "we need X" is for the group (go get it).
+				boolean forMe = "i".equals(need.group(1)) || "i".equals(need.group(2)) || text.startsWith("i'm") || text.startsWith("i am");
+				if (!forMe && item.equals("food")) {
+					return new Intent(Intent.Type.HUNT, "food", count(text)); // hunt and cook some
+				}
+				return new Intent(forMe ? Intent.Type.BRING : Intent.Type.GATHER, item, count(text));
+			}
+		}
+		Matcher only = ITEM_ONLY.matcher(text);
+		if (only.find()) {
+			String item = only.group(1);
+			return new Intent(item.matches(".*\\b(pickaxe|sword|axe|shovel|hoe|helmet|chestplate|leggings|boots|furnace|crafting table|chest|bed|torch(es)?)$")
+				? Intent.Type.CRAFT : Intent.Type.GATHER, item, count(text));
 		}
 		Matcher give = GIVE.matcher(text);
 		if (give.find()) {

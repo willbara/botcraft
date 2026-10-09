@@ -18,6 +18,7 @@ public final class Interrupts {
 	public static Task create(Companion c, Objective objective) {
 		return switch (objective) {
 			case EAT -> EatTask.create(c);
+			case BREATHE -> new com.mcfriends.brain.task.BreatheTask(c);
 			case FIGHT -> {
 				List<MobEntity> threats = c.perception().threats();
 				if (threats.isEmpty() && c.data.defendOwner) {

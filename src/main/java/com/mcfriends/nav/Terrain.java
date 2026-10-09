@@ -237,6 +237,17 @@ public class Terrain {
 		if (kind(feet.down()) == LAVA) {
 			cost += 100;
 		}
+		if (kind(feet) == WATER) {
+			// Water is slow, and deep water can drown us: prefer dry routes, avoid going under,
+			// and keep out of currents (waterfalls, rivers) that push us off course.
+			cost += 6;
+			if (kind(feet.up()) == WATER) {
+				cost += 30;
+			}
+			if (!world.getFluidState(feet).isStill()) {
+				cost += 10;
+			}
+		}
 		return cost;
 	}
 
