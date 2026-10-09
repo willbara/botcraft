@@ -116,6 +116,11 @@ public class Companion {
 		nav.stop();
 	}
 
+	/** A fight task killed a mob. */
+	public void onKill(net.minecraft.entity.LivingEntity victim) {
+		AiLog.log(name(), "killed {}", victim.getType().getUntranslatedName());
+	}
+
 	/** Brain callback when a task ends. */
 	public void onTaskFinished(Task task, Status status, boolean interrupt) {
 	}

@@ -173,4 +173,80 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtLumber");
 		});
 	}
+
+	static void flatArena(TestContext ctx, int size) {
+		for (int x = -1; x <= size; x++) {
+			for (int z = -1; z <= size; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				for (int y = 1; y <= 4; y++) {
+					boolean wall = x == -1 || z == -1 || x == size || z == size;
+					ctx.setBlockState(x, y, z, wall && y <= 2 ? Blocks.STONE_BRICKS : Blocks.AIR);
+				}
+			}
+		}
+	}
+
+	/** Milestone 4: a hungry companion eats bread from its inventory. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 300, batchId = "survive_eat")
+	public void eatsWhenHungry(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtHungry");
+		flatArena(ctx, 6);
+		ctx.assertTrue(m.spawn("GtHungry", "noor", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtHungry");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		c.player().getInventory().insertStack(new net.minecraft.item.ItemStack(net.minecraft.item.Items.BREAD, 5));
+		c.player().getHungerManager().setFoodLevel(5);
+		ctx.addInstantFinalTask(() -> {
+			int food = c.player().getHungerManager().getFoodLevel();
+			ctx.assertTrue(food >= 14, "food level " + food + "; " + c.describeActivity());
+			cleanup(m, "GtHungry");
+		});
+	}
+
+	/** Milestone 4: a brave companion picks its best weapon and kills a zombie. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "survive_fight")
+	public void fightsZombie(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtFighter");
+		flatArena(ctx, 10);
+		ctx.assertTrue(m.spawn("GtFighter", "zuri", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 5.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtFighter");
+		c.data.bravery = 1.0F;
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		c.player().getInventory().setStack(5, new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_SWORD));
+		net.minecraft.entity.mob.ZombieEntity zombie = ctx.spawnEntity(net.minecraft.entity.EntityType.ZOMBIE, new BlockPos(8, 1, 5));
+		zombie.setPersistent();
+		// A helmet keeps it from burning in daylight, so only the companion can kill it.
+		zombie.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, new net.minecraft.item.ItemStack(net.minecraft.item.Items.LEATHER_HELMET));
+		ctx.addInstantFinalTask(() -> {
+			int kills = c.player().getStatHandler().getStat(net.minecraft.stat.Stats.KILLED.getOrCreateStat(net.minecraft.entity.EntityType.ZOMBIE));
+			ctx.assertTrue(kills > 0 && !zombie.isAlive(), "zombie still alive (hp " + zombie.getHealth() + "); companion " + c.describeActivity()
+				+ ", holding " + c.player().getMainHandStack() + ", difficulty " + ctx.getWorld().getDifficulty());
+			ctx.assertTrue(c.player().isAlive(), "companion died");
+			cleanup(m, "GtFighter");
+		});
+	}
+
+	/** Milestone 4: companions run from creepers. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 300, batchId = "survive_flee")
+	public void fleesCreeper(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtCoward");
+		flatArena(ctx, 16);
+		ctx.assertTrue(m.spawn("GtCoward", "efe", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(5.5, 1, 8.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtCoward");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		net.minecraft.entity.mob.CreeperEntity creeper = ctx.spawnEntity(net.minecraft.entity.EntityType.CREEPER, new BlockPos(2, 1, 8));
+		creeper.setAiDisabled(true);
+		creeper.setPersistent();
+		ctx.addInstantFinalTask(() -> {
+			double d = c.player().distanceTo(creeper);
+			ctx.assertTrue(d > 7.5, "only " + d + " from creeper; " + c.describeActivity());
+			creeper.discard();
+			cleanup(m, "GtCoward");
+		});
+	}
 }
