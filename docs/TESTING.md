@@ -5,7 +5,7 @@
 | Command | What it covers |
 |---|---|
 | `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
-| `./gradlew runGametest` | Headless server, 14 GameTests (below). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/mcfriends.json` to see AI traces. |
+| `./gradlew runGametest` | Headless server, 25 GameTests (below). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/mcfriends.json` to see AI traces. |
 
 | GameTest | Milestone | Passes when |
 |---|---|---|
@@ -22,6 +22,17 @@
 | `craftsPickaxeFromLogs` | 7 | From 3 birch logs it makes planks, sticks and a crafting table, places the table, crafts a wooden pickaxe and picks the table back up. |
 | `minesStoneAfterMakingPickaxe` | 7 | Told "mine 3 stone" with only logs, it crafts a wooden pickaxe first, then mines 3 cobblestone. |
 | `tunnelsToCoal` | 7 | "mine 1 coal and then craft a torch" (one chat message) tunnels through natural stone to buried coal, then crafts a torch. |
+| `escapesShaftByDigging` | 8 | Stuck at the bottom of a stone shaft, it digs a staircase out to its owner. |
+| `escapesShaftByPillaring` | 8 | In a brick shaft it may not dig, it pillars up on dirt. |
+| `climbsLadder` | 8 | It climbs a ladder to reach its owner on a wall. |
+| `jumpsGap` | 8 | It sprint-jumps a 2-block gap between platforms. |
+| `smeltsIronForPickaxe` | 9 | "craft an iron pickaxe" with raw iron: it crafts and places a furnace, smelts, crafts a table and the pickaxe. |
+| `huntsAndCooks` | 9 | "kill 1 cow and then cook the beef" (four cows present): it hunts, places a furnace and cooks. |
+| `harvestsAndReplants` | 10 | It harvests 7 ripe wheat (leaving 2 unripe), collects the drops and replants all spots. |
+| `makesFarm` | 10 | "make a 3x3 farm": it clears grass, tills and plants 9 seeds. |
+| `freeModeArmsItself` | 11 | Told "do your own thing" with nothing, it chops a tree and crafts itself a sword. |
+| `digsShelter` | 11 | It digs three blocks down and roofs itself in. |
+| `companionsBanterAndShare` | 12 | Two companions banter, and the one told about an iron sighting remembers it. |
 | `fellsWholeTallTree` | 7 | Asked for only 2 logs from a 9-log tree with an empty inventory, it digs dirt, pillars up, fells the whole trunk, digs the pillar down and collects at least 7 logs. |
 
 ## Manual checklist (Test profile, world "CompanionsTest", cheats ON)
@@ -92,6 +103,27 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] Leave Bob idle near you in daytime with no tools. Within a few minutes he announces he'll make himself a sword or pickaxe, and does it.
 - [ ] Log out and back in. Bob welcomes you back.
 - [ ] `/companion info Bob` lists remembered places, sightings and stats. The file is `<world>/mcfriends/memory/bob.json`.
+
+### 9. Pathfinding v2
+- [ ] "Bob, mine 10 stone" in a hillside, then "Bob, follow me" from the surface. He digs or pillars his way out instead of getting stuck.
+- [ ] Walk up a ladder or across a 1–2 block gap. Bob follows (ladder climbing, parkour).
+- [ ] Watch him walk across a field. He goes straight rather than zig-zagging.
+
+### 10. Mechanics and farming
+- [ ] "Bob, craft an iron pickaxe" from nothing. He gets wood, makes tools, mines stone and iron, crafts and places a furnace, smelts, then crafts the pickaxe.
+- [ ] "Bob, get us some food" with cows nearby. He hunts and cooks. Named, leashed or fenced animals are left alone.
+- [ ] "Bob, make a 4x4 farm" near water. He crafts a hoe (and finds seeds) if needed, tills and plants. Later, "Bob, harvest and replant this farm".
+
+### 11. Free mode
+- [ ] "Bob, do your own thing". Over the next minutes he announces and pursues goals (sword, pickaxe, wood, stone tools, a bed, a farm). Check `/companion info Bob`.
+- [ ] At night with no bed and no sword, he digs in. With a bed nearby, he sleeps.
+- [ ] "Bob, follow me" brings him back to normal.
+
+### 12. Speech and social
+- [ ] Ask several companions the same thing ("tell me a joke", "what's your favourite food?", "do you like creepers?"). Answers differ between companions but stay consistent per companion, and lines don't repeat back to back.
+- [ ] Leave two idle companions near each other for a few minutes. They greet and banter, and sometimes one tells the other where it found ore.
+- [ ] Hurt a companion with a mob while another armed one is nearby. The second comes to help ("Hang on Bob, I'm coming!").
+- [ ] Put a `config/mcfriends-dialogue.json` with `{"greeting": ["Ahoy {player}!"]}` and restart. Companions greet with your line.
 
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.

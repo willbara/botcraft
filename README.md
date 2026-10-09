@@ -1,6 +1,6 @@
 # MCFriends
 
-AI companions for Minecraft **1.20.1 (Fabric)** that join the server as real players. They follow you, chop down whole trees, mine, craft, eat, fight monsters, sleep when you sleep, remember things, and chat. There are no API keys, LLMs or native libraries, and the only dependency is Fabric API. Everything runs server-side, so it works on dedicated servers and in singleplayer, and clients don't need the mod.
+AI companions for Minecraft **1.20.1 (Fabric)** that join the server as real players. They follow you or live on their own, chop down whole trees, mine, craft, smelt, hunt, cook, farm, fight monsters, dig in for the night, sleep when you sleep, remember things, and chat with you and with each other. There are no API keys, LLMs or native libraries, and the only dependency is Fabric API. Everything runs server-side, so it works on dedicated servers and in singleplayer, and clients don't need the mod.
 
 The one network call is optional: looking up the skin of a registered Minecraft account by name, which goes to Mojang the same way player heads do. It can be turned off with `allowSkinLookup`.
 
@@ -60,7 +60,12 @@ Companions only respond when you **say their name** ("Bob, follow me"), or addre
 | never mind / cancel / forget it | drop the job queue, back to the standing order |
 | get / gather / chop 10 logs, chop some trees | fell trees (whole trees) until it has that many logs |
 | mine 8 coal / mine for iron / dig some stone | mine ore or cobblestone, making the needed pickaxe first if necessary |
-| craft a wooden pickaxe / make 4 torches | craft it, including intermediate items, crafting table and missing materials |
+| craft a wooden pickaxe / make 4 torches / craft an iron pickaxe | craft it, including intermediate items, a crafting table, missing materials, and smelting |
+| smelt 5 iron / cook the beef / cook some food | smelt or cook in a furnace (finds a free one or places its own) |
+| hunt some cows / kill 2 pigs / get us some food | hunt (fair game only), and with "get food" also cook it |
+| harvest and replant this farm | pick ripe crops around you and replant them |
+| make a 4x4 farm / build a 5 by 5 carrot farm / plant some wheat | find flat ground near you, till, plant (makes a hoe or finds seeds if needed) |
+| do your own thing / go explore / you're free | free mode: lives and progresses on its own around home |
 | bring me 10 logs / bring me 5 iron | get them, then walk over and hand them to you |
 | give me the logs / give me everything | hand over now, or walk to you first if you're far |
 | this is home / set home here, go home | remember a place and go back to it |
@@ -72,6 +77,11 @@ Companions only respond when you **say their name** ("Bob, follow me"), or addre
 | status / what are you doing? | current activity, queued jobs, health, food |
 | what can you do? / help | short list of abilities |
 | hi / thanks | small talk; it remembers people it has met |
+| tell me a joke / who are you / what time is it / bye | small talk |
+| what's your favourite food? / do you like creepers? | each companion has stable tastes and opinions |
+| good job / you suck / sorry / i love you | it reacts in character |
+
+Names tolerate one typo in a direct address ("herobrin, follow me"), for names of 4+ letters.
 
 Item names are resolved against the game. Wood words mean chopping, ores and stone mean mining, and anything with a crafting recipe means crafting. For example, "get me sticks" crafts sticks.
 
@@ -79,13 +89,38 @@ Item names are resolved against the game. Wood words mean chopping, ores and sto
 
 ## Behaviour summary
 
-- **Combat**: armed with at least 4 melee damage (any sword, axe, or stone-or-better tool), it fights any hostile mob, creepers included; it backs off while a creeper hisses. Unarmed, it runs. At low health with enemies around, it retreats toward you; bravery shifts that threshold. It wears the best armour it carries.
-- **Trees**: once a tree is started, every reachable log comes down. For high logs it pillars up on throwaway blocks, digging a few dirt blocks first if it has none, then digs the pillar back down and collects the drops.
-- **Mining**: it uses ore locations remembered from earlier scans, then scans around (cheaply, section by section), then explores by digging a staircase toward the ore's usual depth. It mines whole veins. During a mining job it may dig through natural terrain only (stone, deepslate, dirt, gravel, ores), never through built blocks or next to water or lava. It never mines through walls: it needs line of sight like a player.
-- **Crafting**: a small planner uses the server's own recipes, so data packs count. It works out intermediate crafts and queues gathering or mining for missing raw materials. It can't smelt, so it will tell you iron ingots need smelting.
-- **Sleep**: when you get into bed at night, companions within 48 blocks look for a free bed so the night can be skipped.
-- **Initiative**: when idle near you in daytime with no orders, it sometimes sets its own goals: make a sword, then a pickaxe, then stone tools, and keep some wood. It announces them, and any order from you replaces them. Set with `initiative`.
-- **Memory** (`<world>/mcfriends/memory/<name>.json`): places (home, bed, last death), ore and tree sightings, lifetime stats, people met (last seen, orders, thanks).
+- **Pathfinding** (Baritone-style). A* in game-tick costs over these moves:
+  - walk, diagonal, jump up, drop down;
+  - dig through, dig down, **pillar up** on throwaway blocks, bridge gaps;
+  - climb ladders and vines, **parkour** across 1–2 block gaps, swim, open doors.
+
+  If no normal path exists, for example it has dug itself into a pit, **escape mode** lets it dig natural terrain and pillar up to get out. While walking, it cuts straight across open ground instead of zig-zagging node to node.
+- **Combat**: armed with at least 4 melee damage, it fights any hostile mob, creepers included; it backs off while a creeper hisses. Unarmed, it runs, and never off a cliff. At low health it retreats. It wears its best armour. Companions **defend each other**: a mob after a nearby companion counts as a threat.
+- **Trees**: once started, a tree is finished, pillaring up on dug dirt for the high logs and digging the pillar back down. It prefers trees about the size it needs, and two companions never fight over one tree.
+- **Mining**: remembered ore spots first (its own or ones another companion told it about), then scans, then digs a staircase toward the ore's depth. Natural terrain only, never next to fluids, and never through walls.
+- **Crafting and smelting**: a recipe planner over the server's own recipes. Missing materials become gather, mine, hunt or smelt jobs, so "craft an iron pickaxe" works from nothing. It uses a free furnace (never one holding your items) or places its own.
+- **Hunting**: adult, unnamed, un-leashed, not-penned animals only, and never the last pair of a species nearby. Raw meat gets cooked.
+- **Farming**: harvest-and-replant, making N×N farms (hoe, seeds from grass), and it never jumps on farmland.
+- **Sleep**: it goes to bed when you do (so the night can skip). In free mode with no bed, an armed companion guards home, and an unarmed one **digs in**: three blocks down, roofed, until morning.
+- **Free mode / Life planner**: a player-like routine around home:
+  - night: bed or shelter;
+  - food: harvest, cook or hunt;
+  - tools: sword → pickaxe → stone tools → furnace → iron pickaxe and sword;
+  - settling in: craft and place a bed, make a farm;
+  - stock: logs, cobblestone, coal, torches;
+  - otherwise it explores.
+
+  It says what it's doing; a goal that fails is put aside for a while. In follow mode it only does light tool upkeep near you. Tune with `initiative`.
+- **Memory** (`<world>/mcfriends/memory/<name>.json`): places (home, bed, farm, furnace, last death), ore/tree/diamond sightings, lifetime stats, biomes visited, people met.
+- **Speech**:
+  - Lines come from `dialogue.json`, a large pool with no repeats.
+  - Each companion has its own voice (casual or proper, calm or excited, filler words, emoticons, a nickname for you), so the same line sounds different from different companions.
+  - It remarks unprompted on nightfall, morning, rain and thunder, new biomes, low health, creepers, you getting hurt or dying, diamonds, plan progress, kills, and idle musings.
+- **Between companions**: they greet each other, banter when idle (weather, work, favourites, jokes, complaints, and sharing where they found ores, which the listener remembers), praise each other's kills, mourn deaths, and come to each other's help.
+
+### Customising dialogue
+
+Create `config/mcfriends-dialogue.json` in the same format as [`dialogue.json`](src/main/resources/mcfriends/dialogue.json). Any key you define replaces that key's default lines. Placeholders include `{player}`, `{nick}`, `{name}`, `{friend}`, `{mob}`, `{item}`, `{count}`, `{plan}`, `{result}`, `{reason}`, `{biome}`, `{time}` and `{fav}`. Restart to reload.
 
 ## Config: `config/mcfriends.json`
 
@@ -107,7 +142,7 @@ Created on first launch. Missing keys are filled in with defaults.
 | `forceSurvival` | true | companions join in survival mode |
 | `allowSkinLookup` | true | allow looking up registered accounts' skins from Mojang |
 | `autoSkinFromName` | false | with no skin argument, try the companion's own name as an account |
-| `initiative` | 0.5 | how readily idle companions set their own goals (0 = never) |
+| `initiative` | 0.5 | how readily idle companions set their own goals (0 = never); in free mode it gates the whole Life planner |
 | `sleepWithOwner` | true | go to bed when the owner sleeps |
 | `commandPermissionLevel` | 2 | |
 | `verboseAiLogging` | false | logs AI decisions at INFO instead of DEBUG, so they show in `latest.log` |
@@ -123,17 +158,19 @@ com.mcfriends
 │            FakePlayers (vanilla join/leave), SkinUtil, CompanionData/Store (JSON registry)
 ├─ action/   ActionController (look easing, aim jitter, reaction delay, movement input,
 │            survival mining, use/place, attack, eat, drop/give), Inventories (tool/weapon/food choice)
-├─ nav/      Terrain (cached block classes), PathFinder (time-sliced A*), Navigator (path
-│            following, doors, break/bridge steps, stuck recovery), BreakPolicy, Goal
+├─ nav/      Terrain (block classes, tick costs), PathFinder (time-sliced A*, Baritone-style
+│            moves), Navigator (execution, string pulling, escape mode, stuck recovery),
+│            BreakPolicy, Goal
 ├─ perception/ Perception (threats, owner, time, light, inventory summary), BlockScanner
 ├─ brain/    Brain (utility selection + interrupt stack), Drives, Objective, Personality,
-│            JobQueue + Jobs (persisted job specs, prerequisites), Initiative,
-│            task/ (Follow, Stay, Idle, GoTo, GatherLogs, Mine, Craft, Deliver, Sleep,
-│                   Eat, Fight, Flee/Retreat, Pickup helper)
-├─ knowledge/ OreKind, ItemNames (chat phrase -> item), CraftPlanner (recipe planning)
+│            JobQueue + Jobs (persisted job specs, prerequisites, sourceSpec), Life (free mode),
+│            task/ (Follow, Stay, Idle, GoTo, GatherLogs, Mine, Craft, Smelt, Hunt, Harvest,
+│                   MakeFarm, GatherSeeds, Place, Deliver, Sleep, Shelter, Eat, Fight,
+│                   Flee/Retreat, Pickup + Spots helpers)
+├─ knowledge/ OreKind, ItemNames, CraftPlanner, Smelting, Animals, Crops
 ├─ memory/   Memory (places, sightings, stats, people; per-companion JSON)
-├─ chat/     IntentParser (clauses, intents), ChatRouter (intents -> jobs/replies),
-│            Templates, Speech, EventWatcher, CommandTasks
+├─ chat/     IntentParser (clauses, intents, typos), ChatRouter (intents -> jobs/replies),
+│            SmallTalk, Templates (+ dialogue.json), Voice, Speech, EventWatcher, Social, CommandTasks
 ├─ command/  /companion
 └─ gametest/ headless GameTests
 ```
@@ -160,7 +197,7 @@ Interrupt objectives (fight, flee, retreat, eat) are pushed on top of the stack 
 ## Development
 
 - `./gradlew build`: compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest`: runs a headless server with 14 GameTests. They cover spawning and physics, A*, following through a door, gathering logs, felling a tall tree by pillaring, eating, fighting (armed and timid, zombie and creeper), fleeing, armour, chat, crafting a pickaxe from logs, mining stone after making a pickaxe, and tunnelling to coal then crafting a torch from one chat order. It resets its world on every run.
+- `./gradlew runGametest`: runs a headless server with 25 GameTests. They cover spawning and physics, A*, following through a door, digging and pillaring out of shafts, ladders, parkour, gathering logs and felling a tall tree, eating, fighting (armed and timid, zombie and creeper), fleeing, armour, chat, crafting, mining, smelting for an iron pickaxe, hunting and cooking, harvesting and replanting, making a farm, free mode arming itself, digging in for the night, and banter between companions. It resets its world on every run.
 - `./gradlew runServer`: dev dedicated server in `run/server`. Type commands into the console.
 - To see AI decisions, set `verboseAiLogging: true` and grep `latest.log` for `[<name>]`.
 
@@ -169,23 +206,27 @@ See [docs/TESTING.md](docs/TESTING.md) for the manual checklist.
 ## Known limitations
 
 - **Skins**: a registered-account skin needs network access once per name. Without it, the companion falls back to a default skin.
-- **Death**: a dead companion leaves and rejoins after `respawnDelayTicks`, because vanilla respawn creates a plain `ServerPlayerEntity`. Chat shows a leave/join pair. Changing skins also rejoins.
+- **Death and reskinning**: a dead companion leaves and rejoins after `respawnDelayTicks`, and changing skins also rejoins, so chat shows a leave/join pair.
 - **They count as players**:
   - They appear in the tab list and player count, and they get stats and advancements.
   - They're added to `usercache.json` like any joining player.
   - The night only skips if every companion near you finds a free bed (or lower `playersSleepingPercentage`).
 - **Spawn protection** on dedicated servers stops non-op companions from breaking blocks near spawn.
 - **Griefing off** is conservative because vanilla doesn't record who placed a block:
-  - Wood only comes from trees that still have natural leaves.
-  - Pathing only breaks natural leaves.
-  - Mining jobs only dig natural terrain.
-  - Pillars up trees use dug dirt and are removed afterwards. Dirt holes dug for blocks are left.
+  - Wood only comes from natural trees.
+  - Normal pathing only breaks natural leaves; mining jobs and escape mode only dig natural terrain.
+  - Pillars and bridges they place while travelling are left in the world.
 - **Navigation**:
-  - It can't climb ladders or vines or use boats, and can't pillar while travelling (only up trees).
-  - Searches are limited to 96 blocks; partial paths are followed, then it re-plans.
-- **Trees**: logs too far sideways (long branches, the edges of giant canopies) can be out of reach even from the pillar, so they're left. Very tall trees take a while by hand.
-- **Mining** has no torches and no lighting. It never mines next to fluids, which also means ores touching water or lava are skipped.
-- **Crafting**: no smelting, so anything needing ingots, glass or cooked food fails with a reason. Only crafting-table and inventory recipes are supported.
-- **Combat**: melee only, no bows or shields. Companions don't hunt for food.
-- **Chat**: lines are server system messages formatted as `<Name> text`, because a fake player can't sign chat. Parsing is keyword-based, so unusual phrasing gets "Sorry, what was that?".
+  - No boats, elytra, water buckets, or parkour beyond 2-block gaps.
+  - Searches are limited to 96 blocks (partial paths and re-plans after that).
+  - Very large height differences (e.g. getting home from a deep cave) can still fail.
+- **Free mode** is a first step:
+  - Its goal list is fixed. There's no long-term planning or base building yet.
+  - It doesn't light up caves or store items in chests.
+  - Unarmed nights mean digging in, not fighting.
+- **Crafting**: crafting-table and furnace recipes only (no smithing, brewing or enchanting). Farms have no water placement yet, so they grow more slowly without nearby water.
+- **Combat**: melee only, no bows or shields.
+- **Chat**:
+  - Lines are server system messages formatted as `<Name> text`, because a fake player can't sign chat.
+  - Understanding is pattern-based (no language model), so unusual phrasing gets "Sorry, what was that?". The dialogue file makes the wording easy to extend.
 - A `/kick`ed companion stays registered. It comes back on restart or with `/companion spawn`.
