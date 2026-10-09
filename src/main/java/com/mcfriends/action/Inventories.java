@@ -7,6 +7,8 @@ import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.attribute.EntityAttributeModifier;
 import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.enchantment.Enchantments;
+import net.minecraft.item.ArmorItem;
 import net.minecraft.item.FoodComponent;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -162,6 +164,40 @@ public final class Inventories {
 			best = Math.max(best, attackDamage(inv.getStack(i)));
 		}
 		return best;
+	}
+
+	/** Protection value used to compare armour pieces (armour points, toughness, then enchantments). */
+	private static double armorScore(ItemStack s) {
+		if (!(s.getItem() instanceof ArmorItem armor)) {
+			return -1;
+		}
+		return armor.getProtection() * 10.0 + armor.getToughness() * 3.0 + EnchantmentHelper.getLevel(Enchantments.PROTECTION, s);
+	}
+
+	/**
+	 * Wear the best armour carried. Swaps with what's worn, like a player shift-clicking.
+	 * Items with Curse of Binding are never put on.
+	 *
+	 * @return true if anything changed
+	 */
+	public static boolean equipBestArmor(ServerPlayerEntity p) {
+		PlayerInventory inv = p.getInventory();
+		boolean changed = false;
+		for (int i = 0; i < inv.main.size(); i++) {
+			ItemStack s = inv.getStack(i);
+			if (!(s.getItem() instanceof ArmorItem armor) || EnchantmentHelper.hasBindingCurse(s)) {
+				continue;
+			}
+			EquipmentSlot slot = armor.getSlotType();
+			ItemStack worn = p.getEquippedStack(slot);
+			if (EnchantmentHelper.hasBindingCurse(worn) || armorScore(s) <= armorScore(worn)) {
+				continue;
+			}
+			p.equipStack(slot, s.copy());
+			inv.setStack(i, worn.copy());
+			changed = true;
+		}
+		return changed;
 	}
 
 	/**

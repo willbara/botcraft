@@ -4,6 +4,7 @@ import com.mcfriends.Companion;
 import com.mcfriends.CompanionManager;
 import com.mcfriends.chat.CommandTasks;
 import com.mcfriends.config.CompanionConfig;
+import com.mcfriends.entity.SkinResolver;
 import com.mcfriends.entity.SkinUtil;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -56,6 +57,12 @@ public final class CompanionCommand {
 					.then(CommandManager.argument("skin", StringArgumentType.word())
 						.suggests(SKINS)
 						.executes(ctx -> spawn(ctx, StringArgumentType.getString(ctx, "skin"))))))
+			.then(CommandManager.literal("skin")
+				.then(CommandManager.argument("name", StringArgumentType.word())
+					.suggests(COMPANION_NAMES)
+					.then(CommandManager.argument("skin", StringArgumentType.word())
+						.suggests(SKINS)
+						.executes(CompanionCommand::skin))))
 			.then(CommandManager.literal("remove")
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
@@ -85,6 +92,7 @@ public final class CompanionCommand {
 	private static int spawn(CommandContext<ServerCommandSource> ctx, String skin) {
 		ServerCommandSource src = ctx.getSource();
 		String name = StringArgumentType.getString(ctx, "name");
+		CompanionManager m = manager(ctx);
 		ServerPlayerEntity owner = src.getPlayer();
 		Vec3d pos = src.getPosition();
 		float yaw = 0.0F;
@@ -97,12 +105,53 @@ public final class CompanionCommand {
 			}
 			yaw = owner.getYaw() + 180.0F;
 		}
-		String error = manager(ctx).spawn(name, skin, owner, src.getWorld(), pos, yaw);
-		if (error != null) {
-			src.sendError(Text.literal(error));
+		Companion existing = m.byName(name);
+		if (existing != null && existing.isOnline()) {
+			src.sendError(Text.literal(name + " is already here"));
 			return 0;
 		}
-		src.sendFeedback(() -> Text.literal("Spawned companion " + name), true);
+		Vec3d at = pos;
+		float facing = yaw;
+		var world = src.getWorld();
+		// Skins of registered accounts are looked up asynchronously; spawning happens in the callback.
+		SkinResolver.resolve(src.getServer(), existing != null ? null : skin, name, result -> {
+			if (result.note() != null) {
+				src.sendFeedback(() -> Text.literal(result.note()).formatted(Formatting.GRAY), false);
+			}
+			String error = m.spawn(name, result.choice(), owner, world, at, facing);
+			if (error != null) {
+				src.sendError(Text.literal(error));
+			} else {
+				src.sendFeedback(() -> Text.literal("Spawned companion " + name + " (skin: " + m.byName(name).data.skin + ")"), true);
+			}
+		});
+		return 1;
+	}
+
+	private static int skin(CommandContext<ServerCommandSource> ctx) {
+		ServerCommandSource src = ctx.getSource();
+		String name = StringArgumentType.getString(ctx, "name");
+		String skin = StringArgumentType.getString(ctx, "skin");
+		CompanionManager m = manager(ctx);
+		Companion c = m.byName(name);
+		if (c == null) {
+			src.sendError(Text.literal("No companion named " + name));
+			return 0;
+		}
+		SkinResolver.resolve(src.getServer(), skin, name, result -> {
+			if (result.note() != null) {
+				src.sendFeedback(() -> Text.literal(result.note()).formatted(Formatting.GRAY), false);
+				if (!result.choice().hasTextures() && result.choice().defaultIndex() < 0) {
+					return; // lookup failed: keep the current skin rather than randomising it
+				}
+			}
+			String error = m.changeSkin(c, result.choice());
+			if (error != null) {
+				src.sendError(Text.literal(error));
+			} else {
+				src.sendFeedback(() -> Text.literal(name + " is now wearing " + c.data.skin), true);
+			}
+		});
 		return 1;
 	}
 

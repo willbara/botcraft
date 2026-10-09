@@ -6,8 +6,8 @@ import com.mcfriends.entity.CompanionPlayer;
 import com.mcfriends.entity.CompanionStore;
 import com.mcfriends.entity.FakePlayers;
 import com.mcfriends.entity.SkinUtil;
+import com.mcfriends.entity.SkinResolver.SkinChoice;
 import com.mcfriends.util.TickBudget;
-import com.mojang.authlib.properties.Property;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
@@ -16,7 +16,13 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.GameRules;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.UUID;
+import net.minecraft.util.WorldSavePath;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -136,9 +142,9 @@ public final class CompanionManager {
 
 	// ---- spawn / remove ---------------------------------------------------------------------
 
-	/** @return null on success, otherwise an error message for the user. */
+	/** @return null on success, otherwise an error message. */
 	@Nullable
-	public String spawn(String name, @Nullable String skin, @Nullable ServerPlayerEntity owner, ServerWorld world, Vec3d pos, float yaw) {
+	public String spawn(String name, SkinChoice skin, @Nullable ServerPlayerEntity owner, ServerWorld world, Vec3d pos, float yaw) {
 		if (!NAME.matcher(name).matches()) {
 			return "Name must be 3-16 characters: letters, digits or _";
 		}
@@ -153,12 +159,7 @@ public final class CompanionManager {
 		if (clash != null && !(clash instanceof CompanionPlayer)) {
 			return "A real player named " + name + " is online";
 		}
-
 		CompanionData data = existing != null ? existing.data : newData(name, skin);
-		if (existing == null && skin != null && data.skinValue == null && SkinUtil.skinIndex(skin) < 0) {
-			return "Unknown skin '" + skin + "'. Use a default skin (" + String.join(", ", SkinUtil.NAMES)
-				+ ", optionally _slim/_wide) or the name of an online player to copy.";
-		}
 		if (owner != null) {
 			data.owner = owner.getUuid();
 			data.ownerName = owner.getGameProfile().getName();
@@ -178,35 +179,79 @@ public final class CompanionManager {
 		return null;
 	}
 
-	private CompanionData newData(String name, @Nullable String skin) {
+	/** Convenience (tests): spawn with a built-in default skin id. */
+	@Nullable
+	public String spawn(String name, String defaultSkin, @Nullable ServerPlayerEntity owner, ServerWorld world, Vec3d pos, float yaw) {
+		int idx = SkinUtil.skinIndex(defaultSkin);
+		return spawn(name, idx >= 0 ? new SkinChoice(defaultSkin, idx, null, null) : SkinChoice.random(), owner, world, pos, yaw);
+	}
+
+	private CompanionData newData(String name, SkinChoice skin) {
 		CompanionData data = new CompanionData();
 		data.name = name;
-		data.skin = skin == null ? "random" : skin;
-		int skinIndex = -1;
-		if (skin != null) {
-			skinIndex = SkinUtil.skinIndex(skin);
-			if (skinIndex < 0) {
-				// Not a default skin: copy the signed textures of an online player with that name.
-				// This is the only way to show a custom skin without contacting Mojang's servers.
-				ServerPlayerEntity source = server.getPlayerManager().getPlayer(skin);
-				if (source != null) {
-					for (Property p : source.getGameProfile().getProperties().get("textures")) {
-						if (p.hasSignature()) {
-							data.skinValue = p.getValue();
-							data.skinSignature = p.getSignature();
-						}
-					}
-				}
-			}
-		}
-		data.uuid = SkinUtil.uuidFor(name, skinIndex);
+		applySkin(data, skin);
+		data.uuid = SkinUtil.uuidFor(name, skin.hasTextures() ? -1 : skin.defaultIndex());
 		// Personality is random but stable per name, so re-creating a companion keeps its character.
-		Random r = new Random(data.uuid.getMostSignificantBits());
+		Random r = new Random(SkinUtil.uuidFor(name, -1).getMostSignificantBits());
 		data.chattiness = 0.2F + r.nextFloat() * 0.7F;
 		data.bravery = 0.2F + r.nextFloat() * 0.7F;
 		data.curiosity = 0.2F + r.nextFloat() * 0.7F;
 		data.helpfulness = 0.3F + r.nextFloat() * 0.7F;
 		return data;
+	}
+
+	private static void applySkin(CompanionData data, SkinChoice skin) {
+		data.skin = skin.id();
+		data.skinValue = skin.hasTextures() ? skin.value() : null;
+		data.skinSignature = skin.hasTextures() ? skin.signature() : null;
+	}
+
+	/**
+	 * Change an existing companion's skin. Clients only read skins when a player joins, so the
+	 * companion leaves and rejoins in place. Default skins are picked through the UUID, so for
+	 * those the companion's playerdata/stats/advancements files move to the new UUID.
+	 */
+	@Nullable
+	public String changeSkin(Companion c, SkinChoice skin) {
+		CompanionPlayer p = c.player();
+		ServerWorld world = p != null ? p.getServerWorld() : null;
+		Vec3d pos = p != null ? p.getPos() : null;
+		float yaw = p != null ? p.getYaw() : 0.0F;
+		UUID newUuid = SkinUtil.uuidFor(c.name(), skin.hasTextures() ? -1 : skin.defaultIndex());
+		if (p != null) {
+			FakePlayers.disconnect(p, "Changing skin");
+			c.setPlayer(null);
+		}
+		if (!newUuid.equals(c.data.uuid)) {
+			moveFile(WorldSavePath.PLAYERDATA, c.data.uuid + ".dat", newUuid + ".dat");
+			moveFile(WorldSavePath.PLAYERDATA, c.data.uuid + ".dat_old", newUuid + ".dat_old");
+			moveFile(WorldSavePath.STATS, c.data.uuid + ".json", newUuid + ".json");
+			moveFile(WorldSavePath.ADVANCEMENTS, c.data.uuid + ".json", newUuid + ".json");
+			c.data.uuid = newUuid;
+		}
+		applySkin(c.data, skin);
+		save();
+		try {
+			c.setPlayer(FakePlayers.connect(server, c.data, world, pos, yaw));
+			reviveIfDead(c, false);
+			c.onSpawned("reskinned");
+		} catch (RuntimeException e) {
+			MCFriends.LOG.error("Failed to rejoin {} after skin change", c.name(), e);
+			return "Failed to rejoin (see log)";
+		}
+		return null;
+	}
+
+	private void moveFile(WorldSavePath dir, String from, String to) {
+		Path base = server.getSavePath(dir);
+		Path src = base.resolve(from);
+		try {
+			if (Files.exists(src)) {
+				Files.move(src, base.resolve(to), StandardCopyOption.REPLACE_EXISTING);
+			}
+		} catch (IOException e) {
+			MCFriends.LOG.warn("Could not move {} to {}", src, to, e);
+		}
 	}
 
 	/** Despawns the companion and forgets it. Its playerdata file is kept (re-spawning the name restores inventory). */

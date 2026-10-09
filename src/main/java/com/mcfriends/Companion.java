@@ -1,6 +1,7 @@
 package com.mcfriends;
 
 import com.mcfriends.action.ActionController;
+import com.mcfriends.action.Inventories;
 import com.mcfriends.brain.Brain;
 import com.mcfriends.brain.Drives;
 import com.mcfriends.brain.Interrupts;
@@ -121,6 +122,9 @@ public class Companion {
 		now = serverTick;
 		perception.tick(serverTick);
 		processHeard();
+		if (serverTick % 40 == 0 && Inventories.equipBestArmor(player)) {
+			AiLog.log(name(), "put on better armour");
+		}
 		brain.tick(serverTick);
 		nav.tick();
 		actions.tick();

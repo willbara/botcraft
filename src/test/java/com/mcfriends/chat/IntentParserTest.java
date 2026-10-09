@@ -21,6 +21,9 @@ class IntentParserTest {
 		assertEquals(List.of("Alice_2"), IntentParser.parse("alice_2 come here", NAMES).addressed());
 		assertEquals(List.of(IntentParser.ALL), IntentParser.parse("everyone follow me", NAMES).addressed());
 		assertTrue(IntentParser.parse("follow me", NAMES).addressed().isEmpty());
+		// "all" inside an order is not addressing everyone.
+		assertTrue(IntentParser.parse("gather all the logs", NAMES).addressed().isEmpty());
+		assertEquals(List.of(IntentParser.ALL), IntentParser.parse("all of you, stop", NAMES).addressed());
 		// Names must be whole words.
 		assertTrue(IntentParser.parse("bobsled time", NAMES).addressed().isEmpty());
 	}

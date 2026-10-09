@@ -205,7 +205,7 @@ public class CompanionGameTests implements FabricGameTest {
 		});
 	}
 
-	/** Milestone 4: a brave companion picks its best weapon and kills a zombie. */
+	/** Milestone 4/6: even a timid companion fights when armed: picks its best weapon and kills a zombie. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "survive_fight")
 	public void fightsZombie(TestContext ctx) {
 		CompanionManager m = manager(ctx);
@@ -213,7 +213,7 @@ public class CompanionGameTests implements FabricGameTest {
 		flatArena(ctx, 10);
 		ctx.assertTrue(m.spawn("GtFighter", "zuri", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 5.5)), -90.0F) == null, "spawn");
 		Companion c = m.byName("GtFighter");
-		c.data.bravery = 1.0F;
+		c.data.bravery = 0.0F;
 		com.mcfriends.chat.CommandTasks.stay(c);
 		c.player().getInventory().clear();
 		c.player().getInventory().setStack(5, new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_SWORD));
@@ -274,6 +274,47 @@ public class CompanionGameTests implements FabricGameTest {
 			ctx.assertTrue(talker.speech().spokenKeys().contains("ack.follow"), "said " + talker.speech().spokenKeys());
 			ctx.assertTrue(talker.speech().spokenKeys().contains("event.low_health"), "said " + talker.speech().spokenKeys());
 			cleanup(m, "GtTalker", "GtBoss");
+		});
+	}
+
+	/** Milestone 6: armed companions fight creepers too (this one can't fuse: AI disabled). */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "armed_creeper")
+	public void armedFightsCreeper(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtBrave");
+		flatArena(ctx, 10);
+		ctx.assertTrue(m.spawn("GtBrave", "ari", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 5.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtBrave");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		c.player().getInventory().setStack(20, new net.minecraft.item.ItemStack(net.minecraft.item.Items.STONE_SWORD));
+		net.minecraft.entity.mob.CreeperEntity creeper = ctx.spawnEntity(net.minecraft.entity.EntityType.CREEPER, new BlockPos(7, 1, 5));
+		creeper.setAiDisabled(true);
+		creeper.setPersistent();
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(!creeper.isAlive(), "creeper alive; " + c.describeActivity());
+			cleanup(m, "GtBrave");
+		});
+	}
+
+	/** Milestone 6: better armour in the inventory gets worn. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 100, batchId = "armor")
+	public void wearsArmor(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtKnight");
+		flatArena(ctx, 4);
+		ctx.assertTrue(m.spawn("GtKnight", "efe", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 2.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtKnight");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		c.player().getInventory().setStack(12, new net.minecraft.item.ItemStack(net.minecraft.item.Items.LEATHER_CHESTPLATE));
+		c.player().getInventory().setStack(13, new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_CHESTPLATE));
+		c.player().getInventory().setStack(14, new net.minecraft.item.ItemStack(net.minecraft.item.Items.GOLDEN_HELMET));
+		ctx.addInstantFinalTask(() -> {
+			var p = c.player();
+			ctx.assertTrue(p.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST).isOf(net.minecraft.item.Items.IRON_CHESTPLATE), "chest " + p.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST));
+			ctx.assertTrue(p.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD).isOf(net.minecraft.item.Items.GOLDEN_HELMET), "head");
+			cleanup(m, "GtKnight");
 		});
 	}
 }

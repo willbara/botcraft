@@ -25,7 +25,7 @@ public final class IntentParser {
 		Map.entry("fifteen", 15), Map.entry("twenty", 20), Map.entry("thirty", 30), Map.entry("fifty", 50),
 		Map.entry("stack", 64), Map.entry("lots", 32), Map.entry("bunch", 24), Map.entry("some", DEFAULT_COUNT));
 
-	private static final Pattern ALL_WORDS = Pattern.compile("\\b(everyone|everybody|all|guys|team|friends|y'?all|companions)\\b");
+	private static final Pattern ALL_WORDS = Pattern.compile("\\b(everyone|everybody|all of you|you all|you guys|guys|team|y'?all|companions)\\b");
 	private static final Pattern ITEM_WORD = Pattern.compile(
 		"\\b(logs?|wood|woods|trees?|timber|oak|birch|spruce|jungle|acacia|planks?|stone|cobble(stone)?|dirt|sand|food|iron|coal|diamonds?|wool|apples?|saplings?)\\b");
 	private static final Pattern NUMBER = Pattern.compile("\\b(\\d{1,4})\\b");

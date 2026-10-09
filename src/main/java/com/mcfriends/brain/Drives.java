@@ -19,7 +19,14 @@ public final class Drives {
 		return List.of(Drives::safety, Drives::health, Drives::hunger, Drives::owner, Drives::night, Drives::work, Drives::idle);
 	}
 
-	/** Hostile mobs: fight (brave, armed, healthy, few enemies) or flee. Creepers are always fled. */
+	/** Melee damage at which we consider ourselves armed (wooden/gold sword = 4, any axe more). */
+	public static final double ARMED_DAMAGE = 4.0;
+
+	/**
+	 * Hostile mobs. Armed (a sword, axe, or similar) means fight whatever it is, creepers
+	 * included (FightTask backs off while one is hissing). Unarmed means survival first: run
+	 * from anything close or coming for us. Personality only flavours what they say.
+	 */
 	static void safety(Companion c, Brain b, Scores out) {
 		Perception per = c.perception();
 		CompanionPlayer p = c.player();
@@ -28,40 +35,39 @@ public final class Drives {
 		if (threats.isEmpty() && ownerThreats.isEmpty()) {
 			return;
 		}
-		CreeperEntity creeper = per.nearestCreeper(7.0);
-		if (creeper != null) {
-			out.propose(Objective.FLEE, 0.95F, "creeper " + String.format("%.1f", creeper.distanceTo(p)) + " away");
-			return;
-		}
+		boolean armed = per.inventory().bestWeapon() >= ARMED_DAMAGE;
 		MobEntity nearest = !threats.isEmpty() ? threats.get(0) : ownerThreats.get(0);
 		double d = nearest.distanceTo(p);
-		float urgency = d < 6 ? 0.9F : d < 10 ? 0.8F : 0.6F;
-		Personality pers = b.personality();
-		float hp = p.getHealth() / p.getMaxHealth();
-		double weapon = per.inventory().bestWeapon();
-		int count = threats.size();
-		float fight = pers.bravery() * 0.5F + (float) Math.min(weapon, 8.0) / 8.0F * 0.3F + hp * 0.3F - (count - 1) * 0.12F;
-		if (c.data.defendOwner) {
-			fight += 0.25F;
-		}
-		if (threats.isEmpty()) {
-			// Only the owner is threatened: go help (defend mode).
-			out.propose(Objective.FIGHT, 0.75F, "defending owner from " + nearest.getType().getUntranslatedName());
+		String what = nearest.getType().getUntranslatedName();
+		CreeperEntity creeper = per.nearestCreeper(7.0);
+		if (creeper != null && creeper.getFuseSpeed() > 0 && creeper.distanceTo(p) < 5.0) {
+			out.propose(Objective.FLEE, 0.97F, "creeper about to blow");
 			return;
 		}
-		String what = nearest.getType().getUntranslatedName();
-		if (fight >= 0.45F && hp > 0.35F) {
-			out.propose(Objective.FIGHT, urgency, String.format("%s %.1f away, fight score %.2f", what, d, fight));
-		} else {
-			out.propose(Objective.FLEE, urgency, String.format("%s %.1f away, fight score %.2f", what, d, fight));
+		if (armed) {
+			float urgency = d < 6 ? 0.9F : d < 10 ? 0.8F : 0.65F;
+			String why = threats.isEmpty() ? "defending owner from " + what : String.format("%s %.1f away, armed", what, d);
+			out.propose(Objective.FIGHT, threats.isEmpty() ? 0.75F : urgency, why);
+			return;
+		}
+		if (threats.isEmpty()) {
+			return; // unarmed: can't help the owner, but nothing is after us
+		}
+		boolean coming = nearest.getTarget() == p || d < 10;
+		if (creeper != null || coming) {
+			out.propose(Objective.FLEE, d < 6 ? 0.9F : 0.8F, String.format("%s %.1f away, no weapon", what, d));
 		}
 	}
 
-	/** Low health with enemies around: retreat (toward the owner if possible). */
+	/**
+	 * Low health with enemies around: retreat (toward the owner if possible). Brave companions
+	 * hold on a little longer.
+	 */
 	static void health(Companion c, Brain b, Scores out) {
 		CompanionPlayer p = c.player();
 		float hp = p.getHealth() / p.getMaxHealth();
-		if (hp < 0.35F && !c.perception().threats().isEmpty()) {
+		float threshold = 0.4F - b.personality().bravery() * 0.15F;
+		if (hp < threshold && !c.perception().threats().isEmpty()) {
 			out.propose(Objective.RETREAT, 0.93F, String.format("health %.0f%%", hp * 100));
 		}
 	}
