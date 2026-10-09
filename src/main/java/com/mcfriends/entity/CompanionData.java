@@ -23,8 +23,10 @@ public class CompanionData {
 	public float curiosity;
 	public float helpfulness;
 
-	/** Base task spec, e.g. "follow", "stay", "gather logs 16". Restored after restarts. */
-	public String task = "follow";
+	/** Standing order: "follow" or "stay". */
+	public String mode = "follow";
+	/** Current job spec, e.g. "gather logs 12" (remaining count), or null. Restored after restarts. */
+	public String job;
 	/** Defend-owner mode ("defend me"). */
 	public boolean defendOwner;
 }
