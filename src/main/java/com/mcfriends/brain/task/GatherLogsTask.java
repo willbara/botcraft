@@ -71,6 +71,9 @@ public class GatherLogsTask extends Task {
 	private int pillarLevel;
 	private int dirtTrips;
 	private int dirtNeeded;
+	private boolean needMoreDirt;
+	private final java.util.Set<BlockPos> badDirt = new HashSet<>();
+	private int approachRetries;
 	@Nullable
 	private BlockPos dirtTarget;
 	@Nullable
@@ -201,8 +204,15 @@ public class GatherLogsTask extends Task {
 			if (logs.isEmpty()) {
 				collectTreeLogs(p.getServerWorld());
 			}
+			approachRetries = 0;
 			setPhase(Phase.CHOP);
 		} else if (s == Navigator.State.FAILED || s == Navigator.State.IDLE || phaseTicks > 20 * 60) {
+			if (!logs.isEmpty() && approachRetries++ < 3) {
+				// Coming back to a tree we've started: try again rather than leave it half done.
+				c.nav().moveTo(Goal.reachVisible(p.getWorld(), treeBase, ActionController.BLOCK_REACH - 0.5), false);
+				phaseTicks = 0;
+				return Status.RUNNING;
+			}
 			giveUpOnTree("can't reach it (" + c.nav().failReason() + ")");
 		}
 		return Status.RUNNING;
@@ -297,15 +307,19 @@ public class GatherLogsTask extends Task {
 			return finishTree();
 		}
 		if (Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0) {
-			if (pillar.isEmpty() && dirtTrips < 2) {
-				dirtTrips++;
-				dirtNeeded = (int) Math.min(MAX_PILLAR, Math.ceil(highestLog() - p.getEyeY())) + 2;
-				AiLog.log(c.name(), "gather: need {} blocks to climb, digging some dirt", dirtNeeded);
-				setPhase(Phase.GET_DIRT);
-			} else {
-				AiLog.log(c.name(), "gather: out of blocks to climb with");
+			if (dirtTrips >= 3) {
+				AiLog.log(c.name(), "gather: out of blocks to climb with, leaving the top of this tree");
 				logs.clear();
 				return finishTree();
+			}
+			dirtTrips++;
+			if (pillar.isEmpty()) {
+				startDirtRun(p);
+			} else {
+				// Up the tower with nothing left to place: climb down, fetch more, come back.
+				AiLog.log(c.name(), "gather: out of blocks halfway up, going down for more dirt");
+				needMoreDirt = true;
+				setPhase(Phase.DESCEND);
 			}
 			return Status.RUNNING;
 		}
@@ -351,7 +365,12 @@ public class GatherLogsTask extends Task {
 		}
 		if (pillar.isEmpty() || phaseTicks > 20 * 60) {
 			pillar.clear();
-			setPhase(Phase.COLLECT);
+			if (needMoreDirt) {
+				needMoreDirt = false;
+				startDirtRun(p);
+			} else {
+				setPhase(Phase.COLLECT);
+			}
 			return Status.RUNNING;
 		}
 		BlockPos top = pillar.get(pillar.size() - 1);
@@ -362,11 +381,18 @@ public class GatherLogsTask extends Task {
 		return Status.RUNNING;
 	}
 
+	private void startDirtRun(CompanionPlayer p) {
+		dirtNeeded = (int) Math.min(MAX_PILLAR, Math.ceil(highestLog() - p.getEyeY())) + 2;
+		AiLog.log(c.name(), "gather: need {} blocks to climb, digging some dirt", dirtNeeded);
+		setPhase(Phase.GET_DIRT);
+	}
+
 	/** Dig a few surface dirt/grass blocks nearby to climb with, then go back to the tree. */
 	private Status getDirt(CompanionPlayer p) {
 		ServerWorld world = p.getServerWorld();
 		int have = Inventories.count(p.getInventory(), Inventories::isThrowaway);
 		if (have >= dirtNeeded || phaseTicks > 20 * 60) {
+			AiLog.log(c.name(), "gather: dirt run done, have {}/{} ({} ticks)", have, dirtNeeded, phaseTicks);
 			dirtTarget = null;
 			c.nav().moveTo(Goal.reachVisible(world, treeBase, ActionController.BLOCK_REACH - 0.5), false);
 			setPhase(have > 0 ? Phase.APPROACH : Phase.COLLECT);
@@ -374,6 +400,10 @@ public class GatherLogsTask extends Task {
 				logs.clear();
 			}
 			return Status.RUNNING;
+		}
+		if (phaseTicks % 100 == 0) {
+			AiLog.log(c.name(), "gather: dirt run {} ticks, have {}/{}, target {}, nav {}, at {}", phaseTicks, have, dirtNeeded,
+				dirtTarget, c.nav().state(), p.getPos());
 		}
 		ItemEntity drop = nearestItem(p, s -> Inventories.isThrowaway(s), 5.0);
 		if (drop != null) {
@@ -385,6 +415,7 @@ public class GatherLogsTask extends Task {
 		if (dirtTarget == null || !isDiggableDirt(world, dirtTarget)) {
 			dirtTarget = findDirt(p);
 			if (dirtTarget == null) {
+				AiLog.log(c.name(), "gather: no diggable dirt nearby");
 				dirtNeeded = 0; // nothing suitable around: carry on with what we have
 				return Status.RUNNING;
 			}
@@ -394,6 +425,11 @@ public class GatherLogsTask extends Task {
 			if (c.actions().mineBlock(dirtTarget) == ActionController.MineResult.FAILED) {
 				dirtTarget = null;
 			}
+		} else if (c.nav().state() == Navigator.State.ARRIVED) {
+			// Next to it but can't see it (e.g. we're standing in one of our own holes): pick another.
+			badDirt.add(dirtTarget);
+			dirtTarget = null;
+			c.nav().stop();
 		} else {
 			c.nav().moveTo(Goal.reachVisible(world, dirtTarget, ActionController.BLOCK_REACH - 0.5), false);
 			if (c.nav().state() == Navigator.State.FAILED) {
@@ -416,8 +452,8 @@ public class GatherLogsTask extends Task {
 		BlockPos feet = Navigator.feet(p);
 		BlockPos best = null;
 		double bestD = Double.MAX_VALUE;
-		for (BlockPos pos : BlockPos.iterate(feet.add(-6, -3, -6), feet.add(6, 2, 6))) {
-			if (pos.equals(feet.down()) || !isDiggableDirt(world, pos)) {
+		for (BlockPos pos : BlockPos.iterate(feet.add(-10, -3, -10), feet.add(10, 2, 10))) {
+			if (pos.equals(feet.down()) || badDirt.contains(pos) || !isDiggableDirt(world, pos)) {
 				continue;
 			}
 			double d = pos.getSquaredDistance(feet);
