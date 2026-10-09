@@ -153,7 +153,8 @@ public final class CompanionManager {
 		if (existing != null && existing.isOnline()) {
 			return name + " is already here";
 		}
-		if (existing == null && companions.size() >= CompanionConfig.get().maxCompanions) {
+		int limit = CompanionConfig.get().maxCompanions;
+		if (existing == null && limit > 0 && companions.size() >= limit) {
 			return "Companion limit reached (" + CompanionConfig.get().maxCompanions + ")";
 		}
 		ServerPlayerEntity clash = server.getPlayerManager().getPlayer(name);

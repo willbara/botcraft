@@ -146,10 +146,27 @@ public class SmeltTask extends Task {
 		int have = Smelting.countInput(inv, recipe);
 		List<String> prereqs = new ArrayList<>();
 		if (have == 0 && output != null) {
-			ItemStack[] options = Smelting.input(recipe).getMatchingStacks();
-			String spec = options.length == 0 ? null : Jobs.sourceSpec(c, options[0].getItem(), need);
+			// Several recipes/inputs can make the same thing (iron ingots from raw iron OR from ore
+			// blocks): use the first input we actually know how to get.
+			String spec = null;
+			String firstName = null;
+			for (SmeltingRecipe r : Smelting.allForOutput(c.server, output)) {
+				for (ItemStack opt : Smelting.input(r).getMatchingStacks()) {
+					if (firstName == null) {
+						firstName = ItemNames.display(opt.getItem());
+					}
+					spec = Jobs.sourceSpec(c, opt.getItem(), need);
+					if (spec != null) {
+						recipe = r;
+						break;
+					}
+				}
+				if (spec != null) {
+					break;
+				}
+			}
 			if (spec == null) {
-				return fail("I can't get " + (options.length == 0 ? "the ingredients" : ItemNames.display(options[0].getItem())) + " to smelt");
+				return fail("I can't get " + (firstName == null ? "the ingredients" : firstName) + " to smelt");
 			}
 			prereqs.add(spec);
 		}

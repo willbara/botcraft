@@ -29,6 +29,50 @@ public interface Goal {
 		return new Reach(block.toImmutable(), reach, world);
 	}
 
+	/**
+	 * Any of several goals (Baritone's GoalComposite): A* reaches whichever is cheapest to get
+	 * to, which is how a target is chosen among many candidates without flip-flopping.
+	 */
+	static Goal anyOf(java.util.List<Goal> goals) {
+		return new AnyOf(java.util.List.copyOf(goals));
+	}
+
+	/** For composite goals: the index of the sub-goal satisfied at this spot, or -1. */
+	default int which(BlockPos feet) {
+		return isGoal(feet) ? 0 : -1;
+	}
+
+	record AnyOf(java.util.List<Goal> goals) implements Goal {
+		@Override
+		public boolean isGoal(BlockPos feet) {
+			for (Goal g : goals) {
+				if (g.isGoal(feet)) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		@Override
+		public double heuristic(BlockPos feet) {
+			double best = Double.MAX_VALUE;
+			for (Goal g : goals) {
+				best = Math.min(best, g.heuristic(feet));
+			}
+			return best;
+		}
+
+		@Override
+		public int which(BlockPos feet) {
+			for (int i = 0; i < goals.size(); i++) {
+				if (goals.get(i).isGoal(feet)) {
+					return i;
+				}
+			}
+			return -1;
+		}
+	}
+
 	static double octile(int dx, int dz) {
 		dx = Math.abs(dx);
 		dz = Math.abs(dz);

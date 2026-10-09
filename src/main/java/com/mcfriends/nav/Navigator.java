@@ -76,6 +76,7 @@ public class Navigator {
 	private int pathTimeLimit;
 	private int doorWait;
 	private int pillarStage;
+	private int placeRefusals;
 	private final LongOpenHashSet avoid = new LongOpenHashSet();
 	private final List<BlockPos> openedDoors = new ArrayList<>();
 
@@ -103,6 +104,22 @@ public class Navigator {
 
 	public boolean escaping() {
 		return escape;
+	}
+
+	/**
+	 * Where the current plan ends (the spot the goal is reached at), once a path is found.
+	 * With a composite goal this tells which target the planner picked.
+	 */
+	@Nullable
+	public BlockPos plannedEnd() {
+		CompanionPlayer p = companion.player();
+		if (state == State.ARRIVED && p != null) {
+			return feet(p);
+		}
+		if (state == State.MOVING && path != null && !path.isEmpty() && !partial) {
+			return path.get(path.size() - 1).pos();
+		}
+		return null;
 	}
 
 	/** Start (or keep) navigating to the goal. Re-issuing an equal goal keeps the current path. */
@@ -498,6 +515,11 @@ public class Navigator {
 		Vec3d edge = Vec3d.ofBottomCenter(step.pos()).add(p.getPos()).multiply(0.5);
 		actions.moveTo(edge, 0.6);
 		actions.lookAt(Vec3d.ofCenter(under));
+		if (someoneElseIn(p, under) || someoneElseIn(p, step.pos())) {
+			avoid.add(step.pos().asLong());
+			stuck(p, "someone is in the way at " + under.toShortString());
+			return true;
+		}
 		if (actions.canReachBlock(under) && p.getPos().squaredDistanceTo(Vec3d.ofBottomCenter(step.pos())) < 1.6 * 1.6) {
 			if (!actions.placeBlock(under, Inventories::isThrowaway)) {
 				if (Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0) {
@@ -522,6 +544,12 @@ public class Navigator {
 		if (!p.getWorld().getBlockState(place).isReplaceable()) {
 			return; // placed: we're standing on it, isAt() will advance
 		}
+		if (someoneElseIn(p, place) || someoneElseIn(p, place.up()) || someoneElseIn(p, place.up(2))) {
+			// Another companion (or a mob) is in the column: we'd never be able to place. Go around.
+			avoid.add(step.pos().asLong());
+			stuck(p, "someone is in the way at " + place.toShortString());
+			return;
+		}
 		if (pillarStage == 0) {
 			if (p.isOnGround()) {
 				actions.jump();
@@ -530,12 +558,22 @@ public class Navigator {
 		} else if (p.getY() >= place.getY() + 1.02) {
 			if (actions.placeBlock(place, Inventories::isThrowaway)) {
 				pillarStage = 0;
+				placeRefusals = 0;
 			} else if (Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0) {
 				stuck(p, "out of blocks to pillar with");
+			} else if (++placeRefusals > 6) {
+				placeRefusals = 0;
+				avoid.add(step.pos().asLong());
+				stuck(p, "could not place pillar block at " + place.toShortString());
 			}
 		} else if (p.isOnGround() && p.getY() < place.getY() + 0.5) {
 			pillarStage = 0; // landed without placing: jump again
 		}
+	}
+
+	private static boolean someoneElseIn(CompanionPlayer p, BlockPos cell) {
+		return !p.getWorld().getEntitiesByClass(net.minecraft.entity.LivingEntity.class, new net.minecraft.util.math.Box(cell),
+			e -> e != p && e.isAlive()).isEmpty();
 	}
 
 	private void closeDoorsBehind(CompanionPlayer p) {
@@ -580,7 +618,8 @@ public class Navigator {
 			state = State.FAILED;
 			return;
 		}
-		if (stuckCount == 1 && !why.startsWith("may not") && !why.startsWith("could not") && !why.startsWith("out of")) {
+		if (stuckCount == 1 && !why.startsWith("may not") && !why.startsWith("could not") && !why.startsWith("out of")
+			&& !why.startsWith("someone")) {
 			// Wiggle: jump and strafe a little in a random direction, then carry on.
 			float angle = random.nextFloat() * MathHelper.TAU;
 			recoveryDir = new Vec3d(MathHelper.cos(angle), 0, MathHelper.sin(angle));

@@ -147,10 +147,6 @@ public class Life {
 			if (Inventories.count(inv, s -> Animals.RAW_MEAT.contains(s.getItem())) > 0) {
 				goals.add(new Goal("cook", List.of("smelt food 4"), "I'm getting hungry"));
 			}
-			Memory.Place farm = c.memory().place("farm");
-			if (farm != null) {
-				goals.add(new Goal("harvest", List.of("harvest " + farm.x + " " + farm.y + " " + farm.z + " 8", "craft bread 2"), "I'm getting hungry"));
-			}
 			goals.add(new Goal("hunt", List.of("hunt meat 3", "smelt food 3"), "I'm getting hungry"));
 		}
 		// 3. Tools.
@@ -171,9 +167,6 @@ public class Life {
 			goals.add(new Goal("bed", List.of("craft white_bed 1", "place white_bed " + h), "I'd like a bed at home"));
 		} else if (has(inv, s -> s.isIn(net.minecraft.registry.tag.ItemTags.BEDS)) && !bedNear(c, home)) {
 			goals.add(new Goal("place_bed", List.of("place white_bed " + h), "let's put my bed down"));
-		}
-		if (c.memory().place("farm") == null && (has(inv, s -> s.isOf(Items.WHEAT_SEEDS)) || stonePick)) {
-			goals.add(new Goal("farm", List.of("farm " + h + " 4 wheat_seeds"), "a little farm by home would help"));
 		}
 		// 5. Stock up.
 		if (Inventories.count(inv, Inventories::isLog) < 16) {

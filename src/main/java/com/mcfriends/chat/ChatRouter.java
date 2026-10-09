@@ -171,25 +171,6 @@ public final class ChatRouter {
 						jobs.add("hunt " + what.split(" ")[0] + " " + n);
 					}
 				}
-				case HARVEST -> {
-					// "this farm": around whoever asked; otherwise the farm we remember, otherwise here.
-					BlockPos at = sender != null && sender.getWorld() == c.player().getWorld() && sender.distanceTo(c.player()) < 48
-						? sender.getBlockPos() : null;
-					Memory.Place farm = c.memory().place("farm");
-					if (at == null && farm != null) {
-						at = farm.pos();
-					}
-					if (at == null) {
-						at = c.player().getBlockPos();
-					}
-					jobs.add("harvest " + at.getX() + " " + at.getY() + " " + at.getZ() + " 10");
-				}
-				case FARM -> {
-					BlockPos at = sender != null ? sender.getBlockPos() : c.player().getBlockPos();
-					int size = intent.count() < 0 ? 4 : Math.min(intent.count(), 9);
-					String seedId = ItemNames.id(com.mcfriends.knowledge.Crops.seedFor(intent.item()));
-					jobs.add("farm " + at.getX() + " " + at.getY() + " " + at.getZ() + " " + size + " " + seedId);
-				}
 				case SMELT -> {
 					String spec = smeltSpec(c, intent);
 					if (spec == null) {

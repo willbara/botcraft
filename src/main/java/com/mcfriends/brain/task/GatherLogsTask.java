@@ -64,6 +64,10 @@ public class GatherLogsTask extends Task {
 	@Nullable
 	private ItemEntity collecting;
 	private final Pickup pickup = new Pickup();
+	private List<BlockPos> treeChoices = List.of();
+	@Nullable
+	private Goal treeGoal;
+	private boolean locked;
 	private static final int MAX_PILLAR = 24;
 	/** Blocks we placed to climb the current tree (bottom first), dug back down afterwards. */
 	private final List<BlockPos> pillar = new ArrayList<>();
@@ -111,6 +115,7 @@ public class GatherLogsTask extends Task {
 	protected void onStart(boolean resumed) {
 		// After an interruption: go back to the tree we were on (if any), otherwise look for one.
 		if (treeBase != null && p().getWorld().getBlockState(treeBase).isIn(BlockTags.LOGS) && pillar.isEmpty()) {
+			locked = true;
 			c.nav().moveTo(Goal.reachVisible(p().getWorld(), treeBase, ActionController.BLOCK_REACH - 0.5), false);
 			setPhase(Phase.APPROACH);
 		} else if (!pillar.isEmpty()) {
@@ -181,7 +186,8 @@ public class GatherLogsTask extends Task {
 			}
 			return Status.RUNNING;
 		}
-		treeBase = pickTree(p.getServerWorld(), scanner.results(), p.getBlockPos());
+		List<BlockPos> trees = pickTrees(p.getServerWorld(), scanner.results(), p.getBlockPos());
+		treeBase = trees.isEmpty() ? null : trees.get(0);
 		if (treeBase == null) {
 			if (++emptyScans >= 2) {
 				return fail("no trees nearby");
@@ -192,12 +198,31 @@ public class GatherLogsTask extends Task {
 		emptyScans = 0;
 		AiLog.log(c.name(), "gather: picked tree at {}", treeBase.toShortString());
 		c.memory().sight("tree", treeBase, c.dimension(), p.getWorld().getTime());
-		c.nav().moveTo(Goal.reachVisible(p.getWorld(), treeBase, ActionController.BLOCK_REACH - 0.5), p.getBlockPos().getSquaredDistance(treeBase) > 100);
+		// Baritone-style: offer the few best trees as one goal; whichever the path reaches is the
+		// one we commit to (no dithering between equally good trees).
+		treeChoices = trees;
+		List<Goal> goals = new ArrayList<>();
+		for (BlockPos t : trees) {
+			goals.add(Goal.reachVisible(p.getWorld(), t, ActionController.BLOCK_REACH - 0.5));
+		}
+		treeGoal = Goal.anyOf(goals);
+		locked = false;
+		c.nav().moveTo(treeGoal, p.getBlockPos().getSquaredDistance(treeBase) > 100);
 		setPhase(Phase.APPROACH);
 		return Status.RUNNING;
 	}
 
 	private Status approach(CompanionPlayer p) {
+		if (!locked) {
+			BlockPos end = c.nav().plannedEnd();
+			if (end != null && treeGoal != null) {
+				int i = treeGoal.which(end);
+				treeBase = treeChoices.get(Math.max(0, i));
+				locked = true;
+				CLAIMED.put(treeBase, c.name());
+				AiLog.log(c.name(), "gather: locked onto tree at {} (of {})", treeBase.toShortString(), treeChoices.size());
+			}
+		}
 		Navigator.State s = c.nav().state();
 		if (s == Navigator.State.ARRIVED || (c.actions().canReachBlock(treeBase) && p.isOnGround() && phaseTicks > 5)) {
 			c.nav().stop();
@@ -516,14 +541,14 @@ public class GatherLogsTask extends Task {
 
 	/** Lowest log of a natural tree near us, skipping blacklisted ones. */
 	@Nullable
-	private BlockPos pickTree(ServerWorld world, List<BlockPos> found, BlockPos from) {
+	/** The best few trees to choose from (nearest, sized to what we need), best first. */
+	private List<BlockPos> pickTrees(ServerWorld world, List<BlockPos> found, BlockPos from) {
 		Set<BlockPos> seenBases = new HashSet<>();
+		List<BlockPos> bases = new ArrayList<>();
+		java.util.Map<BlockPos, Double> score = new java.util.HashMap<>();
 		int checked = 0;
-		BlockPos best = null;
-		double bestScore = Double.MAX_VALUE;
-		int candidates = 0;
 		for (BlockPos log : found) {
-			if (++checked > 200 || candidates >= 8) {
+			if (++checked > 200 || bases.size() >= 10) {
 				break;
 			}
 			BlockPos base = log;
@@ -539,21 +564,14 @@ public class GatherLogsTask extends Task {
 			if (!CompanionConfig.get().griefing && !isNaturalTree(world, base)) {
 				continue;
 			}
-			// Prefer trees about the size we need: we always finish a tree we start, so a
-			// 50-log giant is a poor choice when we only want a few logs.
-			candidates++;
+			// We always finish a tree we start, so a 50-log giant is a poor choice for a few logs.
 			int size = treeSize(world, base);
 			int need = Math.max(1, wanted - gathered);
-			double score = Math.sqrt(base.getSquaredDistance(from)) + Math.max(0, size - need - 8) * 1.5;
-			if (score < bestScore) {
-				bestScore = score;
-				best = base;
-			}
+			score.put(base, Math.sqrt(base.getSquaredDistance(from)) + Math.max(0, size - need - 8) * 1.5);
+			bases.add(base);
 		}
-		if (best != null) {
-			CLAIMED.put(best, c.name());
-		}
-		return best;
+		bases.sort(Comparator.comparingDouble(score::get));
+		return bases.subList(0, Math.min(5, bases.size()));
 	}
 
 	/** Trees other companions are working on (so two don't fight over one). */

@@ -51,10 +51,6 @@ public final class IntentParser {
 	private static final Pattern DEFEND = Pattern.compile(
 		"\\b(defend|protect|guard|cover me|watch my back|help me fight|fight (them|it|this|that)|kill (it|them|that|those|this)|attack)\\b");
 	private static final Pattern GIVE = Pattern.compile("\\b(give|hand|toss|throw|pass|drop) (me|over|it|them|the|your|those|some|all|everything|\\d+)\\b");
-	private static final Pattern HARVEST = Pattern.compile("\\b(harvest|replant|reap|pick the (crops|wheat|carrots|potatoes))\\b");
-	private static final Pattern FARM = Pattern.compile(
-		"\\b((make|build|start|set up|plant|create|till) (a |an |us a |me a |some |the )?(\\d+ ?(x|by) ?\\d+ )?(\\w+ )?(farm|field|garden|crops?|wheat|carrots|potatoes|beetroots?|seeds))\\b");
-	private static final Pattern SIZE = Pattern.compile("(\\d+) ?(?:x|by) ?(\\d+)");
 	private static final Pattern HUNT = Pattern.compile(
 		"\\b(hunt(ing)?|go hunting|kill (some |a |an |the |\\d+ |a few )?(cows?|pigs?|sheep|chickens?|rabbits?|animals?)|get (us |me )?(some )?(food|meat|dinner|lunch))\\b");
 	private static final Pattern SMELT = Pattern.compile("\\b(smelt|cook|roast|bake|grill|fry)\\b");
@@ -253,17 +249,6 @@ public final class IntentParser {
 			if (!item.isEmpty()) {
 				return new Intent(Intent.Type.GIVE, item, count(text));
 			}
-		}
-		if (HARVEST.matcher(text).find()) {
-			return new Intent(Intent.Type.HARVEST, "", -1);
-		}
-		Matcher farm = FARM.matcher(text);
-		if (farm.find()) {
-			Matcher size = SIZE.matcher(text);
-			int n = size.find() ? Math.max(Integer.parseInt(size.group(1)), Integer.parseInt(size.group(2))) : -1;
-			String crop = text.matches(".*\\bcarrots?\\b.*") ? "carrots" : text.matches(".*\\bpotato(es)?\\b.*") ? "potatoes"
-				: text.matches(".*\\bbeet(root)?s?\\b.*") ? "beetroot" : "wheat";
-			return new Intent(Intent.Type.FARM, crop, n);
 		}
 		Matcher hunt = HUNT.matcher(text);
 		if (hunt.find()) {
