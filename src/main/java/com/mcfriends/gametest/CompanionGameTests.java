@@ -37,6 +37,9 @@ public class CompanionGameTests implements FabricGameTest {
 		if (m == null) {
 			ctx.throwGameTestException("CompanionManager not running");
 		}
+		// Many tests run side by side, each with its own companions.
+		com.mcfriends.config.CompanionConfig.get().maxCompanions = Math.max(64, com.mcfriends.config.CompanionConfig.get().maxCompanions);
+		com.mcfriends.config.CompanionConfig.get().initiative = 0; // tests want only the behaviour under test
 		return m;
 	}
 
@@ -102,7 +105,7 @@ public class CompanionGameTests implements FabricGameTest {
 		Terrain terrain = new Terrain(ctx.getWorld());
 		BlockPos start = ctx.getAbsolutePos(new BlockPos(1, 1, 2));
 		BlockPos end = ctx.getAbsolutePos(new BlockPos(10, 1, 2));
-		PathFinder pf = new PathFinder(terrain, start, Goal.near(end, 0.5), new PathFinder.Options(false, false, false, 5000, 64), new LongOpenHashSet());
+		PathFinder pf = new PathFinder(terrain, start, Goal.near(end, 0.5), PathFinder.Options.basic(5000, 64), new LongOpenHashSet());
 		TickBudget.begin(1000);
 		PathFinder.Status st = pf.step(100000);
 		ctx.assertTrue(st == PathFinder.Status.FOUND, "expected FOUND, got " + st + " after " + pf.expanded() + " nodes");
@@ -435,5 +438,100 @@ public class CompanionGameTests implements FabricGameTest {
 			ctx.assertTrue(logs >= 7, "only " + logs + " logs collected");
 			cleanup(m, "GtFeller");
 		});
+	}
+
+	/** Solid box of {@code block} (x,z 0..8, y 0..4) with open air above; returns nothing. */
+	static void solidGround(TestContext ctx, net.minecraft.block.Block block) {
+		for (int x = -1; x <= 9; x++) {
+			for (int z = -1; z <= 9; z++) {
+				for (int y = 0; y <= 4; y++) {
+					ctx.setBlockState(x, y, z, block);
+				}
+				for (int y = 5; y <= 9; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+	}
+
+	static Companion[] ownerAndFollower(TestContext ctx, String owner, String follower, Vec3d ownerAt, Vec3d followerAt) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, owner, follower);
+		ctx.assertTrue(m.spawn(owner, "steve", null, ctx.getWorld(), ctx.getAbsolute(ownerAt), 0.0F) == null, "owner spawn");
+		ctx.assertTrue(m.spawn(follower, "alex", null, ctx.getWorld(), ctx.getAbsolute(followerAt), 0.0F) == null, "follower spawn");
+		Companion o = m.byName(owner);
+		Companion f = m.byName(follower);
+		com.mcfriends.chat.CommandTasks.stay(o);
+		f.player().getInventory().clear();
+		f.data.owner = o.player().getUuid();
+		f.data.ownerName = owner;
+		com.mcfriends.chat.CommandTasks.follow(f, null);
+		return new Companion[]{o, f};
+	}
+
+	static void expectNear(TestContext ctx, Companion f, Companion o, double dist, String... cleanupNames) {
+		ctx.addInstantFinalTask(() -> {
+			double d = f.player().distanceTo(o.player());
+			ctx.assertTrue(d < dist && Math.abs(f.player().getY() - o.player().getY()) < 1.5,
+				"follower at " + f.player().getPos() + ", " + String.format("%.1f", d) + " from owner; " + f.describeActivity());
+			cleanup(manager(ctx), cleanupNames);
+		});
+	}
+
+	/** Nav v2: dug into a stone shaft with no blocks: escape mode digs a staircase out. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "nav_escape_dig")
+	public void escapesShaftByDigging(TestContext ctx) {
+		solidGround(ctx, Blocks.STONE);
+		for (int y = 1; y <= 4; y++) {
+			ctx.setBlockState(2, y, 4, Blocks.AIR);
+		}
+		Companion[] c = ownerAndFollower(ctx, "GtTop", "GtPit", new Vec3d(7.5, 5, 4.5), new Vec3d(2.5, 1, 4.5));
+		c[1].player().getInventory().insertStack(new net.minecraft.item.ItemStack(net.minecraft.item.Items.STONE_PICKAXE));
+		expectNear(ctx, c[1], c[0], 4.5, "GtTop", "GtPit");
+	}
+
+	/** Nav v2: a shaft of bricks (not natural, can't dig) but dirt in the pocket: pillar out. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "nav_escape_pillar")
+	public void escapesShaftByPillaring(TestContext ctx) {
+		solidGround(ctx, Blocks.STONE_BRICKS);
+		for (int y = 1; y <= 4; y++) {
+			ctx.setBlockState(2, y, 4, Blocks.AIR);
+		}
+		Companion[] c = ownerAndFollower(ctx, "GtTop2", "GtPit2", new Vec3d(6.5, 5, 4.5), new Vec3d(2.5, 1, 4.5));
+		c[1].player().getInventory().insertStack(new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIRT, 16));
+		expectNear(ctx, c[1], c[0], 4.5, "GtTop2", "GtPit2");
+	}
+
+	/** Nav v2: climbs a ladder up a wall to reach its owner. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "nav_ladder")
+	public void climbsLadder(TestContext ctx) {
+		flatArena(ctx, 10);
+		for (int x = 0; x <= 9; x++) {
+			for (int z = 0; z <= 9; z++) {
+				for (int y = 1; y <= 4; y++) {
+					ctx.setBlockState(x, y, z, x >= 5 ? Blocks.STONE_BRICKS : Blocks.AIR);
+				}
+			}
+		}
+		for (int y = 1; y <= 4; y++) {
+			ctx.setBlockState(4, y, 5, Blocks.LADDER.getDefaultState().with(net.minecraft.block.LadderBlock.FACING, Direction.WEST));
+		}
+		Companion[] c = ownerAndFollower(ctx, "GtRoof", "GtClimber", new Vec3d(7.5, 5, 5.5), new Vec3d(1.5, 1, 5.5));
+		expectNear(ctx, c[1], c[0], 4.0, "GtRoof", "GtClimber");
+	}
+
+	/** Nav v2: sprint-jumps a 2-block gap between platforms (the pit is too deep to climb out of). */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "nav_parkour")
+	public void jumpsGap(TestContext ctx) {
+		for (int x = -1; x <= 12; x++) {
+			for (int z = 2; z <= 6; z++) {
+				for (int y = 0; y <= 9; y++) {
+					boolean platform = y == 8 && (x <= 4 || x >= 7);
+					ctx.setBlockState(x, y, z, platform ? Blocks.STONE_BRICKS : Blocks.AIR);
+				}
+			}
+		}
+		Companion[] c = ownerAndFollower(ctx, "GtFar", "GtJumper", new Vec3d(10.5, 9, 4.5), new Vec3d(1.5, 9, 4.5));
+		expectNear(ctx, c[1], c[0], 4.0, "GtFar", "GtJumper");
 	}
 }
