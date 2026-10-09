@@ -39,7 +39,8 @@ public final class IntentParser {
 		"\\b(do (your|ur) own thing|go play|you'?re free|live (your|ur) life|be free|go explore|explore|do whatever|have fun|you can go|dismissed|at ease|free roam|play minecraft|go survive)\\b");
 	private static final Pattern HOME_SET = Pattern.compile(
 		"\\b((set|make|mark) (this|here)( as| to)?( (your|our|my|the))? home|this is (your |our |my |the )?home|remember this place|home is here)\\b");
-	private static final Pattern HOME_GO = Pattern.compile("\\b(go home|go back home|head home|return home|back home|get home)\\b");
+	private static final Pattern HOME_GO = Pattern.compile(
+		"\\b(go home|go back home|head home|head back home|return home|back home|get home|come home|come on home|go to (the |your )?home|walk home|run home|go to base|back to base)\\b");
 	private static final Pattern SLEEP = Pattern.compile("\\b(go to (sleep|bed)|sleep|bedtime|take a nap|get in bed|hit the hay)\\b");
 	private static final Pattern WHERE = Pattern.compile("\\b(where are you|where r u|where you at|where'?re you|your (location|position|coords)|coords|coordinates)\\b");
 	private static final Pattern FOUND = Pattern.compile(

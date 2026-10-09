@@ -16,7 +16,13 @@ public class GoToTask extends Task {
 		super(c);
 		this.target = target.toImmutable();
 		this.label = label;
+		// Time scales with the trip: climbing out of a deep cave takes a while (digging, pillaring).
+		var p = c.player();
+		double dist = p == null ? 64 : Math.sqrt(p.getBlockPos().getSquaredDistance(this.target));
+		this.timeout = (int) (20 * Math.min(60 * 8, 60 + dist * 1.5));
 	}
+
+	private final int timeout;
 
 	public String label() {
 		return label;
@@ -34,7 +40,7 @@ public class GoToTask extends Task {
 
 	@Override
 	protected int timeoutTicks() {
-		return 20 * 90;
+		return timeout;
 	}
 
 	@Override

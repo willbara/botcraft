@@ -228,6 +228,10 @@ class IntentParserTest {
 		assertEquals(Intent.Type.HOME_SET, type("bob, this is home"));
 		assertEquals(Intent.Type.HOME_SET, type("bob set this as home"));
 		assertEquals(Intent.Type.HOME_GO, type("bob go home"));
+		assertEquals(Intent.Type.HOME_GO, type("bob come home"));
+		assertEquals(Intent.Type.HOME_GO, type("bob come back home"));
+		var chained = IntentParser.parse("everyone make an iron pickaxe and then come home", List.of("bob")).intents();
+		assertEquals(Intent.Type.HOME_GO, chained.get(chained.size() - 1).type());
 		assertEquals(Intent.Type.SLEEP, type("bob go to sleep"));
 	}
 }

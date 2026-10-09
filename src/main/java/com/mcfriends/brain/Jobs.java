@@ -70,6 +70,9 @@ public final class Jobs {
 				case "sleep" -> {
 					return new SleepTask(c);
 				}
+				case "collect" -> {
+					return new com.mcfriends.brain.task.CollectTask(c);
+				}
 				case "shelter" -> {
 					return new com.mcfriends.brain.task.ShelterTask(c);
 				}

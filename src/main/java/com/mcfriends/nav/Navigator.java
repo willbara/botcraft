@@ -72,6 +72,9 @@ public class Navigator {
 	private int stuckCount;
 	/** Replans after a full path ended just short of the goal (swimming, sliding off the last step). */
 	private int endReplans;
+	/** Quick retries after a search that failed almost immediately; when to retry (0 = not waiting). */
+	private int quickRetries;
+	private long retryAt;
 	private int recoveryTicks;
 	private Vec3d recoveryDir = Vec3d.ZERO;
 	private int pathTicks;
@@ -133,6 +136,8 @@ public class Navigator {
 		this.goal = newGoal;
 		this.stuckCount = 0;
 		this.endReplans = 0;
+		this.quickRetries = 0;
+		this.retryAt = 0;
 		this.escape = false;
 		this.avoid.clear();
 		this.allowPlace = CompanionConfig.get().allowBridging;
@@ -177,6 +182,16 @@ public class Navigator {
 		// If we're standing somewhere odd (half in a block, mid-air) start from the nearest standable spot.
 		if (!terrain.standable(start) && terrain.standable(start.up())) {
 			start = start.up();
+		} else if (!terrain.standable(start) && !p.isTouchingWater() && !p.isClimbing()) {
+			// Mid-air (falling off the end of a path, jumping): plan from where we'll land, or the
+			// search starts in thin air with almost nowhere to go.
+			for (int i = 1; i <= 6; i++) {
+				BlockPos below = start.down(i);
+				if (terrain.standable(below)) {
+					start = below;
+					break;
+				}
+			}
 		}
 		int blocks = Inventories.count(p.getInventory(), Inventories::isThrowaway);
 		boolean place = (allowPlace || escape) && blocks > 0;
@@ -213,6 +228,13 @@ public class Navigator {
 	}
 
 	private void tickSearch(CompanionPlayer p) {
+		if (finder == null && retryAt > 0) {
+			if (companion.now() >= retryAt) {
+				retryAt = 0;
+				plan();
+			}
+			return;
+		}
 		if (finder == null) {
 			state = State.FAILED;
 			return;
@@ -220,10 +242,17 @@ public class Navigator {
 		PathFinder.Status s = finder.step(CompanionConfig.get().pathNodesPerTick);
 		boolean poor = s == PathFinder.Status.FAILED || (s == PathFinder.Status.PARTIAL && finder.progress() < 3);
 		if (poor && !escape && !digMode) {
-			AiLog.log(companion.name(), "no good path{}: escape mode (dig natural terrain, pillar)", boxedIn(p) ? " (underground)" : "");
+			boolean under = boxedIn(p);
+			AiLog.log(companion.name(), "no good path{}: escape mode (dig natural terrain, pillar)", under ? " (underground)" : "");
 			escape = true;
+			if (under && shaftUp(p)) {
+				return;
+			}
 			plan();
 			return;
+		}
+		if (escape && s == PathFinder.Status.PARTIAL && finder.progress() < 3 && boxedIn(p) && shaftUp(p)) {
+			return; // escape search is crawling: just dig straight up
 		}
 		switch (s) {
 			case FOUND, PARTIAL -> {
@@ -249,6 +278,14 @@ public class Navigator {
 			}
 			case FAILED -> {
 				AiLog.log(companion.name(), "no path to goal ({} nodes expanded)", finder.expanded());
+				if (finder.expanded() < 16 && quickRetries++ < 3) {
+					// Hardly searched at all: probably planned from an awkward spot (mid-step, mid-fall).
+					// Forget the places we marked as bad and try again once we've settled.
+					finder = null;
+					avoid.clear();
+					retryAt = companion.now() + 10;
+					return;
+				}
 				finder = null;
 				failReason = "no path";
 				state = State.FAILED;
@@ -256,6 +293,57 @@ public class Navigator {
 			default -> {
 			}
 		}
+	}
+
+	/**
+	 * Underground with the goal somewhere above: dig straight up like a player would (break the
+	 * block over our head, jump, put a block under us), rather than search a huge volume of rock.
+	 * The shaft stops before anything risky (fluids, falling blocks, unbreakable or built blocks)
+	 * or where the sky opens up, then we plan normally again from there.
+	 * @return true if a shaft was started
+	 */
+	private boolean shaftUp(CompanionPlayer p) {
+		BlockPos start = feet(p);
+		if (goal == null || goal.heuristic(start.up(8)) > goal.heuristic(start) - 2.5
+			|| Inventories.count(p.getInventory(), Inventories::isThrowaway) < 1) {
+			return false; // going up doesn't help (or nothing to stand on)
+		}
+		ServerWorld world = p.getServerWorld();
+		Terrain t = new Terrain(world, true, p.getInventory());
+		java.util.List<PathStep> steps = new java.util.ArrayList<>();
+		for (int i = 1; i <= 32; i++) {
+			BlockPos feetAt = start.up(i);
+			BlockPos head = feetAt.up();
+			if (world.isSkyVisible(feetAt) || goal.isGoal(feetAt)) {
+				break;
+			}
+			java.util.List<BlockPos> breaks = new java.util.ArrayList<>(1);
+			BlockState above = world.getBlockState(head);
+			if (!t.passable(head)) {
+				if (!BreakPolicy.canBreakForNav(world, head, above, true) || t.isFalling(head.up())) {
+					break;
+				}
+				breaks.add(head.toImmutable());
+			}
+			if (t.kind(head) == Terrain.LAVA || t.kind(head) == Terrain.WATER || t.kind(head.up()) == Terrain.LAVA) {
+				break;
+			}
+			steps.add(new PathStep(feetAt.toImmutable(), MoveType.PILLAR, feetAt.getY(), feetAt.down().toImmutable(), breaks));
+		}
+		if (steps.size() < 3) {
+			return false;
+		}
+		AiLog.log(companion.name(), "digging straight up ({} blocks) to get out", steps.size());
+		finder = null;
+		path = steps;
+		partial = true;
+		index = 0;
+		pathTicks = 0;
+		pathTimeLimit = 100 + steps.size() * 110;
+		pillarStage = 0;
+		resetProgress();
+		state = State.MOVING;
+		return true;
 	}
 
 	private void resetProgress() {
@@ -281,7 +369,7 @@ public class Navigator {
 
 		// Skip ahead if we're already at (or past) upcoming steps.
 		for (int i = Math.min(path.size() - 1, index + 4); i >= index; i--) {
-			if (isAt(p, path.get(i))) {
+			if (isAt(p, path.get(i), i == path.size() - 1)) {
 				index = i + 1;
 				pillarStage = 0;
 				resetProgress();
@@ -356,7 +444,8 @@ public class Navigator {
 		int remaining = path.size() - index;
 		actions.sprint(sprint && remaining > 4 && step.type() != MoveType.BRIDGE);
 		if (p.isTouchingWater()) {
-			if (rise < -0.3 && p.getAir() > 80) {
+			boolean lastStep = index == path.size() - 1;
+			if ((rise < -0.3 || (lastStep && step.type() == MoveType.SWIM && rise < -0.05)) && p.getAir() > 80) {
 				p.swimDown(); // heading down: dive instead of bobbing at the surface
 			} else if (rise > -0.3 || p.isSubmergedInWater()) {
 				actions.holdJump();
@@ -417,15 +506,16 @@ public class Navigator {
 		return true;
 	}
 
-	private boolean isAt(CompanionPlayer p, PathStep s) {
+	private boolean isAt(CompanionPlayer p, PathStep s, boolean last) {
 		double dx = p.getX() - (s.pos().getX() + 0.5);
 		double dz = p.getZ() - (s.pos().getZ() + 0.5);
 		double dy = p.getY() - s.floorY();
 		if (s.type() == MoveType.PILLAR || s.type() == MoveType.CLIMB) {
 			return dx * dx + dz * dz < 0.5 * 0.5 && dy > -0.2 && dy < 0.9 && (p.isOnGround() || p.isClimbing());
 		}
-		if (s.type() == MoveType.SWIM) {
-			// Floating feet sit well above the node: only count it once we've sunk most of the way in.
+		if (s.type() == MoveType.SWIM && last) {
+			// The end of a path under water: floating feet sit well above the node, so only count it
+			// once we've sunk into it (matching how feet() judges arrival).
 			return dx * dx + dz * dz < 0.45 * 0.45 && dy > -0.6 && dy < 0.05;
 		}
 		return dx * dx + dz * dz < 0.45 * 0.45 && dy > -0.6 && dy < 0.9;

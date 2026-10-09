@@ -55,6 +55,8 @@ public class CraftTask extends Task {
 	@Nullable
 	private BlockPos table;
 	private boolean placedTable;
+	/** Tables we couldn't get to (behind a corner, across a gap): don't keep trying them. */
+	private final java.util.Set<BlockPos> badTables = new java.util.HashSet<>();
 	private int relocations;
 	private final java.util.Set<BlockPos> badSpots = new java.util.HashSet<>();
 	private int spotFails;
@@ -174,15 +176,24 @@ public class CraftTask extends Task {
 				return Status.RUNNING;
 			}
 			if (phaseTicks == 1 || c.nav().state() == Navigator.State.IDLE) {
-				c.nav().moveTo(Goal.reach(table, 3.5), false);
+				// Line of sight, not just distance: a corner block can hide a table that's "close".
+				c.nav().moveTo(Goal.reachVisible(p.getWorld(), table, 3.5), false);
 			}
 			if (c.nav().state() == Navigator.State.FAILED || phaseTicks > 20 * 30) {
+				AiLog.log(c.name(), "can't get to the crafting table at {}, not using it", table.toShortString());
+				badTables.add(table);
 				table = null; // can't get there: place our own
 				phaseTicks = 0;
 			}
 			return Status.RUNNING;
 		}
 		table = null;
+		if (!hasTableItem(p)) {
+			// The table we meant to put down isn't on us any more (dropped, used up): plan again.
+			AiLog.log(c.name(), "no crafting table to put down, re-planning");
+			setPhase(Phase.PLAN);
+			return Status.RUNNING;
+		}
 		BlockPos spot = Spots.placeSpot(c, badSpots);
 		if (spot == null) {
 			// Cramped (on a pillar, in leaves...): step out somewhere more open and try again.
@@ -196,10 +207,15 @@ public class CraftTask extends Task {
 			placedTable = true;
 			AiLog.log(c.name(), "placed a crafting table at {}", spot.toShortString());
 		} else if (++spotFails % 10 == 0) {
-			AiLog.log(c.name(), "can't place a crafting table at {} ({}), trying elsewhere", spot.toShortString(), p.getWorld().getBlockState(spot).getBlock());
+			AiLog.log(c.name(), "can't place a crafting table at {} ({}), trying elsewhere", spot.toShortString(), c.actions().lastPlaceProblem());
 			badSpots.add(spot);
 			if (badSpots.size() > 6) {
-				return fail("couldn't place a crafting table");
+				if (relocations++ >= 3) {
+					return fail("couldn't place a crafting table");
+				}
+				// Nothing works around here: try again from somewhere else.
+				badSpots.clear();
+				c.nav().moveTo(com.mcfriends.nav.Goal.near(Spots.roomySpot(c, random), 1.5), false);
 			}
 		}
 		return Status.RUNNING;
@@ -351,7 +367,7 @@ public class CraftTask extends Task {
 		BlockPos best = null;
 		double bestD = Double.MAX_VALUE;
 		for (BlockPos pos : BlockPos.iterate(center.add(-8, -3, -8), center.add(8, 3, 8))) {
-			if (p.getWorld().getBlockState(pos).isOf(Blocks.CRAFTING_TABLE)) {
+			if (p.getWorld().getBlockState(pos).isOf(Blocks.CRAFTING_TABLE) && !badTables.contains(pos)) {
 				double d = pos.getSquaredDistance(center);
 				if (d < bestD) {
 					bestD = d;
@@ -362,7 +378,8 @@ public class CraftTask extends Task {
 		if (best == null) {
 			var place = c.memory().place("crafting_table");
 			if (place != null && place.dim.equals(p.getWorld().getRegistryKey().getValue().toString())
-				&& place.pos().getSquaredDistance(center) < 32 * 32 && p.getWorld().getBlockState(place.pos()).isOf(Blocks.CRAFTING_TABLE)) {
+				&& place.pos().getSquaredDistance(center) < 32 * 32 && p.getWorld().getBlockState(place.pos()).isOf(Blocks.CRAFTING_TABLE)
+				&& !badTables.contains(place.pos())) {
 				best = place.pos();
 			}
 		}

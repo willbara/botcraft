@@ -14,9 +14,7 @@ import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.passive.AnimalEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.Heightmap;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
@@ -50,12 +48,7 @@ public class HuntTask extends Task {
 	@Nullable
 	private ItemEntity collecting;
 	private final Pickup pickup = new Pickup();
-	private int trips;
-	@Nullable
-	private Direction searchDir;
-	@Nullable
-	private BlockPos tripGoal;
-	private int tripTicks;
+	private final SearchTrips search = new SearchTrips("hunt", TRIP, MAX_TRIPS);
 
 	public HuntTask(Companion c, List<EntityType<?>> species, int count) {
 		super(c);
@@ -85,6 +78,7 @@ public class HuntTask extends Task {
 	@Override
 	protected void onStop() {
 		Claims.release(c);
+		search.cancel(c);
 		super.onStop();
 	}
 
@@ -113,19 +107,20 @@ public class HuntTask extends Task {
 			}
 			target = findTarget(p);
 			if (target == null) {
-				if (tripGoal != null) {
-					return travel(p);
+				if (search.tick(c)) {
+					return Status.RUNNING;
 				}
 				if (++searchFails > 3) {
-					if (trips >= MAX_TRIPS) {
+					if (search.exhausted()) {
 						return kills > 0 ? Status.SUCCESS : fail("I walked around but couldn't find any animals to hunt");
 					}
-					startTrip(p);
+					searchFails = 0;
+					search.start(c, null);
 				}
 				return Status.RUNNING;
 			}
 			searchFails = 0;
-			tripGoal = null;
+			search.cancel(c);
 			Claims.claim(c, target.getBlockPos());
 			AiLog.log(c.name(), "hunting a {}", target.getType().getUntranslatedName());
 		}
@@ -168,51 +163,6 @@ public class HuntTask extends Task {
 		}
 		if (!pickup.tick(c, collecting)) {
 			collecting = null;
-		}
-		return Status.RUNNING;
-	}
-
-	/** Pick a direction to search: keep going the same way, else away from others' work. */
-	private void startTrip(CompanionPlayer p) {
-		trips++;
-		searchFails = 0;
-		if (searchDir == null) {
-			Direction best = Direction.Type.HORIZONTAL.random(p.getRandom());
-			int bestScore = Integer.MAX_VALUE;
-			for (Direction d : Direction.Type.HORIZONTAL) {
-				BlockPos probe = p.getBlockPos().offset(d, TRIP);
-				int score = (Claims.crowded(c, probe, TRIP * 0.75) ? 10 : 0) + p.getRandom().nextInt(3);
-				if (score < bestScore) {
-					bestScore = score;
-					best = d;
-				}
-			}
-			searchDir = best;
-		} else if (trips % 2 == 1) {
-			// Every other trip, turn so the search sweeps a wider area.
-			searchDir = searchDir.rotateYClockwise();
-		}
-		BlockPos ahead = p.getBlockPos().offset(searchDir, TRIP);
-		int y = p.getServerWorld().getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, ahead.getX(), ahead.getZ());
-		tripGoal = new BlockPos(ahead.getX(), y, ahead.getZ());
-		tripTicks = 0;
-		c.nav().moveTo(Goal.near(tripGoal, 4), true);
-		AiLog.log(c.name(), "hunt: nothing here, searching {} (trip {}/{})", searchDir, trips, MAX_TRIPS);
-	}
-
-	private Status travel(CompanionPlayer p) {
-		tripTicks++;
-		var state = c.nav().state();
-		boolean done = state == com.mcfriends.nav.Navigator.State.ARRIVED || state == com.mcfriends.nav.Navigator.State.FAILED
-			|| tripTicks > 20 * 45 || p.getBlockPos().getSquaredDistance(tripGoal) < 25;
-		if (done) {
-			if (state == com.mcfriends.nav.Navigator.State.FAILED) {
-				searchDir = searchDir == null ? null : searchDir.rotateYClockwise();
-			}
-			tripGoal = null;
-			c.nav().stop();
-		} else if (!c.nav().isBusy()) {
-			c.nav().moveTo(Goal.near(tripGoal, 4), true);
 		}
 		return Status.RUNNING;
 	}

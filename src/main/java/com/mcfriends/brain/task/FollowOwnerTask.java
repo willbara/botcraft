@@ -59,6 +59,7 @@ public class FollowOwnerTask extends Task {
 	protected void onStart(boolean resumed) {
 		moving = false;
 		retryCooldown = 0;
+		failures = 0;
 	}
 
 	@Override
@@ -98,6 +99,9 @@ public class FollowOwnerTask extends Task {
 		return Status.RUNNING;
 	}
 
+	/** Failed attempts in a row to path to the owner. */
+	private int failures;
+
 	private void move(ServerPlayerEntity owner, double comfy, double d) {
 		BlockPos ownerPos = owner.getBlockPos();
 		if (retryCooldown > 0) {
@@ -108,11 +112,28 @@ public class FollowOwnerTask extends Task {
 		}
 		boolean ownerMoved = ownerPos.getSquaredDistance(goalCenter) > 2.5 * 2.5;
 		if (ownerMoved || !c.nav().isBusy()) {
+			if (c.nav().state() == Navigator.State.ARRIVED && !ownerMoved) {
+				// Already as close as a path gets us (owner on a ledge, out of sight): don't
+				// re-plan every tick, just look again in a moment.
+				retryCooldown = 20;
+				c.nav().stop();
+				return;
+			}
 			if (c.nav().state() == Navigator.State.FAILED && !ownerMoved) {
 				AiLog.log(c.name(), "can't reach owner ({}), waiting", c.nav().failReason());
 				retryCooldown = 40;
 				c.nav().stop();
+				// Stuck somewhere (deep in a cave, a pit) and it keeps failing: come back the way
+				// we do when far away, rather than wait there forever.
+				if (++failures >= 3 && d > 12 && CompanionConfig.get().teleportToOwnerDistance > 0) {
+					AiLog.log(c.name(), "can't find a way back to owner, teleporting");
+					failures = 0;
+					teleportNear(owner);
+				}
 				return;
+			}
+			if (c.nav().state() == Navigator.State.MOVING) {
+				failures = 0;
 			}
 			goalCenter = ownerPos;
 			c.nav().moveTo(Goal.near(ownerPos, Math.max(1.5, comfy - 1.0)), d > 8);

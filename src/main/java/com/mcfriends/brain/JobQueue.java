@@ -72,6 +72,14 @@ public class JobQueue {
 
 	/** Start the next job when the slot is free. */
 	public void tick() {
+		if (!c.brain().hasJob() && wantsCollect()) {
+			// Our own drops are lying about: pick them up before moving on.
+			Task t = Jobs.create(c, "collect");
+			c.data.job = null;
+			c.brain().setJob(t.asJob("collect"));
+			AiLog.log(c.name(), "collecting leftover drops first");
+			return;
+		}
 		while (!c.brain().hasJob() && !queue().isEmpty()) {
 			String spec = queue().remove(0);
 			if (!spec.trim().endsWith("!") && !Jobs.optional(spec)) {
@@ -96,6 +104,24 @@ public class JobQueue {
 			c.brain().setJob(t.asJob(spec));
 			AiLog.log(c.name(), "next job: {}", spec);
 		}
+	}
+
+	private long nextCollectCheck;
+
+	private boolean wantsCollect() {
+		if (c.now() < nextCollectCheck || "stay".equals(c.data.mode) || !c.leftovers().anyExpected()) {
+			return false;
+		}
+		nextCollectCheck = c.now() + 20;
+		if (c.leftovers().lying().isEmpty()) {
+			return false;
+		}
+		if (queue().isEmpty()) {
+			// Nothing else to do: tidy up now, but bits that keep dropping later (saplings from
+			// decaying leaves) are picked up every so often, not chased one by one.
+			nextCollectCheck = c.now() + 200;
+		}
+		return true;
 	}
 
 	/** An optional prep job failed: skip the prep that followed it, keep the real work. */

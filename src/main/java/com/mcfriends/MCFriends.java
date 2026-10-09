@@ -33,6 +33,23 @@ public class MCFriends implements ModInitializer {
 		ServerTickEvents.END_SERVER_TICK.register(CompanionManager::onEndTick);
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> CompanionManager.onPlayerJoin(handler.player));
 		ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> ChatRouter.onChat(sender, message.getSignedContent()));
+		// Drops from a companion's own work, so it can make sure it picks them up.
+		net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, blockEntity) -> {
+			CompanionManager m = CompanionManager.get();
+			Companion c = m == null ? null : m.byPlayer((net.minecraft.server.network.ServerPlayerEntity) player);
+			if (c != null) {
+				c.leftovers().expect(pos);
+			}
+		});
+		net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
+			CompanionManager m = CompanionManager.get();
+			if (m != null && source.getAttacker() instanceof net.minecraft.server.network.ServerPlayerEntity killer && !(entity instanceof net.minecraft.entity.player.PlayerEntity)) {
+				Companion c = m.byPlayer(killer);
+				if (c != null) {
+					c.leftovers().expect(entity.getBlockPos());
+				}
+			}
+		});
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> CompanionCommand.register(dispatcher));
 		LOG.info("MCFriends initialized (max companions {}, chat {}, griefing {})",
 			CompanionConfig.get().maxCompanions == 0 ? "unlimited" : CompanionConfig.get().maxCompanions, CompanionConfig.get().chatEnabled, CompanionConfig.get().griefing);
