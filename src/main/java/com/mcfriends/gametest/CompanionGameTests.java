@@ -704,4 +704,22 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtNeedy", "GtGiver");
 		});
 	}
+
+	/** Free mode ends as soon as the companion is given another order. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 100, batchId = "free_ends")
+	public void orderEndsFreeMode(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtLoose");
+		flatArena(ctx, 6);
+		ctx.assertTrue(m.spawn("GtLoose", "zuri", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtLoose");
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "do your own thing", null) == null, "free");
+		ctx.assertTrue("free".equals(c.data.mode), "mode " + c.data.mode);
+		c.jobs().append(java.util.List.of("gather logs 16")); // something it chose itself
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "mine 3 coal", null) == null, "order");
+		ctx.assertTrue("follow".equals(c.data.mode), "still " + c.data.mode);
+		ctx.assertTrue(!c.jobs().pending().contains("gather logs 16"), "own job not dropped: " + c.jobs().pending());
+		cleanup(m, "GtLoose");
+		ctx.complete();
+	}
 }

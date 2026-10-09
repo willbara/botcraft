@@ -163,42 +163,68 @@ public class Life {
 		List<Goal> goals = new ArrayList<>();
 		// 2. Food.
 		int food = Inventories.foodCount(inv);
+		if (Inventories.count(inv, s -> Animals.RAW_MEAT.contains(s.getItem())) > 0 && (food < 4 || p.getHungerManager().getFoodLevel() < 16)) {
+			goals.add(new Goal("cook", List.of("smelt food 8"), "I've got raw meat to cook"));
+		}
 		if (p.getHungerManager().getFoodLevel() < 16 && food == 0) {
-			if (Inventories.count(inv, s -> Animals.RAW_MEAT.contains(s.getItem())) > 0) {
-				goals.add(new Goal("cook", List.of("smelt food 4"), "I'm getting hungry"));
-			}
 			goals.add(new Goal("hunt", List.of("hunt meat 3", "smelt food 3"), "I'm getting hungry"));
 		}
-		// 3. Tools.
+		// 3. Tool progression, then iron gear.
 		Goal tools = chooseTools(inv, now);
 		if (tools != null) {
 			goals.add(tools);
 		}
 		boolean stonePick = has(inv, s -> s.getItem() instanceof PickaxeItem && !s.isOf(Items.WOODEN_PICKAXE) && !s.isOf(Items.GOLDEN_PICKAXE));
 		boolean ironPick = has(inv, s -> s.isOf(Items.IRON_PICKAXE) || s.isOf(Items.DIAMOND_PICKAXE) || s.isOf(Items.NETHERITE_PICKAXE));
+		int rawIron = Inventories.count(inv, s -> s.isOf(Items.RAW_IRON));
+		if (rawIron >= 3) {
+			goals.add(new Goal("smelt_iron", List.of("smelt iron_ingot " + rawIron), "I should smelt this iron"));
+		}
 		if (stonePick && !ironPick) {
-			goals.add(new Goal("iron_pickaxe", List.of("craft iron_pickaxe 1"), "time to find some iron"));
+			goals.add(new Goal("iron_pickaxe", List.of("craft iron_pickaxe 1"), "time to get some iron"));
 		}
 		if (ironPick && Inventories.bestWeaponDamage(inv) < 6.0) {
 			goals.add(new Goal("iron_sword", List.of("craft iron_sword 1"), "an iron sword would be nice"));
 		}
-		// 4. Settle in.
-		if (!bedNear(c, home) && !has(inv, s -> s.isIn(net.minecraft.registry.tag.ItemTags.BEDS))) {
+		if (ironPick) {
+			// One armour piece at a time, for any slot not already at least iron.
+			for (net.minecraft.item.Item piece : List.of(Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS)) {
+				net.minecraft.item.ArmorItem ironPiece = (net.minecraft.item.ArmorItem) piece;
+				var worn = p.getEquippedStack(ironPiece.getSlotType());
+				boolean weaker = !(worn.getItem() instanceof net.minecraft.item.ArmorItem a) || a.getProtection() < ironPiece.getProtection();
+				if (weaker && !has(inv, st -> st.isOf(piece))) {
+					String id = com.mcfriends.knowledge.ItemNames.id(piece);
+					goals.add(new Goal("armor_" + id, List.of("craft " + id + " 1"), "some armour would keep me alive"));
+					break;
+				}
+			}
+		}
+		// 4. Settle in: a bed at home.
+		if (ironPick && !bedNear(c, home) && !has(inv, s -> s.isIn(net.minecraft.registry.tag.ItemTags.BEDS))) {
 			goals.add(new Goal("bed", List.of("craft white_bed 1", "place white_bed " + h), "I'd like a bed at home"));
 		} else if (has(inv, s -> s.isIn(net.minecraft.registry.tag.ItemTags.BEDS)) && !bedNear(c, home)) {
 			goals.add(new Goal("place_bed", List.of("place white_bed " + h), "let's put my bed down"));
 		}
-		// 5. Stock up.
-		if (Inventories.count(inv, Inventories::isLog) < 16) {
-			goals.add(new Goal("logs", List.of("gather logs 16"), "we're low on wood"));
+		// 5. Whatever suits where we are (like a player would): wood in a forest, ore in a cave.
+		boolean underground = !p.getWorld().isSkyVisible(p.getBlockPos().up());
+		boolean caveNear = underground || !c.memory().sightings("cave", p.getBlockPos(), c.dimension(), 40).isEmpty();
+		int coal = Inventories.count(inv, s -> s.isOf(Items.COAL) || s.isOf(Items.CHARCOAL));
+		int iron = rawIron + Inventories.count(inv, s -> s.isOf(Items.IRON_INGOT));
+		if (stonePick && caveNear) {
+			if (coal < 16) {
+				goals.add(new Goal("cave_coal", List.of("mine coal 8"), "there's a cave nearby, good for coal"));
+			}
+			if (iron < 8) {
+				goals.add(new Goal("cave_iron", List.of("mine iron 6"), "let's see if this cave has iron"));
+			}
+			if (ironPick && Inventories.count(inv, s -> s.isOf(Items.DIAMOND)) < 3) {
+				goals.add(new Goal("diamonds", List.of("mine diamond 3"), "time to go looking for diamonds"));
+			}
 		}
-		if (stonePick && Inventories.count(inv, s -> s.isOf(Items.COBBLESTONE) || s.isOf(Items.COBBLED_DEEPSLATE)) < 32) {
-			goals.add(new Goal("stone", List.of("mine stone 32"), "cobblestone always comes in handy"));
+		if (has(inv, s -> s.getItem() instanceof net.minecraft.item.AxeItem) && forestAround(p) && Inventories.count(inv, Inventories::isLog) < 24) {
+			goals.add(new Goal("forest_logs", List.of("gather logs 16"), "lots of trees here, good time to stock up on wood"));
 		}
-		if (stonePick && Inventories.count(inv, s -> s.isOf(Items.COAL) || s.isOf(Items.CHARCOAL)) < 8) {
-			goals.add(new Goal("coal", List.of("mine coal 8"), "I want coal for torches"));
-		}
-		if (Inventories.count(inv, s -> s.isOf(Items.TORCH)) < 8 && has(inv, s -> s.isOf(Items.COAL) || s.isOf(Items.CHARCOAL))) {
+		if (coal > 0 && Inventories.count(inv, s -> s.isOf(Items.TORCH)) < 16) {
 			goals.add(new Goal("torches", List.of("craft torch 8"), "torches for the dark"));
 		}
 		for (Goal g : goals) {
@@ -206,8 +232,15 @@ public class Life {
 				return g;
 			}
 		}
-		// 6. Nothing pressing: wander and look around (curious companions more often).
-		if (random.nextFloat() < 0.3F + c.data.curiosity * 0.5F && allowed("explore", now)) {
+		// 6. Nothing pressing: go have a look at a cave we know, or wander (curious ones more).
+		if (allowed("explore", now) && random.nextFloat() < 0.3F + c.data.curiosity * 0.5F) {
+			backoff.put("explore", now + 20 * 60); // don't wander off every few seconds
+			var caves = c.memory().sightings("cave", home, c.dimension(), 64);
+			if (!caves.isEmpty() && stonePick && random.nextBoolean()) {
+				var cave = caves.get(random.nextInt(caves.size())).pos();
+				return new Goal("explore", List.of("goto " + cave.getX() + " " + cave.getY() + " " + cave.getZ() + " exploring", "mine coal 4"),
+					"I want another look at that cave");
+			}
 			double angle = random.nextDouble() * Math.PI * 2;
 			int dist = 16 + random.nextInt(24);
 			BlockPos target = home.add((int) (Math.cos(angle) * dist), 0, (int) (Math.sin(angle) * dist));
@@ -220,6 +253,22 @@ public class Life {
 			return new Goal("home", List.of("home"), "I've wandered off far enough");
 		}
 		return null;
+	}
+
+	/** Lots of tree tops (logs/leaves) around: we're in a forest. */
+	private static boolean forestAround(CompanionPlayer p) {
+		int trees = 0;
+		BlockPos c = p.getBlockPos();
+		for (int dx = -12; dx <= 12; dx += 6) {
+			for (int dz = -12; dz <= 12; dz += 6) {
+				int y = p.getWorld().getTopY(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING, c.getX() + dx, c.getZ() + dz) - 1;
+				var s = p.getWorld().getBlockState(new BlockPos(c.getX() + dx, y, c.getZ() + dz));
+				if (s.isIn(BlockTags.LEAVES) || s.isIn(BlockTags.LOGS)) {
+					trees++;
+				}
+			}
+		}
+		return trees >= 6;
 	}
 
 	/** Basic tools ladder (also used in follow mode). */
