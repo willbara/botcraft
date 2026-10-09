@@ -86,6 +86,19 @@ public class Perception {
 		return t.isEmpty() ? null : t.get(0);
 	}
 
+	/** Hostile mobs near the owner that are targeting the owner (for "defend me"). */
+	public List<MobEntity> ownerThreats() {
+		ServerPlayerEntity o = owner();
+		CompanionPlayer p = companion.player();
+		if (o == null || p == null || o.getWorld() != p.getWorld()) {
+			return List.of();
+		}
+		List<MobEntity> list = new ArrayList<>(o.getServerWorld().getEntitiesByClass(MobEntity.class, o.getBoundingBox().expand(12.0, 5.0, 12.0),
+			m -> m.isAlive() && m instanceof Monster && (m.getTarget() == o || m.squaredDistanceTo(o) < 5 * 5)));
+		list.sort(Comparator.comparingDouble(m -> m.squaredDistanceTo(p)));
+		return list;
+	}
+
 	@Nullable
 	public CreeperEntity nearestCreeper(double radius) {
 		CompanionPlayer p = companion.player();

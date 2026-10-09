@@ -44,6 +44,10 @@ public final class CommandTasks {
 			case "status" -> {
 				return null;
 			}
+			case "defend", "protect", "guard" -> {
+				defend(c, source);
+				return null;
+			}
 			case "gather", "get", "chop", "collect", "fetch" -> {
 				String item = words.length > 1 ? words[1] : "logs";
 				int count = 16;
@@ -65,10 +69,17 @@ public final class CommandTasks {
 
 	public static void follow(Companion c, @Nullable ServerPlayerEntity who) {
 		claimOwner(c, who);
+		c.data.defendOwner = false;
 		c.data.mode = "follow";
 		c.brain().setJob(null);
 		c.brain().reconsider();
 		AiLog.log(c.name(), "order: follow");
+	}
+
+	public static void defend(Companion c, @Nullable ServerPlayerEntity who) {
+		follow(c, who);
+		c.data.defendOwner = true;
+		AiLog.log(c.name(), "order: defend owner");
 	}
 
 	public static void stay(Companion c) {
