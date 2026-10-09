@@ -97,6 +97,13 @@ public final class ChatRouter {
 			}
 			switch (intent.type()) {
 				case FOLLOW -> mode = "follow";
+				case FREE -> {
+					mode = "free";
+					if (c.memory().place("home") == null) {
+						BlockPos at = c.player().getBlockPos();
+						c.memory().setPlace("home", at, c.dimension(), c.server.getOverworld().getTime());
+					}
+				}
 				case STOP -> mode = "stay";
 				case DEFEND -> {
 					mode = "follow";
@@ -246,7 +253,7 @@ public final class ChatRouter {
 			c.brain().reconsider();
 			Map<String, String> vars = new HashMap<>();
 			if (jobs.isEmpty()) {
-				speech.reply(defend ? "ack.defend" : "stay".equals(mode) ? "ack.stop" : "ack.follow", sender, vars);
+				speech.reply(defend ? "ack.defend" : "stay".equals(mode) ? "ack.stop" : "free".equals(mode) ? "ack.free" : "ack.follow", sender, vars);
 			}
 		}
 		if (!jobs.isEmpty()) {

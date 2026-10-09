@@ -31,6 +31,8 @@ public final class Templates {
 		put("cant.do", "I can't do that: {reason}.", "Hmm, {reason}.", "Sorry, {reason}.");
 		put("ack.plan", "Okay: {plan}.", "On it. I'll {plan}.", "Got it, {plan}.", "Sure thing: {plan}.");
 		put("ack.plan_more", "Okay, after that I'll {plan}.", "Added to my list: {plan}.", "Sure, I'll {plan} next.");
+		put("ack.free", "Alright, I'll do my own thing around here. Call me if you need me!", "Free time! I'll keep busy.",
+			"Sweet, I'll go live my best Minecraft life.", "Okay, I'll be around home doing stuff.");
 		put("ack.cancel", "Okay, forget it.", "Cancelled.", "Alright, dropping that.");
 		put("ack.home_set", "Got it, this is home ({x}, {y}, {z}).", "Home sweet home. I'll remember it.", "Noted: home is at {x}, {y}, {z}.");
 		put("no_home", "We don't have a home yet. Say 'this is home' somewhere.", "Where's home? Tell me with 'set home here'.");

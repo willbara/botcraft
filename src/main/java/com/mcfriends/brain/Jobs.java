@@ -89,6 +89,11 @@ public final class Jobs {
 					Item seedItem = w.length > 5 ? ItemNames.resolve(w[5].replace('_', ' ')) : net.minecraft.item.Items.WHEAT_SEEDS;
 					return new MakeFarmTask(c, at, num(w, 4, 4), seedItem == null ? net.minecraft.item.Items.WHEAT_SEEDS : seedItem);
 				}
+				case "place" -> {
+					Item it = ItemNames.resolve(w[1].replace('_', ' '));
+					BlockPos at = new BlockPos(Integer.parseInt(w[2]), Integer.parseInt(w[3]), Integer.parseInt(w[4]));
+					return it == null ? null : new com.mcfriends.brain.task.PlaceTask(c, it, at);
+				}
 				case "seeds" -> {
 					return new GatherSeedsTask(c, num(w, 1, 8));
 				}
@@ -141,6 +146,7 @@ public final class Jobs {
 				yield "make a " + n + "x" + n + " " + (crop == null ? "" : crop + " ") + "farm";
 			}
 			case "seeds" -> "find some seeds";
+			case "place" -> "set up a " + (w.length > 1 ? w[1].replace('_', ' ') : "block");
 			case "hunt" -> {
 				String what = w.length > 1 ? w[1].replaceAll("s$", "") : "meat";
 				int n = num(w, 2, 3);
@@ -171,6 +177,9 @@ public final class Jobs {
 			String animal = item == net.minecraft.item.Items.BEEF ? "cow" : item == net.minecraft.item.Items.PORKCHOP ? "pig"
 				: item == net.minecraft.item.Items.MUTTON ? "sheep" : item == net.minecraft.item.Items.CHICKEN ? "chicken" : "meat";
 			return "hunt " + animal + " " + n;
+		}
+		if (stack.isIn(net.minecraft.registry.tag.ItemTags.WOOL)) {
+			return "hunt sheep " + n; // each sheep drops a block of wool
 		}
 		if (item == net.minecraft.item.Items.WHEAT_SEEDS) {
 			return "seeds " + n;

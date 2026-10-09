@@ -29,6 +29,8 @@ public class CompanionData {
 	public String job;
 	/** Jobs waiting after the current one, as specs (see brain.Jobs). */
 	public java.util.List<String> jobs = new java.util.ArrayList<>();
+	/** Per-companion initiative (0..1); null = use the config value. */
+	public Float initiative;
 	/** Defend-owner mode ("defend me"). */
 	public boolean defendOwner;
 }

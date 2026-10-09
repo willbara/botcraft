@@ -178,6 +178,13 @@ class IntentParserTest {
 	}
 
 	@Test
+	void freeMode() {
+		assertEquals(Intent.Type.FREE, parse("bob, do your own thing").intent().type());
+		assertEquals(Intent.Type.FREE, parse("bob go explore").intent().type());
+		assertEquals(Intent.Type.FREE, parse("you're free bob").intent().type());
+	}
+
+	@Test
 	void homeAndSleep() {
 		assertEquals(Intent.Type.HOME_SET, type("bob, this is home"));
 		assertEquals(Intent.Type.HOME_SET, type("bob set this as home"));
