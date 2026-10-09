@@ -57,6 +57,7 @@ public class SmeltTask extends Task {
 	private BlockPos furnace;
 	private boolean placedFurnace;
 	private int relocations;
+	private boolean askedForFuel;
 	private final java.util.Set<BlockPos> badSpots = new java.util.HashSet<>();
 	private int spotFails;
 	private final java.util.Random random = new java.util.Random();
@@ -172,7 +173,14 @@ public class SmeltTask extends Task {
 		}
 		int fuelNeeded = Math.min(need, Math.max(have, 1)) * recipe.getCookTime();
 		if (Smelting.fuelAvailable(inv, Smelting.input(recipe)) < fuelNeeded) {
-			prereqs.add("gather logs " + Math.max(2, (int) Math.ceil(fuelNeeded / 300.0) + 1));
+			int coal = (int) Math.ceil(fuelNeeded / 1600.0);
+			com.mcfriends.Companion helper = askedForFuel ? null : com.mcfriends.brain.Sharing.ask(c, "coal", "coal", coal, false);
+			askedForFuel = true;
+			if (helper != null) {
+				prereqs.add("await coal " + coal + " " + helper.name());
+			} else {
+				prereqs.add("gather logs " + Math.max(2, (int) Math.ceil(fuelNeeded / 300.0) + 1));
+			}
 		}
 		furnace = findFurnace(p);
 		if (furnace == null && Inventories.count(inv, s -> s.isOf(Items.FURNACE)) == 0) {

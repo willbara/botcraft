@@ -84,7 +84,7 @@ public final class IntentParser {
 
 	/** Words dropped from the start of an item phrase. */
 	private static final Pattern LEAD_FILLER = Pattern.compile(
-		"^(?:(?:me|us|for|some|a|an|the|few|couple|of|to|more|another|any|up|out|down|go|lots|bunch|stack|stacks|\\d+|one|two|three|four|five|six|seven|eight|nine|ten|dozen|twelve|fifteen|twenty|thirty|fifty|of)\\s+)+");
+		"^(?:(?:me|us|for|some|a|an|the|few|couple|of|to|more|another|any|up|out|down|go|lots|bunch|stack|stacks|your|my|our|those|these|his|her|its|all|all of|\\d+|one|two|three|four|five|six|seven|eight|nine|ten|dozen|twelve|fifteen|twenty|thirty|fifty|of)\\s+)+");
 	private static final Pattern TRAIL_FILLER = Pattern.compile(
 		"\\s+(?:for me|for us|please|pls|now|too|again|here|over here|right now|quickly|asap|real quick|if you can|from (the )?\\w+)$");
 
@@ -104,10 +104,34 @@ public final class IntentParser {
 	}
 
 	public static Parsed parse(String message, Collection<String> companionNames) {
-		String text = normalize(message);
+		return parse(message, companionNames, List.of());
+	}
+
+	/**
+	 * @param otherNames online players (not companions) who can be the target of "go to X",
+	 *                   "give X the logs"
+	 */
+	public static Parsed parse(String message, Collection<String> companionNames, Collection<String> otherNames) {
+		String text = expandSlang(normalize(message));
 		List<String> addressed = new ArrayList<>();
 		boolean direct = false;
 		String rest = text;
+		// "steve, give alex your logs" / "alex go to steve": the name after give/go to/follow is
+		// who it's about, not who we're talking to.
+		String target = "";
+		List<String> allNames = new ArrayList<>(companionNames);
+		allNames.addAll(otherNames);
+		for (String name : allNames) {
+			Matcher tm = Pattern.compile("\\b(?:give|bring|hand|toss|pass|throw|deliver)(?: (?:it|them|some|the|your|all))* (?:to )?@?("
+				+ Pattern.quote(name.toLowerCase(Locale.ROOT)) + ")\\b|\\b(?:go to|come to|go over to|walk to|follow|go with|help|go help|join|find|go find|stay with) @?("
+				+ Pattern.quote(name.toLowerCase(Locale.ROOT)) + ")\\b").matcher(rest);
+			if (tm.find()) {
+				int g = tm.group(1) != null ? 1 : 2;
+				target = name;
+				rest = rest.substring(0, tm.start(g)) + " " + rest.substring(tm.end(g));
+				break;
+			}
+		}
 		for (String name : companionNames) {
 			String n = name.toLowerCase(Locale.ROOT);
 			Pattern p = Pattern.compile("(^|\\W)@?" + Pattern.quote(n) + "(\\W|$)");
@@ -152,15 +176,178 @@ public final class IntentParser {
 		}
 		List<Intent> intents = new ArrayList<>();
 		for (String clause : clauses(rest)) {
-			Intent i = intent(clause);
+			String cl = correctTypos(purpose(clause), companionNames);
+			Intent i = intent(cl);
+			if (i.type() == Intent.Type.UNKNOWN) {
+				i = fallback(cl);
+			}
 			if (i.type() != Intent.Type.UNKNOWN) {
+				if (!target.isEmpty() && (i.type() == Intent.Type.GIVE || i.type() == Intent.Type.COME_HERE
+					|| i.type() == Intent.Type.FOLLOW || i.type() == Intent.Type.BRING || i.type() == Intent.Type.DEFEND)) {
+					i = i.withTarget(target);
+				}
 				intents.add(i);
 			}
+		}
+		if (intents.isEmpty() && !target.isEmpty()) {
+			intents.add(Intent.of(Intent.Type.COME_HERE).withTarget(target)); // "alex, steve" style: go to them
 		}
 		if (intents.isEmpty()) {
 			intents.add(Intent.of(Intent.Type.UNKNOWN));
 		}
 		return new Parsed(addressed, intents, append, direct);
+	}
+
+	private static final Map<String, String> SLANG = Map.ofEntries(
+		Map.entry("u", "you"), Map.entry("ur", "your"), Map.entry("r", "are"), Map.entry("pls", "please"), Map.entry("plz", "please"),
+		Map.entry("wat", "what"), Map.entry("wut", "what"), Map.entry("gimme", "give me"), Map.entry("lemme", "let me"),
+		Map.entry("wanna", "want to"), Map.entry("gotta", "got to"), Map.entry("ya", "you"), Map.entry("yo", "yo"),
+		Map.entry("thru", "through"), Map.entry("tho", "though"), Map.entry("cuz", "because"), Map.entry("bc", "because"),
+		Map.entry("rn", "right now"), Map.entry("asap", "now"), Map.entry("idk", "i don't know"), Map.entry("im", "i'm"),
+		Map.entry("dont", "don't"), Map.entry("cant", "can't"), Map.entry("wont", "won't"), Map.entry("whats", "what's"),
+		Map.entry("wheres", "where's"), Map.entry("hows", "how's"), Map.entry("pick", "pickaxe"), Map.entry("pickax", "pickaxe"));
+
+	/** Common chat shorthand -> plain words, so the patterns only need the plain forms. */
+	static String expandSlang(String text) {
+		StringBuilder sb = new StringBuilder();
+		for (String w : text.split(" ")) {
+			String r = SLANG.get(w);
+			sb.append(r != null && !(w.equals("pick") && !text.matches(".*\\b(wood|stone|iron|diamond|gold|wooden|golden|a|an|new) pick\\b.*")) ? r : w).append(' ');
+		}
+		return sb.toString().trim();
+	}
+
+	/** Purpose clauses: "make a furnace to smelt iron" -> "smelt iron" (we plan the means ourselves). */
+	static String purpose(String clause) {
+		Matcher m = Pattern.compile("^(.+?)\\s+(?:in order to|so (?:that )?(?:you|we|i) can|to|for)\\s+(make|craft|build|smelt|cook|get|mine|chop|gather)\\s+(.+)$")
+			.matcher(clause);
+		if (m.find() && !m.group(1).matches(".*\\b(go|come|walk|head)$")) {
+			return m.group(2) + " " + m.group(3);
+		}
+		return clause;
+	}
+
+	/** Words the patterns care about; misspellings of these (one edit) are corrected. */
+	private static final List<String> LEXICON = List.of("follow", "stop", "stay", "wait", "come", "here", "gather", "collect", "chop",
+		"mine", "mining", "craft", "make", "build", "bring", "give", "defend", "protect", "guard", "hunt", "hunting", "cook", "smelt",
+		"sleep", "home", "cancel", "where", "inventory", "status", "explore", "wood", "logs", "coal", "iron", "diamond", "diamonds",
+		"stone", "cobblestone", "pickaxe", "sword", "shovel", "torch", "torches", "furnace", "crafting", "table", "chest", "food",
+		"copper", "redstone", "emerald", "emeralds", "planks", "sticks", "helmet", "chestplate", "leggings", "boots", "shield",
+		"please", "thanks", "everyone", "creeper", "zombie", "skeleton", "spider", "favorite", "favourite", "around", "something");
+
+	static String correctTypos(String clause, Collection<String> names) {
+		StringBuilder sb = new StringBuilder();
+		outer:
+		for (String w : clause.split(" ")) {
+			if (w.length() >= 4 && !LEXICON.contains(w)) {
+				for (String n : names) {
+					if (n.equalsIgnoreCase(w)) {
+						sb.append(w).append(' ');
+						continue outer;
+					}
+				}
+				for (String l : LEXICON) {
+					// Four-letter words only by a swapped pair ("mien"); "some" must not become "come".
+					boolean ok = w.length() == 4 ? l.length() == 4 && isSwap(w, l) : Math.abs(l.length() - w.length()) <= 1 && damerau(w, l) == 1;
+					if (ok) {
+						sb.append(l).append(' ');
+						continue outer;
+					}
+				}
+			}
+			sb.append(w).append(' ');
+		}
+		return sb.toString().trim();
+	}
+
+	private static boolean isSwap(String a, String b) {
+		if (a.length() != b.length()) {
+			return false;
+		}
+		int i = 0;
+		while (i < a.length() && a.charAt(i) == b.charAt(i)) {
+			i++;
+		}
+		return i < a.length() - 1 && a.charAt(i) == b.charAt(i + 1) && a.charAt(i + 1) == b.charAt(i)
+			&& a.substring(i + 2).equals(b.substring(i + 2));
+	}
+
+	/** Edit distance counting a swap of two neighbouring letters as one edit ("mien" -> "mine"). */
+	static int damerau(String a, String b) {
+		int[][] d = new int[a.length() + 1][b.length() + 1];
+		for (int i = 0; i <= a.length(); i++) {
+			d[i][0] = i;
+		}
+		for (int j = 0; j <= b.length(); j++) {
+			d[0][j] = j;
+		}
+		for (int i = 1; i <= a.length(); i++) {
+			for (int j = 1; j <= b.length(); j++) {
+				int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+				d[i][j] = Math.min(Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1), d[i - 1][j - 1] + cost);
+				if (i > 1 && j > 1 && a.charAt(i - 1) == b.charAt(j - 2) && a.charAt(i - 2) == b.charAt(j - 1)) {
+					d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+				}
+			}
+		}
+		return d[a.length()][b.length()];
+	}
+
+	/**
+	 * Last resort when no pattern matched: vote by (stemmed) keywords anywhere in the clause,
+	 * e.g. "could you start following me around" -> FOLLOW.
+	 */
+	static Intent fallback(String clause) {
+		String[] words = clause.split(" ");
+		for (int i = 0; i < words.length; i++) {
+			String rest = String.join(" ", java.util.Arrays.copyOfRange(words, i + 1, words.length));
+			Intent.Type t = null;
+			for (String stem : stems(words[i])) {
+				t = keyword(stem);
+				if (t != null) {
+					break;
+				}
+			}
+			if (t != null) {
+				return switch (t) {
+					case MINE, GATHER, CRAFT, BRING, HUNT, SMELT -> new Intent(t, phrase(rest), count(clause));
+					default -> Intent.of(t);
+				};
+			}
+		}
+		return Intent.of(Intent.Type.UNKNOWN);
+	}
+
+	/** "chopping" -> chopping, chopp, chop, choppe...; "making" -> mak, make. */
+	private static List<String> stems(String w) {
+		List<String> out = new ArrayList<>();
+		out.add(w);
+		String base = w.replaceAll("(ing|ed|es|s)$", "");
+		out.add(base);
+		if (base.length() > 2 && base.charAt(base.length() - 1) == base.charAt(base.length() - 2)) {
+			out.add(base.substring(0, base.length() - 1));
+		}
+		out.add(base + "e");
+		return out;
+	}
+
+	@org.jetbrains.annotations.Nullable
+	private static Intent.Type keyword(String stem) {
+		return switch (stem) {
+				case "follow", "tail", "accompany" -> Intent.Type.FOLLOW;
+				case "stop", "stay", "wait", "halt", "freeze" -> Intent.Type.STOP;
+				case "mine", "dig" -> Intent.Type.MINE;
+				case "chop", "gather", "collect", "harvest" -> Intent.Type.GATHER;
+				case "craft", "build", "create", "make" -> Intent.Type.CRAFT;
+				case "bring", "fetch" -> Intent.Type.BRING;
+				case "defend", "protect", "guard" -> Intent.Type.DEFEND;
+				case "hunt" -> Intent.Type.HUNT;
+				case "cook", "smelt" -> Intent.Type.SMELT;
+				case "sleep" -> Intent.Type.SLEEP;
+				case "explore", "wander", "roam" -> Intent.Type.FREE;
+				case "cancel", "abort" -> Intent.Type.CANCEL;
+				default -> null;
+			};
 	}
 
 	/** Levenshtein distance, early-out above 2. */

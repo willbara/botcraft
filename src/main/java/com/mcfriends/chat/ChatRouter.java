@@ -49,7 +49,13 @@ public final class ChatRouter {
 		for (Companion c : m.all()) {
 			names.add(c.name());
 		}
-		IntentParser.Parsed parsed = IntentParser.parse(message, names);
+		List<String> players = new ArrayList<>();
+		for (ServerPlayerEntity pl : sender.getServer().getPlayerManager().getPlayerList()) {
+			if (!(pl instanceof CompanionPlayer)) {
+				players.add(pl.getGameProfile().getName());
+			}
+		}
+		IntentParser.Parsed parsed = IntentParser.parse(message, names, players);
 		List<Companion> targets = new ArrayList<>();
 		if (parsed.addressed().contains(IntentParser.ALL)) {
 			for (Companion c : m.all()) {
@@ -96,7 +102,11 @@ public final class ChatRouter {
 				return "not the owner";
 			}
 			switch (intent.type()) {
-				case FOLLOW -> mode = "follow";
+				case FOLLOW -> {
+					mode = "follow";
+					// "follow alex": follow someone else for a while; "follow me" goes back to the owner.
+					c.data.followTarget = intent.target().isEmpty() ? null : intent.target();
+				}
 				case FREE -> {
 					mode = "free";
 					if (c.memory().place("home") == null) {
@@ -115,11 +125,15 @@ public final class ChatRouter {
 					speech.reply("ack.cancel", sender, vars);
 				}
 				case COME_HERE -> {
-					if (sender == null) {
-						error = "Only a player can call a companion over";
+					ServerPlayerEntity whoTo = intent.target().isEmpty() ? sender : findByName(c, intent.target());
+					if (whoTo == null) {
+						error = intent.target().isEmpty() ? "Only a player can call a companion over" : "I can't find " + intent.target();
+						vars.put("reason", "I can't find " + intent.target());
+						speech.reply("cant.do", sender, vars);
 					} else {
-						BlockPos at = sender.getBlockPos();
-						jobs.add("goto " + at.getX() + " " + at.getY() + " " + at.getZ() + " over to you");
+						BlockPos at = whoTo.getBlockPos();
+						jobs.add("goto " + at.getX() + " " + at.getY() + " " + at.getZ() + " over to "
+							+ (whoTo == sender ? "you" : whoTo.getGameProfile().getName()));
 					}
 				}
 				case HOME_GO -> {
@@ -154,6 +168,10 @@ public final class ChatRouter {
 						speech.reply("cant.do", sender, vars);
 						error = problem;
 					} else {
+						if (intent.type() == Intent.Type.BRING && !intent.target().isEmpty() && !specs.isEmpty()) {
+							String last = specs.remove(specs.size() - 1);
+							specs.add(last + " to " + intent.target());
+						}
 						jobs.addAll(specs);
 					}
 				}
@@ -186,6 +204,9 @@ public final class ChatRouter {
 					if (what == null) {
 						vars.put("item", intent.item());
 						speech.reply("give.none", sender, vars);
+					} else if (!intent.target().isEmpty()) {
+						// "give alex your logs": walk over to them and hand it over.
+						jobs.add("deliver " + what + " " + (intent.count() < 0 ? 64 : intent.count()) + " to " + intent.target());
 					} else if (sender != null && c.player().distanceTo(sender) <= 5.0 && c.player().canSee(sender)) {
 						give(c, sender, what, intent.count() < 0 ? 64 : intent.count(), vars);
 					} else {
@@ -301,6 +322,17 @@ public final class ChatRouter {
 		}
 		if (intent.type() == Intent.Type.BRING) {
 			out.add(deliver);
+		}
+		return null;
+	}
+
+	/** A player or companion by name (case-insensitive), or null. */
+	@Nullable
+	public static ServerPlayerEntity findByName(Companion c, String name) {
+		for (ServerPlayerEntity p : c.server.getPlayerManager().getPlayerList()) {
+			if (p.getGameProfile().getName().equalsIgnoreCase(name)) {
+				return p;
+			}
 		}
 		return null;
 	}

@@ -55,7 +55,8 @@ public final class Jobs {
 				}
 				case "deliver" -> {
 					String what = w.length > 1 ? w[1] : "logs";
-					return new DeliverTask(c, deliverable(what), label(what), num(w, 2, 64));
+					String to = w.length > 4 && w[3].equals("to") ? w[4] : null;
+					return new DeliverTask(c, deliverable(what), label(what), num(w, 2, 64), to);
 				}
 				case "goto" -> {
 					BlockPos pos = new BlockPos(Integer.parseInt(w[1]), Integer.parseInt(w[2]), Integer.parseInt(w[3]));
@@ -85,6 +86,9 @@ public final class Jobs {
 					BlockPos at = new BlockPos(Integer.parseInt(w[2]), Integer.parseInt(w[3]), Integer.parseInt(w[4]));
 					return it == null ? null : new com.mcfriends.brain.task.PlaceTask(c, it, at);
 				}
+				case "await" -> {
+					return new com.mcfriends.brain.task.AwaitTask(c, w[1], num(w, 2, 1), w.length > 3 ? w[3] : "a friend");
+				}
 				case "hunt" -> {
 					var species = Animals.byWord(w.length > 1 ? w[1] : "meat");
 					return species == null ? null : new HuntTask(c, species, num(w, 2, 3));
@@ -112,7 +116,7 @@ public final class Jobs {
 				String item = w.length > 1 ? w[1].replace('_', ' ') : "something";
 				yield "craft " + (n == 1 ? (item.matches("^[aeiou].*") ? "an " : "a ") + item : n + " " + ItemNames.plural(item, n));
 			}
-			case "deliver" -> "bring you " + label(w.length > 1 ? w[1] : "logs");
+			case "deliver" -> "bring " + (w.length > 4 && w[3].equals("to") ? w[4] : "you") + " " + label(w.length > 1 ? w[1] : "logs");
 			case "goto" -> "go " + (w.length > 4 ? String.join(" ", java.util.Arrays.copyOfRange(w, 4, w.length)) : "there");
 			case "home" -> "go home";
 			case "sleep" -> "go to bed";
@@ -129,6 +133,7 @@ public final class Jobs {
 				yield "smelt " + n + " " + ItemNames.plural(what, n);
 			}
 			case "place" -> "set up a " + (w.length > 1 ? w[1].replace('_', ' ') : "block");
+			case "await" -> "wait for " + (w.length > 3 ? w[3] : "a friend");
 			case "hunt" -> {
 				String what = w.length > 1 ? w[1].replaceAll("s$", "") : "meat";
 				int n = num(w, 2, 3);
@@ -205,6 +210,12 @@ public final class Jobs {
 
 	/** Which stacks count for a deliver job. "all" = materials, not our tools/armour/food. */
 	public static Predicate<ItemStack> deliverable(String what) {
+		if (what.equals("food")) {
+			return Inventories::isGoodFood;
+		}
+		if (what.equals("pickaxe")) {
+			return s -> s.getItem() instanceof net.minecraft.item.PickaxeItem;
+		}
 		if (what.equals("all")) {
 			return s -> !s.isDamageable() && s.getItem().getFoodComponent() == null;
 		}

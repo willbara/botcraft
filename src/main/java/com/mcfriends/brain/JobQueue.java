@@ -43,6 +43,20 @@ public class JobQueue {
 		queue().addAll(0, specs);
 	}
 
+	/**
+	 * Do these right now: the current job is paused (re-queued right after them) and resumes when
+	 * they're done. Used when a friend asks for help.
+	 */
+	public void interruptWith(List<String> specs) {
+		List<String> list = new ArrayList<>(specs);
+		if (c.brain().hasJob() && c.data.job != null) {
+			list.add(c.data.job);
+		}
+		c.brain().setJob(null);
+		queue().addAll(0, list);
+		AiLog.log(c.name(), "interrupted with {}", specs);
+	}
+
 	public void clear() {
 		queue().clear();
 		c.brain().setJob(null);

@@ -22,11 +22,24 @@ public class DeliverTask extends Task {
 	private int given = -1;
 	private int wait;
 
+	@org.jetbrains.annotations.Nullable
+	private final String recipient;
+
 	public DeliverTask(Companion c, Predicate<ItemStack> what, String label, int count) {
+		this(c, what, label, count, null);
+	}
+
+	/** @param recipient a player/companion name, or null for the owner */
+	public DeliverTask(Companion c, Predicate<ItemStack> what, String label, int count, @org.jetbrains.annotations.Nullable String recipient) {
 		super(c);
 		this.what = what;
 		this.label = label;
 		this.count = count;
+		this.recipient = recipient;
+	}
+
+	public String recipientName() {
+		return recipient == null ? "you" : recipient;
 	}
 
 	@Override
@@ -36,7 +49,7 @@ public class DeliverTask extends Task {
 
 	@Override
 	public String describe() {
-		return "bringing you " + label;
+		return "bringing " + recipientName() + " " + label;
 	}
 
 	public int given() {
@@ -55,9 +68,9 @@ public class DeliverTask extends Task {
 	@Override
 	protected Status onTick() {
 		CompanionPlayer p = c.player();
-		ServerPlayerEntity owner = c.perception().owner();
+		ServerPlayerEntity owner = recipient != null ? com.mcfriends.chat.ChatRouter.findByName(c, recipient) : c.perception().owner();
 		if (owner == null) {
-			return fail("I can't find you");
+			return fail(recipient != null ? "I can't find " + recipient : "I can't find you");
 		}
 		if (given >= 0) {
 			// Give the throw a moment, then we're done.
@@ -66,7 +79,7 @@ public class DeliverTask extends Task {
 		if (Inventories.count(p.getInventory(), what) == 0) {
 			return fail("I don't have any " + label);
 		}
-		double d = c.perception().ownerDistance();
+		double d = owner.getWorld() == p.getWorld() ? owner.distanceTo(p) : Double.POSITIVE_INFINITY;
 		if (d <= 3.5 && p.canSee(owner)) {
 			c.nav().stop();
 			given = c.actions().giveItems(owner, what, count);

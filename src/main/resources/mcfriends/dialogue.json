@@ -87,6 +87,9 @@
   "social.praise": ["Nice one, {friend}!", "Good hit, {friend}!", "{friend} with the takedown!", "Show-off."],
   "social.friend_died": ["{friend}! Noo!", "We lost {friend}!", "RIP {friend}... they'll be back.", "Oh no, {friend}!"],
   "social.help": ["Hang on {friend}, I'm coming!", "Leave {friend} alone, {mob}!", "I've got you, {friend}!"],
+  "share.ask": ["Hey {friend}, could you spare {count} {item}?", "{friend}, got any {item} I could have?", "Psst, {friend}. I need {item}, got some?", "{friend}! Lend me {count} {item}?"],
+  "share.yes": ["Sure, {friend}, coming!", "Got you, {friend}.", "Yeah, I've got some. Hang on.", "On my way, {friend}!"],
+  "share.thanks": ["Thanks {friend}!", "You're the best, {friend}.", "Appreciate it, {friend}!", "Cheers {friend}."],
   "social.thanks_help": ["Thanks {friend}!", "Phew, thanks {friend}.", "Owe you one, {friend}."],
 
   "banter.weather": ["Nice weather today, huh {friend}?", "{friend}, do you think it'll rain?", "Lovely day for chopping trees."],
