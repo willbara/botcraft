@@ -433,38 +433,72 @@ public class ActionController {
 	public boolean placeBlock(BlockPos target, Predicate<ItemStack> which) {
 		CompanionPlayer p = player();
 		ServerWorld world = p.getServerWorld();
-		if (!world.getBlockState(target).isReplaceable()) {
-			return false;
-		}
 		int slot = Inventories.find(p.getInventory(), which);
 		if (slot < 0) {
+			lastPlaceProblem = "nothing to place in the inventory";
 			return false;
 		}
+		Placement at = placement(target);
+		if (at == null) {
+			return false;
+		}
+		Inventories.select(p, slot);
+		lookAt(at.hit());
+		BlockHitResult hit = new BlockHitResult(at.hit(), at.face(), at.support(), false);
+		boolean wasSneaking = p.isSneaking();
+		p.setSneaking(true);
+		ActionResult r = p.interactionManager.interactBlock(p, world, p.getMainHandStack(), Hand.MAIN_HAND, hit);
+		p.setSneaking(wasSneaking);
+		if (r.isAccepted()) {
+			p.swingHand(Hand.MAIN_HAND);
+			return !world.getBlockState(target).isReplaceable();
+		}
+		lastPlaceProblem = "refused: " + r;
+		com.mcfriends.util.AiLog.log(companion.name(), "place at {} against {} {} refused: {} (holding {})", target.toShortString(),
+			at.support().toShortString(), at.face(), r, p.getMainHandStack());
+		return false;
+	}
+
+	/** Where to click to put a block at {@code target}: a solid neighbour face within reach. */
+	public record Placement(BlockPos support, Direction face, Vec3d hit) {
+	}
+
+	/** Why the last placement couldn't happen (for logs). */
+	private String lastPlaceProblem = "";
+
+	public String lastPlaceProblem() {
+		return lastPlaceProblem;
+	}
+
+	/**
+	 * A face we could click to place a block at {@code target}, or null (and
+	 * {@link #lastPlaceProblem()} says why). Placement-spot finders use this too, so a spot
+	 * they pick is one we can really place at.
+	 */
+	@Nullable
+	public Placement placement(BlockPos target) {
+		CompanionPlayer p = player();
+		ServerWorld world = p.getServerWorld();
+		if (!world.getBlockState(target).isReplaceable()) {
+			lastPlaceProblem = "spot is taken by " + world.getBlockState(target).getBlock();
+			return null;
+		}
+		boolean anySolid = false;
 		for (Direction dir : Direction.values()) {
 			BlockPos support = target.offset(dir);
 			BlockState s = world.getBlockState(support);
 			if (s.isAir() || s.isReplaceable() || !s.isSideSolidFullSquare(world, support, dir.getOpposite())) {
 				continue;
 			}
+			anySolid = true;
 			Vec3d hitPos = Vec3d.ofCenter(support).add(Vec3d.of(dir.getOpposite().getVector()).multiply(0.5));
 			if (p.getEyePos().squaredDistanceTo(hitPos) > BLOCK_REACH * BLOCK_REACH) {
 				continue;
 			}
-			Inventories.select(p, slot);
-			lookAt(hitPos);
-			BlockHitResult hit = new BlockHitResult(hitPos, dir.getOpposite(), support, false);
-			boolean wasSneaking = p.isSneaking();
-			p.setSneaking(true);
-			ActionResult r = p.interactionManager.interactBlock(p, world, p.getMainHandStack(), Hand.MAIN_HAND, hit);
-			p.setSneaking(wasSneaking);
-			if (r.isAccepted()) {
-				p.swingHand(Hand.MAIN_HAND);
-				return !world.getBlockState(target).isReplaceable();
-			}
-			com.mcfriends.util.AiLog.log(companion.name(), "place at {} against {} {} refused: {} (holding {})", target.toShortString(),
-				support.toShortString(), dir.getOpposite(), r, p.getMainHandStack());
+			return new Placement(support.toImmutable(), dir.getOpposite(), hitPos);
 		}
-		return false;
+		lastPlaceProblem = anySolid ? "solid side out of reach" : "nothing solid next to it";
+		return null;
 	}
 
 	/**

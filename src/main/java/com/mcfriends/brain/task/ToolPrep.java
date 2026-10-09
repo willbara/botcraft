@@ -69,6 +69,26 @@ public final class ToolPrep {
 		if (kind == null || p == null) {
 			return List.of();
 		}
+		// A step toward something else (logs for a crafting table the iron pickaxe needs): its
+		// materials are spoken for, so no side projects.
+		for (String waiting : c.jobs().pending()) {
+			if (waiting.matches(".*~\\d+(\\s+!)?$")) {
+				return List.of();
+			}
+		}
+		// Mining: a pickaxe that can't harvest the ore is no help; the job sorts that out itself.
+		int minTier = 1;
+		if (kind == Kind.PICKAXE) {
+			String[] w = spec.trim().split(" ");
+			var ore = w.length > 1 ? com.mcfriends.knowledge.OreKind.byWord(w[1]) : null;
+			if (ore != null) {
+				minTier = switch (ore.pickaxe) {
+					case "stone_pickaxe" -> 2;
+					case "iron_pickaxe" -> 3;
+					default -> 1;
+				};
+			}
+		}
 		PlayerInventory inv = p.getInventory();
 		int have = 0;
 		for (int i = 0; i < inv.main.size(); i++) {
@@ -80,7 +100,7 @@ public final class ToolPrep {
 		Map<Item, Integer> counts = CraftTask.inventoryCounts(inv);
 		// Best tier first: the biggest easy upgrade wins. Never diamond: diamonds are usually
 		// what someone asked us to collect, not ours to spend.
-		for (int t = 3; t > have; t--) {
+		for (int t = 3; t > have && t >= minTier; t--) {
 			Item tool = kind.tiers[t - 1];
 			String id = ItemNames.id(tool);
 			Long failedAt = FAILED.get(c.name() + ":" + id);

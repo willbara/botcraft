@@ -63,6 +63,7 @@
   "event.task_failed": ["I couldn't {job}: {reason}.", "Sorry, I gave up on that: {reason}.", "That didn't work out ({reason}).", "No luck, {reason}."],
   "event.step_done": ["Okay, {result}. Now I'll {next}.", "That's done ({result}). Next: {next}.", "{result}! On to {next}.", "Step done ({result}). Moving on to {next}."],
   "event.plan_failed": ["I couldn't {job} ({reason}), so I'm stopping there.", "Plan's off, sorry: {reason}.", "Hit a snag: {reason}. Stopping."],
+  "event.heading_home": ["I'll head back home.", "Heading home for now.", "Nothing more to do here, going home.", "I'll make my way back home.", "Back to base, then."],
   "event.initiative": ["I'm going to {plan}, {reason}.", "Mind if I {plan}? {reason}.", "Quick thing: I'll {plan}. {reason}.", "I think I'll {plan}. {reason}.", "Gonna {plan}. {reason}."],
   "event.no_bed": ["There's no bed for me, I'll keep watch.", "No spare bed, I'll stand guard.", "Can't sleep: {reason}."],
   "event.owner_back": ["Welcome back, {player}!", "Hey {player}, you're back!", "Oh hi {player}.", "{nick}! Missed you."],

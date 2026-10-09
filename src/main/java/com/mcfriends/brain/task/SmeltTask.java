@@ -249,7 +249,7 @@ public class SmeltTask extends Task {
 			c.memory().setPlace("furnace", spot, c.dimension(), p.getWorld().getTime());
 			AiLog.log(c.name(), "placed a furnace at {}", spot.toShortString());
 		} else if (++spotFails % 10 == 0) {
-			AiLog.log(c.name(), "can't place a furnace at {} ({}), trying elsewhere", spot.toShortString(), p.getWorld().getBlockState(spot).getBlock());
+			AiLog.log(c.name(), "can't place a furnace at {} ({}), trying elsewhere", spot.toShortString(), c.actions().lastPlaceProblem());
 			badSpots.add(spot);
 			if (badSpots.size() > 6) {
 				if (relocations++ >= 3) {

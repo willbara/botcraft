@@ -143,5 +143,14 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] Put a companion on a tree top with a furnace to place. It climbs down to solid ground instead of trying to place it on leaves.
 - [ ] A path down through deep water: the companion dives instead of bobbing at the surface.
 
+### 15. Tidiness and getting back
+- [ ] Watch a companion chop a tall tree. Afterwards, logs that fell away from the trunk are picked up (`collect: picked up ...` in the log).
+- [ ] Order something that needs a crafting table. The table it puts down is picked back up, even if it drops into a hole.
+- [ ] Drop an item next to a companion's work spot. It does **not** take it.
+- [ ] Switch to spectator while companions follow you, far from home. When idle or after a failed job, they walk home ("I'll head back home").
+- [ ] Send a companion mining deep, then "come home". It digs or pillars its way out instead of staying down there.
+- [ ] "bob, make an iron pickaxe and then come home" goes home at the end, not to where you stood.
+- [ ] Eight companions near one small wood: "everyone get 8 logs". None says "no trees nearby".
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.

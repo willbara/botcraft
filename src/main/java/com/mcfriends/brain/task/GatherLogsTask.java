@@ -44,7 +44,7 @@ import java.util.Set;
  * no trees are within range.
  */
 public class GatherLogsTask extends Task {
-	private enum Phase { SCAN, APPROACH, CHOP, CLIMB, PILLAR, DESCEND, GET_DIRT, COLLECT }
+	private enum Phase { SCAN, SEARCH, APPROACH, CHOP, CLIMB, PILLAR, DESCEND, GET_DIRT, COLLECT }
 
 	private static final int BLACKLIST_TICKS = 20 * 60 * 5;
 	private static final int MAX_TREE_FAILURES = 6;
@@ -61,6 +61,7 @@ public class GatherLogsTask extends Task {
 	private final Map<BlockPos, Integer> blacklist = new HashMap<>();
 	private int treeFailures;
 	private int emptyScans;
+	private final SearchTrips search = new SearchTrips("gather", 48, 5);
 	@Nullable
 	private ItemEntity collecting;
 	private final Pickup pickup = new Pickup();
@@ -114,6 +115,7 @@ public class GatherLogsTask extends Task {
 	@Override
 	protected void onStop() {
 		com.mcfriends.brain.Claims.release(c);
+		search.cancel(c);
 		super.onStop();
 	}
 
@@ -158,6 +160,12 @@ public class GatherLogsTask extends Task {
 		phaseTicks++;
 		return switch (phase) {
 			case SCAN -> scan(p);
+			case SEARCH -> {
+				if (!search.tick(c)) {
+					setPhase(Phase.SCAN);
+				}
+				yield Status.RUNNING;
+			}
 			case APPROACH -> approach(p);
 			case CHOP -> chop(p);
 			case CLIMB -> climb(p);
@@ -195,10 +203,27 @@ public class GatherLogsTask extends Task {
 		List<BlockPos> trees = pickTrees(p.getServerWorld(), scanner.results(), p.getBlockPos());
 		treeBase = trees.isEmpty() ? null : trees.get(0);
 		if (treeBase == null) {
-			if (++emptyScans >= 2) {
-				return fail("no trees nearby");
+			if (++emptyScans < 2) {
+				setPhase(Phase.SCAN);
+				return Status.RUNNING;
 			}
-			setPhase(Phase.SCAN);
+			// None in range: go and look (a remembered wood, the surface, or just somewhere else).
+			if (search.exhausted()) {
+				return fail(gathered > 0 ? "I ran out of trees around here" : "I looked around but couldn't find any trees");
+			}
+			emptyScans = 0;
+			BlockPos here = p.getBlockPos();
+			int radius = CompanionConfig.get().treeSearchRadius;
+			BlockPos remembered = null;
+			for (var seen : c.memory().sightings("tree", here, c.dimension(), 160)) {
+				if (seen.pos().getSquaredDistance(here) > (radius + 8) * (radius + 8)) {
+					remembered = seen.pos();
+					break;
+				}
+				c.memory().forgetSighting("tree", seen.pos()); // in range, but gone (chopped)
+			}
+			search.start(c, SearchTrips.underground(p.getServerWorld(), here) ? null : remembered);
+			setPhase(Phase.SEARCH);
 			return Status.RUNNING;
 		}
 		emptyScans = 0;
@@ -546,8 +571,6 @@ public class GatherLogsTask extends Task {
 		return items.isEmpty() ? null : items.get(0);
 	}
 
-	/** Lowest log of a natural tree near us, skipping blacklisted ones. */
-	@Nullable
 	/** The best few trees to choose from (nearest, sized to what we need), best first. */
 	private List<BlockPos> pickTrees(ServerWorld world, List<BlockPos> found, BlockPos from) {
 		Set<BlockPos> seenBases = new HashSet<>();
@@ -562,8 +585,7 @@ public class GatherLogsTask extends Task {
 			while (world.getBlockState(base.down()).isIn(BlockTags.LOGS) && from.getY() - base.getY() < 12) {
 				base = base.down();
 			}
-			if (!seenBases.add(base) || blacklist.containsKey(base) || claimedByOther(base)
-				|| com.mcfriends.brain.Claims.crowded(c, base, 5)) {
+			if (!seenBases.add(base) || blacklist.containsKey(base) || claimedByOther(base)) {
 				continue;
 			}
 			if (!new Terrain(world).support(base.down())) {
@@ -575,7 +597,10 @@ public class GatherLogsTask extends Task {
 			// We always finish a tree we start, so a 50-log giant is a poor choice for a few logs.
 			int size = treeSize(world, base);
 			int need = Math.max(1, wanted - gathered);
-			score.put(base, Math.sqrt(base.getSquaredDistance(from)) + Math.max(0, size - need - 8) * 1.5);
+			// Trees where someone else is working or standing count as much further away: preferred
+			// only when there's nothing else (a crowded wood is still better than no wood).
+			double crowd = com.mcfriends.brain.Claims.crowded(c, base, 5) ? 24 : 0;
+			score.put(base, Math.sqrt(base.getSquaredDistance(from)) + Math.max(0, size - need - 8) * 1.5 + crowd);
 			bases.add(base);
 		}
 		bases.sort(Comparator.comparingDouble(score::get));

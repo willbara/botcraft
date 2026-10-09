@@ -64,6 +64,7 @@ public class Companion {
 	private final JobQueue jobs;
 	private final Memory memory;
 	private final Life life = new Life();
+	private final com.mcfriends.brain.Leftovers leftovers = new com.mcfriends.brain.Leftovers(this);
 	private final EventWatcher events = new EventWatcher();
 	private final Random random = new Random();
 
@@ -129,6 +130,11 @@ public class Companion {
 		return memory;
 	}
 
+	/** What our own work dropped and we still have to pick up. */
+	public com.mcfriends.brain.Leftovers leftovers() {
+		return leftovers;
+	}
+
 	/** Current server tick (as of this companion's last tick). */
 	public long now() {
 		return now;
@@ -159,6 +165,9 @@ public class Companion {
 		if (serverTick % 40 == 0 && Inventories.equipBestArmor(player)) {
 			AiLog.log(name(), "put on better armour");
 		}
+		if (serverTick % 100 == 0) {
+			headBackIfLost("idle");
+		}
 		jobs.tick();
 		life.tick(this, serverTick);
 		brain.tick(serverTick);
@@ -166,6 +175,32 @@ public class Companion {
 		actions.tick();
 		events.tick(this, serverTick);
 		speech.tick(serverTick);
+	}
+
+	private long nextHeadBack;
+
+	/**
+	 * Don't stay lost: with nothing to do (a job failed, or simply ran out of things to do) and
+	 * nobody to follow, head back home rather than idle wherever we ended up (a cave, a far-off
+	 * wood). In follow mode with the owner around, following already brings us back (with a
+	 * teleport if we're far away or stuck); "stay" means stay.
+	 */
+	private void headBackIfLost(String why) {
+		if (player == null || now < nextHeadBack || !"follow".equals(data.mode) || !jobs.isIdle()) {
+			return;
+		}
+		ServerPlayerEntity o = perception.owner();
+		if ("follow".equals(data.mode) && o != null && o.getWorld() == player.getWorld()) {
+			return;
+		}
+		Memory.Place home = memory.place("home");
+		if (home == null || !dimension().equals(home.dim) || player.getBlockPos().getSquaredDistance(home.pos()) < 24 * 24) {
+			return;
+		}
+		nextHeadBack = now + 20 * 30;
+		AiLog.log(name(), "nothing to do and nobody to follow ({}): heading home", why);
+		jobs.append(List.of("home"));
+		speech.event("event.heading_home", Map.of(), 20 * 60, 0.7F);
 	}
 
 	/** Queue a chat request; it's acted on after a short, human-ish reaction delay. */
@@ -292,6 +327,11 @@ public class Companion {
 			int dropped = jobs.abandonRest();
 			speech.event(dropped > 0 ? "event.plan_failed" : "event.task_failed",
 				Map.of("reason", task.failReason(), "job", Jobs.describe(task.spec())), 0, 1.0F);
+			if (task instanceof GoToTask g && g.label().equals("home")) {
+				nextHeadBack = now + 20 * 60; // couldn't get home: don't keep trying straight away
+			} else {
+				headBackIfLost("failed");
+			}
 			return;
 		}
 		if (jobs.pending().isEmpty()) {

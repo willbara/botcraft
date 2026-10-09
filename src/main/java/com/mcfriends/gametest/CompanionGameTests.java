@@ -900,4 +900,121 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtDiver");
 		});
 	}
+
+	/** Drops from our own work get picked up (a log broken out of reach); someone else's thrown item doesn't. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "leftovers")
+	public void picksUpOwnDrops(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtTidy", "GtThrower");
+		flatArena(ctx, 12);
+		ctx.setBlockState(9, 1, 9, Blocks.OAK_LOG);
+		ctx.assertTrue(m.spawn("GtTidy", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 2.5)), 0.0F) == null, "spawn");
+		ctx.assertTrue(m.spawn("GtThrower", "ari", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(10.5, 1, 2.5)), 0.0F) == null, "spawn b");
+		Companion c = m.byName("GtTidy");
+		Companion other = m.byName("GtThrower");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		com.mcfriends.chat.CommandTasks.stay(other);
+		c.player().getInventory().clear();
+		c.data.mode = "follow"; // no owner: free to tidy up
+		// Something someone else threw, right by where our log will drop: not ours.
+		var thrown = new net.minecraft.entity.ItemEntity(ctx.getWorld(), ctx.getAbsolute(new Vec3d(9.5, 1, 8.5)).x,
+			ctx.getAbsolute(new Vec3d(9.5, 1, 8.5)).y, ctx.getAbsolute(new Vec3d(9.5, 1, 8.5)).z, new net.minecraft.item.ItemStack(net.minecraft.item.Items.APPLE));
+		thrown.setThrower(other.player().getUuid());
+		ctx.getWorld().spawnEntity(thrown);
+		// Break the log the way a player does (the drop lands where the log was, out of pickup range).
+		c.player().interactionManager.tryBreakBlock(ctx.getAbsolutePos(new BlockPos(9, 1, 9)));
+		var lying = c.leftovers().lying();
+		ctx.assertTrue(lying.size() == 1 && lying.get(0).getStack().isOf(net.minecraft.item.Items.OAK_LOG), "ours: " + lying);
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.OAK_LOG) == 1, "didn't collect its log; " + c.describeActivity()
+				+ ", expected " + c.leftovers().anyExpected() + ", lying " + c.leftovers().lying());
+			cleanup(m, "GtTidy", "GtThrower");
+		});
+	}
+
+	/** Nobody to follow and nothing to do, far from home: it walks home instead of idling there. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "lost_home")
+	public void lostCompanionGoesHome(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtLost");
+		for (int x = -1; x <= 34; x++) {
+			for (int z = -1; z <= 5; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				for (int y = 1; y <= 3; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+		ctx.assertTrue(m.spawn("GtLost", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(1.5, 1, 2.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtLost");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.data.owner = null;
+		c.data.mode = "follow";
+		BlockPos home = ctx.getAbsolutePos(new BlockPos(32, 1, 2));
+		c.memory().setPlace("home", home, c.dimension(), ctx.getWorld().getTime());
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(c.player().getBlockPos().getSquaredDistance(home) < 4 * 4, "not home: at " + c.player().getBlockPos()
+				+ " (home " + home + "); " + c.describeActivity());
+			cleanup(m, "GtLost");
+		});
+	}
+
+	/** Tool prep stays out of sub-steps: logs for a table the iron pickaxe needs don't become an iron axe. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "tool_prep_substep")
+	public void toolPrepSkipsSubSteps(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtFrugal");
+		floor(ctx, 8);
+		ctx.assertTrue(m.spawn("GtFrugal", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtFrugal");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.IRON_INGOT, 3);
+		give(c, net.minecraft.item.Items.STICK, 2);
+		give(c, net.minecraft.item.Items.CRAFTING_TABLE, 1);
+		ctx.assertTrue(com.mcfriends.brain.task.ToolPrep.before(c, "gather logs 1").equals(java.util.List.of("?craft iron_axe 1")), "top-level job may upgrade");
+		c.jobs().pushFront(java.util.List.of("craft iron_pickaxe 1 ~1"));
+		ctx.assertTrue(com.mcfriends.brain.task.ToolPrep.before(c, "gather logs 1").isEmpty(), "sub-step must not spend the pickaxe's iron");
+		c.jobs().clear();
+		give(c, net.minecraft.item.Items.OAK_PLANKS, 8);
+		ctx.assertTrue(com.mcfriends.brain.task.ToolPrep.before(c, "mine iron 3").equals(java.util.List.of("?craft iron_pickaxe 1")), "iron pick for iron");
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.OAK_PLANKS, 8);
+		ctx.assertTrue(com.mcfriends.brain.task.ToolPrep.before(c, "mine iron 3").isEmpty(), "no wooden pickaxe for iron");
+		cleanup(m, "GtFrugal");
+		ctx.complete();
+	}
+
+	/** Sealed in deep under solid rock with the goal above: it digs its way straight up. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "dig_out")
+	public void digsOutOfDeepPocket(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtMole");
+		for (int x = 0; x <= 8; x++) {
+			for (int z = 0; z <= 8; z++) {
+				for (int y = 0; y <= 16; y++) {
+					ctx.setBlockState(x, y, z, Blocks.STONE);
+				}
+				for (int y = 17; y <= 19; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+		ctx.setBlockState(4, 1, 4, Blocks.AIR);
+		ctx.setBlockState(4, 2, 4, Blocks.AIR);
+		ctx.assertTrue(m.spawn("GtMole", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(4.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtMole");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.data.owner = null;
+		c.data.mode = "follow";
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		give(c, net.minecraft.item.Items.COBBLESTONE, 4);
+		BlockPos top = ctx.getAbsolutePos(new BlockPos(6, 17, 6));
+		c.jobs().replace(java.util.List.of("goto " + top.getX() + " " + top.getY() + " " + top.getZ() + " the top"));
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(c.player().getY() >= top.getY() - 0.5, "still down at " + c.player().getBlockPos() + "; " + c.describeActivity());
+			cleanup(m, "GtMole");
+		});
+	}
 }
