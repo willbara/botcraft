@@ -62,6 +62,17 @@ public final class ItemNames {
 		return Registries.ITEM.getId(item).getPath().replace('_', ' ');
 	}
 
+	/** "iron ingot", 3 -> "iron ingots"; leaves mass nouns alone. */
+	public static String plural(String noun, int n) {
+		if (n == 1 || noun.endsWith("s") || noun.matches(".*\\b(sheep|fish|cod|salmon|wood|stone|coal|redstone|lapis|food|beef|pork|mutton|glass|dirt|sand|gravel|cobblestone|iron|gold|copper)$")) {
+			return noun;
+		}
+		if (noun.endsWith("ch") || noun.endsWith("sh") || noun.endsWith("x")) {
+			return noun + "es";
+		}
+		return noun + "s";
+	}
+
 	public static String id(Item item) {
 		return Registries.ITEM.getId(item).getPath();
 	}

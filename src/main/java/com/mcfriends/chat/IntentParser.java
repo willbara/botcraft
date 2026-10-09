@@ -49,6 +49,9 @@ public final class IntentParser {
 	private static final Pattern DEFEND = Pattern.compile(
 		"\\b(defend|protect|guard|cover me|watch my back|help me fight|fight (them|it|this|that)|kill (it|them|that|those|this)|attack)\\b");
 	private static final Pattern GIVE = Pattern.compile("\\b(give|hand|toss|throw|pass|drop) (me|over|it|them|the|your|those|some|all|everything|\\d+)\\b");
+	private static final Pattern HUNT = Pattern.compile(
+		"\\b(hunt(ing)?|go hunting|kill (some |a |an |the |\\d+ |a few )?(cows?|pigs?|sheep|chickens?|rabbits?|animals?)|get (us |me )?(some )?(food|meat|dinner|lunch))\\b");
+	private static final Pattern SMELT = Pattern.compile("\\b(smelt|cook|roast|bake|grill|fry)\\b");
 	private static final Pattern BRING = Pattern.compile("\\b(bring|fetch me|deliver)\\b");
 	private static final Pattern CRAFT = Pattern.compile("\\b(craft|make|build|create)\\b");
 	private static final Pattern MINE = Pattern.compile("\\b(mine|dig|mining|go mining|look for|search for|find)\\b");
@@ -186,6 +189,16 @@ public final class IntentParser {
 			if (!item.isEmpty()) {
 				return new Intent(Intent.Type.GIVE, item, count(text));
 			}
+		}
+		Matcher hunt = HUNT.matcher(text);
+		if (hunt.find()) {
+			String m = hunt.group();
+			String item = m.matches(".*\\b(food|meat|dinner|lunch)\\b.*") ? "food" : phrase(text.substring(hunt.start()).replaceFirst("^(go )?hunt(ing)?( for)?|^kill", ""));
+			return new Intent(Intent.Type.HUNT, item.isEmpty() ? "meat" : item, count(text));
+		}
+		Matcher smelt = SMELT.matcher(text);
+		if (smelt.find()) {
+			return new Intent(Intent.Type.SMELT, phrase(text.substring(smelt.end())), count(text));
 		}
 		Matcher bring = BRING.matcher(text);
 		if (bring.find()) {

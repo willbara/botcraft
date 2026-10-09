@@ -95,13 +95,14 @@ public final class CraftPlanner {
 				return;
 			}
 		}
-		if (isGatherable(item)) {
+		if (isGatherable(item) || (!isTarget && Smelting.smeltable(server, item))) {
+			// Gather/mine it, or smelt it (ingots, glass, stone...): a separate job handles that.
 			missing.merge(item, n, Integer::sum);
 			return;
 		}
 		List<CraftingRecipe> recipes = byOutput.get(item);
 		if (recipes == null || recipes.isEmpty()) {
-			problem = "I don't know how to get " + ItemNames.display(item) + (needsSmelting(item) ? " (it needs smelting)" : "");
+			problem = "I don't know how to get " + ItemNames.display(item);
 			return;
 		}
 		if (depth > MAX_DEPTH) {
@@ -130,11 +131,6 @@ public final class CraftPlanner {
 		crafts.add(new Craft(recipe, item, times));
 		int surplus = times * perCraft - n;
 		have.merge(item, surplus + (isTarget ? n : 0), Integer::sum);
-	}
-
-	private static boolean needsSmelting(Item item) {
-		String id = ItemNames.id(item);
-		return id.endsWith("_ingot") || id.equals("glass") || id.equals("stone") || id.equals("charcoal") || id.startsWith("cooked_") || id.equals("smooth_stone");
 	}
 
 	/** Prefer a recipe whose ingredients we can already cover; otherwise the simplest one. */

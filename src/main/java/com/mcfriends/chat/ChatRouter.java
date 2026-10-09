@@ -150,6 +150,30 @@ public final class ChatRouter {
 						jobs.addAll(specs);
 					}
 				}
+				case HUNT -> {
+					String what = intent.item();
+					int n = intent.count() < 0 ? 3 : intent.count();
+					if (what.equals("food")) {
+						jobs.add("hunt meat " + n);
+						jobs.add("smelt food " + n);
+					} else if (com.mcfriends.knowledge.Animals.byWord(what) == null) {
+						vars.put("reason", "I don't know how to hunt " + what);
+						speech.reply("cant.do", sender, vars);
+						error = vars.get("reason");
+					} else {
+						jobs.add("hunt " + what.split(" ")[0] + " " + n);
+					}
+				}
+				case SMELT -> {
+					String spec = smeltSpec(c, intent);
+					if (spec == null) {
+						vars.put("reason", "I don't know how to smelt " + (intent.item().isEmpty() ? "that" : intent.item()));
+						speech.reply("cant.do", sender, vars);
+						error = vars.get("reason");
+					} else {
+						jobs.add(spec);
+					}
+				}
 				case GIVE -> {
 					String what = giveWhat(intent.item());
 					if (what == null) {
@@ -255,21 +279,45 @@ public final class ChatRouter {
 				return "I don't know what " + phrase + " is";
 			}
 			int count = n < 0 ? 1 : n;
-			if (new ItemStack(item).isIn(ItemTags.LOGS)) {
-				out.add("gather logs " + count);
-			} else if (OreKind.byDrop(item) != null) {
-				out.add("mine " + OreKind.byDrop(item).word + " " + count);
-			} else if (CraftPlanner.craftable(c.server, item)) {
-				out.add("craft " + ItemNames.id(item) + " " + count);
-			} else {
+			String spec = Jobs.sourceSpec(c, item, count);
+			if (spec == null) {
 				return "I don't know how to get " + ItemNames.display(item) + " yet";
 			}
+			out.add(spec);
 			deliver = "deliver " + ItemNames.id(item) + " " + count;
 		}
 		if (intent.type() == Intent.Type.BRING) {
 			out.add(deliver);
 		}
 		return null;
+	}
+
+	/** "smelt 5 iron" -> iron ingots; "cook the beef" / "cook food" -> cook raw meat. */
+	@Nullable
+	static String smeltSpec(Companion c, Intent intent) {
+		String phrase = intent.item().trim();
+		int n = intent.count();
+		if (phrase.isEmpty() || phrase.matches("(the |some |our |my )?(food|meat|dinner|lunch|it|them|everything)")) {
+			return "smelt food " + (n < 0 ? 8 : n);
+		}
+		OreKind ore = OreKind.byWord(phrase);
+		Item item;
+		if (ore != null && ore != OreKind.STONE && ore != OreKind.COAL && ore.drops.size() == 1) {
+			item = ItemNames.resolve(ore.word + " ingot");
+		} else {
+			item = ItemNames.resolve(phrase);
+		}
+		if (item == null) {
+			return null;
+		}
+		var asInput = com.mcfriends.knowledge.Smelting.forInput(c.server, new ItemStack(item));
+		if (asInput != null && !com.mcfriends.knowledge.Smelting.smeltable(c.server, item)) {
+			item = asInput.getOutput(c.server.getRegistryManager()).getItem(); // "cook beef" -> cooked beef
+		}
+		if (!com.mcfriends.knowledge.Smelting.smeltable(c.server, item)) {
+			return null;
+		}
+		return "smelt " + ItemNames.id(item) + " " + (n < 0 ? 4 : n);
 	}
 
 	/** Deliverable key for a give request, or null if it's something we can't name. */

@@ -291,6 +291,12 @@ public class Companion {
 		if (task instanceof CraftTask cr) {
 			return "made " + (cr.made() > 1 ? cr.made() + " " : "a ") + ItemNames.display(cr.item());
 		}
+		if (task instanceof com.mcfriends.brain.task.SmeltTask sm) {
+			return (sm.output() == null ? "cooked " : "smelted ") + sm.made() + " " + (sm.output() == null ? "food" : ItemNames.display(sm.output()));
+		}
+		if (task instanceof com.mcfriends.brain.task.HuntTask h) {
+			return "hunted " + h.kills() + (h.kills() == 1 ? " animal" : " animals");
+		}
 		if (task instanceof DeliverTask d) {
 			return "gave you " + d.given() + " " + d.label();
 		}

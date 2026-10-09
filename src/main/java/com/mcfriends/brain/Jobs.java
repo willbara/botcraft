@@ -6,6 +6,11 @@ import com.mcfriends.brain.task.CraftTask;
 import com.mcfriends.brain.task.DeliverTask;
 import com.mcfriends.brain.task.GatherLogsTask;
 import com.mcfriends.brain.task.GoToTask;
+import com.mcfriends.brain.task.HuntTask;
+import com.mcfriends.brain.task.SmeltTask;
+import com.mcfriends.knowledge.Animals;
+import com.mcfriends.knowledge.CraftPlanner;
+import com.mcfriends.knowledge.Smelting;
 import com.mcfriends.brain.task.MineTask;
 import com.mcfriends.brain.task.SleepTask;
 import com.mcfriends.knowledge.ItemNames;
@@ -22,6 +27,7 @@ import java.util.function.Predicate;
  * Job specs: short persisted strings describing a job, turned into tasks when the job starts.
  * <pre>
  *   gather logs N        mine &lt;ore|stone&gt; N      craft &lt;item_id&gt; N
+ *   smelt &lt;item_id|food&gt; N                       hunt &lt;animal|meat&gt; N
  *   deliver &lt;logs|ore|item_id|all&gt; N             goto X Y Z [label]
  *   home                 sleep
  * </pre>
@@ -63,6 +69,18 @@ public final class Jobs {
 				case "sleep" -> {
 					return new SleepTask(c);
 				}
+				case "smelt" -> {
+					String what = w.length > 1 ? w[1] : "food";
+					Item it = what.equals("food") ? null : ItemNames.resolve(what.replace('_', ' '));
+					if (it == null && !what.equals("food")) {
+						return null;
+					}
+					return new SmeltTask(c, it, num(w, 2, 1));
+				}
+				case "hunt" -> {
+					var species = Animals.byWord(w.length > 1 ? w[1] : "meat");
+					return species == null ? null : new HuntTask(c, species, num(w, 2, 3));
+				}
 				default -> {
 					return null;
 				}
@@ -84,14 +102,61 @@ public final class Jobs {
 			case "craft" -> {
 				int n = num(w, 2, 1);
 				String item = w.length > 1 ? w[1].replace('_', ' ') : "something";
-				yield "craft " + (n == 1 ? "a " + item : n + " " + item);
+				yield "craft " + (n == 1 ? (item.matches("^[aeiou].*") ? "an " : "a ") + item : n + " " + ItemNames.plural(item, n));
 			}
 			case "deliver" -> "bring you " + label(w.length > 1 ? w[1] : "logs");
 			case "goto" -> "go " + (w.length > 4 ? String.join(" ", java.util.Arrays.copyOfRange(w, 4, w.length)) : "there");
 			case "home" -> "go home";
 			case "sleep" -> "go to bed";
+			case "smelt" -> {
+				String what = w.length > 1 ? w[1].replace('_', ' ') : "food";
+				int n = num(w, 2, 1);
+				if (what.equals("food")) {
+					yield "cook some food";
+				}
+				if (what.startsWith("cooked ")) {
+					yield "cook the " + what.substring(7);
+				}
+				yield "smelt " + n + " " + ItemNames.plural(what, n);
+			}
+			case "hunt" -> {
+				String what = w.length > 1 ? w[1].replaceAll("s$", "") : "meat";
+				int n = num(w, 2, 3);
+				if (what.equals("meat")) {
+					yield "hunt for food";
+				}
+				yield n == 1 ? "hunt a " + what : "hunt " + n + " " + ItemNames.plural(what, n);
+			}
 			default -> spec;
 		};
+	}
+
+	/**
+	 * The job that gets {@code n} of an item: chop logs, mine ores/stone, smelt ingots/glass/
+	 * cooked food, hunt for raw meat, craft anything with a recipe. Null if we don't know how.
+	 */
+	@Nullable
+	public static String sourceSpec(Companion c, Item item, int n) {
+		ItemStack stack = new ItemStack(item);
+		if (stack.isIn(net.minecraft.registry.tag.ItemTags.LOGS)) {
+			return "gather logs " + n;
+		}
+		OreKind ore = OreKind.byDrop(item);
+		if (ore != null) {
+			return "mine " + ore.word + " " + n;
+		}
+		if (Animals.RAW_MEAT.contains(item)) {
+			String animal = item == net.minecraft.item.Items.BEEF ? "cow" : item == net.minecraft.item.Items.PORKCHOP ? "pig"
+				: item == net.minecraft.item.Items.MUTTON ? "sheep" : item == net.minecraft.item.Items.CHICKEN ? "chicken" : "meat";
+			return "hunt " + animal + " " + n;
+		}
+		if (Smelting.smeltable(c.server, item)) {
+			return "smelt " + ItemNames.id(item) + " " + n;
+		}
+		if (CraftPlanner.craftable(c.server, item)) {
+			return "craft " + ItemNames.id(item) + " " + n;
+		}
+		return null;
 	}
 
 	static String base(String spec) {
