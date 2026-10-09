@@ -185,6 +185,7 @@ public class Brain {
 					}
 					interrupts.push(new Entry(best, t));
 					t.start();
+					c.onInterruptStarted(best, t);
 				}
 			}
 			return;

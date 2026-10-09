@@ -30,7 +30,15 @@ public class CompanionPlayer extends ServerPlayerEntity {
 		// Server-side collision treats unloaded chunks as empty, so a companion restored on a
 		// fresh server would fall through the ground before its chunks finish loading.
 		if (!this.isRegionUnloaded()) {
+			double x = this.getX();
+			double y = this.getY();
+			double z = this.getZ();
 			this.playerTick();
+			// Walking/sprinting/swimming exhaustion and stats normally come from the client's
+			// movement packets (ServerPlayNetworkHandler#onPlayerMove); apply them for our own movement.
+			if (!this.hasVehicle()) {
+				this.increaseTravelMotionStats(this.getX() - x, this.getY() - y, this.getZ() - z);
+			}
 		}
 	}
 

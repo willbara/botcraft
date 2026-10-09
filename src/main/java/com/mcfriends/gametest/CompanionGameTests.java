@@ -249,4 +249,31 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtCoward");
 		});
 	}
+
+	/** Milestone 5: a chat order is parsed, obeyed and acknowledged; low health triggers a remark. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 300, batchId = "chat")
+	public void chatOrdersAndEvents(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtTalker", "GtBoss");
+		flatArena(ctx, 8);
+		ctx.assertTrue(m.spawn("GtBoss", "sunny", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(6.5, 1, 4.5)), 90.0F) == null, "boss spawn");
+		ctx.assertTrue(m.spawn("GtTalker", "makena", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(1.5, 1, 4.5)), -90.0F) == null, "talker spawn");
+		Companion boss = m.byName("GtBoss");
+		Companion talker = m.byName("GtTalker");
+		com.mcfriends.chat.CommandTasks.stay(boss);
+		com.mcfriends.chat.CommandTasks.stay(talker);
+		talker.data.owner = boss.player().getUuid();
+		talker.data.ownerName = "GtBoss";
+		talker.data.chattiness = 1.0F;
+		var parsed = com.mcfriends.chat.IntentParser.parse("GtTalker, follow me!", java.util.List.of("GtTalker", "GtBoss"));
+		ctx.assertTrue(parsed.addressed().equals(java.util.List.of("GtTalker")), "addressed " + parsed.addressed());
+		talker.hear(boss.player(), parsed.intent());
+		ctx.runAtTick(120, () -> talker.player().setHealth(4.0F));
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue("follow".equals(talker.data.mode), "mode " + talker.data.mode);
+			ctx.assertTrue(talker.speech().spokenKeys().contains("ack.follow"), "said " + talker.speech().spokenKeys());
+			ctx.assertTrue(talker.speech().spokenKeys().contains("event.low_health"), "said " + talker.speech().spokenKeys());
+			cleanup(m, "GtTalker", "GtBoss");
+		});
+	}
 }
