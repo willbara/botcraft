@@ -238,10 +238,10 @@ public class SmeltTask extends Task {
 		BlockPos spot = Spots.placeSpot(c, badSpots);
 		if (spot == null) {
 			// Cramped (on a pillar, in leaves...): step out somewhere more open and try again.
-			if (phaseTicks % 60 == 20 && relocations++ < 3) {
-				c.nav().moveTo(com.mcfriends.nav.Goal.near(p.getBlockPos().add(random.nextInt(9) - 4, 0, random.nextInt(9) - 4), 1.5), false);
+			if (phaseTicks >= 20 && !c.nav().isBusy() && relocations++ < 3) {
+				c.nav().moveTo(com.mcfriends.nav.Goal.near(Spots.roomySpot(c, random), 1.5), false);
 			}
-			return phaseTicks > 60 * 4 ? fail("no room to put down a furnace") : Status.RUNNING;
+			return phaseTicks > 20 * 40 ? fail("no room to put down a furnace") : Status.RUNNING;
 		}
 		if (c.actions().placeBlock(spot, s -> s.isOf(Items.FURNACE))) {
 			furnace = spot;
@@ -252,7 +252,12 @@ public class SmeltTask extends Task {
 			AiLog.log(c.name(), "can't place a furnace at {} ({}), trying elsewhere", spot.toShortString(), p.getWorld().getBlockState(spot).getBlock());
 			badSpots.add(spot);
 			if (badSpots.size() > 6) {
-				return fail("couldn't place a furnace");
+				if (relocations++ >= 3) {
+					return fail("couldn't place a furnace");
+				}
+				// Nothing works around here: try again from somewhere else.
+				badSpots.clear();
+				c.nav().moveTo(com.mcfriends.nav.Goal.near(Spots.roomySpot(c, random), 1.5), false);
 			}
 		}
 		return Status.RUNNING;

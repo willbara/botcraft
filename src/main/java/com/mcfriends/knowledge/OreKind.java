@@ -16,15 +16,15 @@ import java.util.function.Predicate;
 
 /** Things a companion can mine, what they drop, which pickaxe they need and where to look. */
 public enum OreKind {
-	STONE("stone", null, Set.of(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE), Blocks.STONE, "wooden_pickaxe", Integer.MAX_VALUE),
-	COAL("coal", BlockTags.COAL_ORES, Set.of(Items.COAL), Blocks.COAL_ORE, "wooden_pickaxe", 96),
-	COPPER("copper", BlockTags.COPPER_ORES, Set.of(Items.RAW_COPPER), Blocks.COPPER_ORE, "stone_pickaxe", 64),
-	IRON("iron", BlockTags.IRON_ORES, Set.of(Items.RAW_IRON), Blocks.IRON_ORE, "stone_pickaxe", 40),
-	LAPIS("lapis", BlockTags.LAPIS_ORES, Set.of(Items.LAPIS_LAZULI), Blocks.LAPIS_ORE, "stone_pickaxe", 16),
-	GOLD("gold", BlockTags.GOLD_ORES, Set.of(Items.RAW_GOLD), Blocks.GOLD_ORE, "iron_pickaxe", 16),
-	REDSTONE("redstone", BlockTags.REDSTONE_ORES, Set.of(Items.REDSTONE), Blocks.REDSTONE_ORE, "iron_pickaxe", 0),
-	DIAMOND("diamond", BlockTags.DIAMOND_ORES, Set.of(Items.DIAMOND), Blocks.DIAMOND_ORE, "iron_pickaxe", -40),
-	EMERALD("emerald", BlockTags.EMERALD_ORES, Set.of(Items.EMERALD), Blocks.EMERALD_ORE, "iron_pickaxe", 200);
+	STONE("stone", null, Set.of(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE), Blocks.STONE, "wooden_pickaxe", Integer.MAX_VALUE, 64),
+	COAL("coal", BlockTags.COAL_ORES, Set.of(Items.COAL), Blocks.COAL_ORE, "wooden_pickaxe", 96, 48),
+	COPPER("copper", BlockTags.COPPER_ORES, Set.of(Items.RAW_COPPER), Blocks.COPPER_ORE, "stone_pickaxe", 64, 48),
+	IRON("iron", BlockTags.IRON_ORES, Set.of(Items.RAW_IRON), Blocks.IRON_ORE, "stone_pickaxe", 40, 16),
+	LAPIS("lapis", BlockTags.LAPIS_ORES, Set.of(Items.LAPIS_LAZULI), Blocks.LAPIS_ORE, "stone_pickaxe", 16, 0),
+	GOLD("gold", BlockTags.GOLD_ORES, Set.of(Items.RAW_GOLD), Blocks.GOLD_ORE, "iron_pickaxe", 16, -16),
+	REDSTONE("redstone", BlockTags.REDSTONE_ORES, Set.of(Items.REDSTONE), Blocks.REDSTONE_ORE, "iron_pickaxe", 0, -50),
+	DIAMOND("diamond", BlockTags.DIAMOND_ORES, Set.of(Items.DIAMOND), Blocks.DIAMOND_ORE, "iron_pickaxe", -40, -58),
+	EMERALD("emerald", BlockTags.EMERALD_ORES, Set.of(Items.EMERALD), Blocks.EMERALD_ORE, "iron_pickaxe", 200, 120);
 
 	public final String word;
 	@Nullable
@@ -35,14 +35,22 @@ public enum OreKind {
 	public final String pickaxe;
 	/** Dig down when exploring above this Y (ores are more common below it). */
 	public final int searchBelowY;
+	/** Where it is most common: caves near this depth are preferred, staircases head here. */
+	public final int bestY;
 
-	OreKind(String word, @Nullable TagKey<Block> tag, Set<Item> drops, Block sample, String pickaxe, int searchBelowY) {
+	OreKind(String word, @Nullable TagKey<Block> tag, Set<Item> drops, Block sample, String pickaxe, int searchBelowY, int bestY) {
 		this.word = word;
 		this.tag = tag;
 		this.drops = drops;
 		this.sample = sample;
 		this.pickaxe = pickaxe;
 		this.searchBelowY = searchBelowY;
+		this.bestY = bestY;
+	}
+
+	/** Deep ores worth travelling down for. */
+	public boolean deep() {
+		return bestY < 10;
 	}
 
 	public Predicate<BlockState> blocks() {

@@ -100,12 +100,16 @@ Item names are resolved against the game. Wood words mean chopping, ores and sto
 - **Mining**, in this order:
   1. ore it can already see (exposed in caves, ravines or cliffs), including spots it or a friend remembers;
   2. buried ore within about 6 blocks, which is quicker to dig to;
-  3. otherwise it **finds a cave**, goes in and looks again;
-  4. only then nearby buried ore, or a staircase dug toward the ore's depth.
+  3. otherwise it **finds a cave**, goes in and looks again. For deep ores (diamonds, redstone, gold, lapis) it searches wider and prefers caves near the ore's depth, even if they're further away;
+  4. if there's no good cave, it **staircases down** to the ore's depth, then **strip-mines** forward, looking again every 16 blocks;
+  5. once at the right depth, it digs straight to any buried ore it senses nearby.
 
+  It keeps at it for up to 25 minutes on deep ores before giving up.
   Natural terrain only, never next to fluids, never through walls.
 - **Crafting and smelting**: a recipe planner over the server's own recipes. Missing materials become gather, mine, hunt or smelt jobs, so "craft an iron pickaxe" works from nothing. It uses a free furnace (never one holding your items) or places its own.
-- **Hunting**: adult, unnamed, un-leashed, not-penned animals only, and never the last pair of a species nearby. Raw meat gets cooked.
+- **Hunting**: adult, unnamed, un-leashed, not-penned animals only, and never the last pair of a species nearby. Raw meat gets cooked. With nothing in range it **picks a direction** (away from where others are working) and walks about 40 blocks to look again, turning every other trip, up to 5 trips.
+- **Spreading out**: each companion claims the tree, ore, cave or animal it's working on. When choosing, spots near someone else's claim, or near any player or companion standing there, are skipped while there's another choice, so they don't get in each other's (or your) way.
+- **Tools first**: before chopping, mining or hunting, it checks for the right tool (axe, pickaxe, sword). If it can make or upgrade one from what it carries, up to iron, it does so first, smelting carried raw iron if it has fuel and a furnace (or the cobblestone for one). It never spends diamonds on tools; those are usually what you asked for. Mining without any usable pickaxe still asks a friend for one, then gathers the materials. If a tool step fails, it gets on with the job anyway.
 - **Helping each other**: when a job is missing something worth a trip (coal, ores or ingots, gems, wool, a pickaxe, food), a companion asks the nearest *idle or free-roaming* friend who can spare it ("Hey Ann, could you spare 3 coal?"). The friend brings it over and goes back to what they were doing.
   - Cheap things (cobblestone, logs, dirt, planks, sticks) it always gets itself.
   - At most one request every 3 minutes, and the same item at most every 10 minutes.
@@ -209,7 +213,7 @@ Interrupt objectives (fight, flee, retreat, eat) are pushed on top of the stack 
 ## Development
 
 - `./gradlew build`: compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest`: runs a headless server with 26 GameTests covering movement, pathfinding (shafts, ladders, parkour), gathering, mining, crafting, smelting, hunting, combat, free mode, shelter, chat, banter and sharing. It resets its world on every run.
+- `./gradlew runGametest`: runs a headless server with 31 GameTests covering movement, pathfinding (shafts, ladders, parkour, diving), gathering, mining, crafting, smelting, hunting, combat, free mode, shelter, chat, banter, sharing, spreading out, tool prep and searching for animals. It resets its world on every run.
 - `./gradlew runServer`: dev dedicated server in `run/server`. Type commands into the console.
 - To see AI decisions, set `verboseAiLogging: true` and grep `latest.log` for `[<name>]`.
 

@@ -177,17 +177,27 @@ public final class Jobs {
 		return null;
 	}
 
+	/** The spec without markers: a leading "?" (optional job), trailing "~N" (deferrals) and "!" (tools checked). */
 	static String base(String spec) {
-		return spec.trim().replaceAll("\\s+~\\d+$", "");
+		String s = spec.trim();
+		if (s.startsWith("?")) {
+			s = s.substring(1);
+		}
+		return s.replaceAll("(\\s+(~\\d+|!))+$", "");
+	}
+
+	/** Optional jobs (tool prep): failing one doesn't sink the plan. */
+	public static boolean optional(String spec) {
+		return spec != null && spec.trim().startsWith("?");
 	}
 
 	static int attempt(String spec) {
-		java.util.regex.Matcher m = java.util.regex.Pattern.compile("~(\\d+)$").matcher(spec.trim());
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("~(\\d+)(\\s+!)?$").matcher(spec.trim());
 		return m.find() ? Integer.parseInt(m.group(1)) : 0;
 	}
 
 	static String withAttempt(String spec, int attempt) {
-		return base(spec) + " ~" + attempt;
+		return (optional(spec) ? "?" : "") + base(spec) + " ~" + attempt;
 	}
 
 	private static int num(String[] w, int i, int def) {

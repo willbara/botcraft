@@ -60,4 +60,11 @@ public class CompanionPlayer extends ServerPlayerEntity {
 	protected void fall(double heightDifference, boolean onGround, BlockState state, BlockPos landedPosition) {
 		this.handleFall(0.0, heightDifference, 0.0, onGround);
 	}
+
+	/** Swim downward, like holding sneak in water (vanilla does this on the client only). */
+	public void swimDown() {
+		if (isTouchingWater() && shouldSwimInFluids()) {
+			knockDownwards();
+		}
+	}
 }

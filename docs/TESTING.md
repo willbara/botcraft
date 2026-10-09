@@ -132,5 +132,16 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] Typos and shorthand: "bob folow me", "bob mien some coal", "bob where r u".
 - [ ] "Bob, do your own thing", then any order. He stops his own plans and follows.
 
+### 14. Spreading out, persistence, tools
+- [ ] Three companions near one small wood: "everyone get 8 logs". Each takes a different tree where it can.
+- [ ] Stand by an exposed ore vein, then tell a companion to mine that ore. It prefers another vein if there is one.
+- [ ] "Bob, mine 3 diamonds" from the surface with an iron pickaxe. He heads for a deep cave (or staircases down), strip-mines at depth and keeps looking for well over the old 5 minutes.
+- [ ] "Bob, hunt 3 cows" with no cows nearby. He says nothing's here, walks off in one direction, and keeps looking before giving up.
+- [ ] Give Bob a wooden pickaxe, 3 cobblestone and 2 sticks, then "mine some coal". He makes a stone pickaxe first.
+- [ ] Give Bob a stone pickaxe, 3 raw iron, coal and a furnace, then "mine some iron". He smelts the iron and makes an iron pickaxe first.
+- [ ] Give Bob 3 diamonds and sticks, then "get 8 logs". He does **not** make a diamond axe.
+- [ ] Put a companion on a tree top with a furnace to place. It climbs down to solid ground instead of trying to place it on leaves.
+- [ ] A path down through deep water: the companion dives instead of bobbing at the surface.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.

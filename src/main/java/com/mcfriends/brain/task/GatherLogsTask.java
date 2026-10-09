@@ -112,6 +112,12 @@ public class GatherLogsTask extends Task {
 	}
 
 	@Override
+	protected void onStop() {
+		com.mcfriends.brain.Claims.release(c);
+		super.onStop();
+	}
+
+	@Override
 	protected void onStart(boolean resumed) {
 		// After an interruption: go back to the tree we were on (if any), otherwise look for one.
 		if (treeBase != null && p().getWorld().getBlockState(treeBase).isIn(BlockTags.LOGS) && pillar.isEmpty()) {
@@ -220,6 +226,7 @@ public class GatherLogsTask extends Task {
 				treeBase = treeChoices.get(Math.max(0, i));
 				locked = true;
 				CLAIMED.put(treeBase, c.name());
+				com.mcfriends.brain.Claims.claim(c, treeBase);
 				AiLog.log(c.name(), "gather: locked onto tree at {} (of {})", treeBase.toShortString(), treeChoices.size());
 			}
 		}
@@ -555,7 +562,8 @@ public class GatherLogsTask extends Task {
 			while (world.getBlockState(base.down()).isIn(BlockTags.LOGS) && from.getY() - base.getY() < 12) {
 				base = base.down();
 			}
-			if (!seenBases.add(base) || blacklist.containsKey(base) || claimedByOther(base)) {
+			if (!seenBases.add(base) || blacklist.containsKey(base) || claimedByOther(base)
+				|| com.mcfriends.brain.Claims.crowded(c, base, 5)) {
 				continue;
 			}
 			if (!new Terrain(world).support(base.down())) {

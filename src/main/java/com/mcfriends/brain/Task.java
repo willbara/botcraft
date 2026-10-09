@@ -112,7 +112,18 @@ public abstract class Task {
 		if (attempt >= 3) {
 			return fail("I keep going in circles");
 		}
-		java.util.List<String> list = new java.util.ArrayList<>(prerequisites);
+		java.util.List<String> list = new java.util.ArrayList<>();
+		if (Jobs.optional(self)) {
+			// Optional prep only sets up a table or furnace; anything bigger isn't "easy" any more.
+			for (String pre : prerequisites) {
+				if (!pre.startsWith("craft crafting_table") && !pre.startsWith("craft furnace")) {
+					return fail("not worth the trouble right now");
+				}
+				list.add("?" + pre);
+			}
+		} else {
+			list.addAll(prerequisites);
+		}
 		list.add(Jobs.withAttempt(self, attempt + 1));
 		c.jobs().pushFront(list);
 		AiLog.log(c.name(), "{} needs {} first", name(), prerequisites);

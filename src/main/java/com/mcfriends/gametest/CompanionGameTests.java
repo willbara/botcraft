@@ -754,4 +754,150 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtGiver2", "GtLedge");
 		});
 	}
+
+	/** Spreading out: a spot someone else has claimed (or is standing at) is avoided when there's another choice. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "claims")
+	public void spreadsOutFromOthers(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtClaimA", "GtClaimB");
+		floor(ctx, 16);
+		ctx.assertTrue(m.spawn("GtClaimA", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(1.5, 1, 1.5)), 0.0F) == null, "spawn a");
+		ctx.assertTrue(m.spawn("GtClaimB", "ari", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(14.5, 1, 14.5)), 0.0F) == null, "spawn b");
+		Companion a = m.byName("GtClaimA");
+		Companion b = m.byName("GtClaimB");
+		com.mcfriends.chat.CommandTasks.stay(a);
+		com.mcfriends.chat.CommandTasks.stay(b);
+		BlockPos claimed = ctx.getAbsolutePos(new BlockPos(8, 1, 1));
+		BlockPos byA = ctx.getAbsolutePos(new BlockPos(2, 1, 2));
+		BlockPos free = ctx.getAbsolutePos(new BlockPos(8, 1, 14));
+		com.mcfriends.brain.Claims.claim(a, claimed);
+		ctx.assertTrue(com.mcfriends.brain.Claims.crowded(b, claimed, 5), "b should see a's claim");
+		ctx.assertTrue(com.mcfriends.brain.Claims.crowded(b, byA, 5), "b should avoid where a stands");
+		ctx.assertTrue(!com.mcfriends.brain.Claims.crowded(a, claimed, 5), "a's own claim is fine for a");
+		var picks = com.mcfriends.brain.Claims.spreadOut(b, java.util.List.of(claimed, byA, free), x -> x, 5);
+		ctx.assertTrue(picks.equals(java.util.List.of(free)), "picks " + picks);
+		var all = com.mcfriends.brain.Claims.spreadOut(b, java.util.List.of(claimed), x -> x, 5);
+		ctx.assertTrue(all.size() == 1, "nothing free: share rather than give up");
+		com.mcfriends.brain.Claims.release(a);
+		ctx.assertTrue(!com.mcfriends.brain.Claims.crowded(b, claimed, 5), "released");
+		cleanup(m, "GtClaimA", "GtClaimB");
+		ctx.complete();
+	}
+
+	/** Tool prep: easy upgrades from what's carried (raw iron gets smelted), never spending diamonds. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "tool_prep_plan")
+	public void toolPrepPlansUpgrades(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtPrep");
+		floor(ctx, 8);
+		ctx.assertTrue(m.spawn("GtPrep", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtPrep");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		var inv = c.player().getInventory();
+		inv.clear();
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		give(c, net.minecraft.item.Items.RAW_IRON, 3);
+		give(c, net.minecraft.item.Items.COAL, 2);
+		give(c, net.minecraft.item.Items.STICK, 2);
+		give(c, net.minecraft.item.Items.FURNACE, 1);
+		var prep = com.mcfriends.brain.task.ToolPrep.before(c, "mine diamond 3");
+		ctx.assertTrue(prep.equals(java.util.List.of("?smelt iron_ingot 3", "?craft iron_pickaxe 1")), "iron upgrade: " + prep);
+		inv.clear();
+		give(c, net.minecraft.item.Items.WOODEN_AXE, 1);
+		give(c, net.minecraft.item.Items.DIAMOND, 3);
+		give(c, net.minecraft.item.Items.COBBLESTONE, 3);
+		give(c, net.minecraft.item.Items.STICK, 2);
+		prep = com.mcfriends.brain.task.ToolPrep.before(c, "gather logs 8");
+		ctx.assertTrue(prep.equals(java.util.List.of("?craft stone_axe 1")), "stone, not diamond: " + prep);
+		inv.clear();
+		give(c, net.minecraft.item.Items.IRON_SWORD, 1);
+		give(c, net.minecraft.item.Items.COBBLESTONE, 3);
+		give(c, net.minecraft.item.Items.STICK, 2);
+		prep = com.mcfriends.brain.task.ToolPrep.before(c, "hunt cow 2");
+		ctx.assertTrue(prep.isEmpty(), "already has a good sword: " + prep);
+		ctx.assertTrue(com.mcfriends.brain.task.ToolPrep.before(c, "goto 0 0 0 there").isEmpty(), "no tool for walking");
+		cleanup(m, "GtPrep");
+		ctx.complete();
+	}
+
+	/** Tool prep end to end: told to mine with a wooden pickaxe and cobblestone on hand, it upgrades first. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "tool_prep_run")
+	public void upgradesPickaxeBeforeMining(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtUpgrade");
+		flatArena(ctx, 8);
+		ctx.assertTrue(m.spawn("GtUpgrade", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(4.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtUpgrade");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.WOODEN_PICKAXE, 1);
+		give(c, net.minecraft.item.Items.COBBLESTONE, 3);
+		give(c, net.minecraft.item.Items.STICK, 2);
+		give(c, net.minecraft.item.Items.CRAFTING_TABLE, 1);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "mine 2 stone", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.STONE_PICKAXE) == 1, "no stone pickaxe; " + c.describeActivity()
+				+ "; queued " + c.jobs().pending());
+			ctx.assertTrue(count(c, net.minecraft.item.Items.COBBLESTONE) >= 2, "mined after upgrading; " + c.describeActivity());
+			cleanup(m, "GtUpgrade");
+		});
+	}
+
+	/** Hunting with nothing in sight: it picks a direction and goes looking instead of giving up. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 3600, batchId = "hunt_search")
+	public void huntSearchesForAnimals(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtTracker");
+		for (int x = -50; x <= 56; x++) {
+			for (int z = -50; z <= 56; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.GRASS_BLOCK);
+				for (int y = 1; y <= 4; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+		int[][] herds = {{49, 3}, {-43, 3}, {3, 49}, {3, -43}};
+		for (int[] h : herds) {
+			for (int i = 0; i < 3; i++) {
+				ctx.spawnEntity(net.minecraft.entity.EntityType.COW, new BlockPos(h[0] + i, 1, h[1])).setPersistent();
+			}
+		}
+		ctx.assertTrue(m.spawn("GtTracker", "zuri", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtTracker");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_SWORD, 1);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "hunt 1 cow", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.BEEF) >= 1 || count(c, net.minecraft.item.Items.LEATHER) >= 1,
+				"found no cow; at " + c.player().getBlockPos() + "; " + c.describeActivity() + "; queued " + c.jobs().pending());
+			cleanup(m, "GtTracker");
+		});
+	}
+
+	/** Swimming down: a path that goes to the bottom of a deep pool dives instead of bobbing at the top. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 400, batchId = "nav_dive")
+	public void divesToPoolBottom(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtDiver");
+		for (int x = 0; x <= 6; x++) {
+			for (int z = 0; z <= 6; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				boolean wall = x == 0 || z == 0 || x == 6 || z == 6;
+				for (int y = 1; y <= 9; y++) {
+					ctx.setBlockState(x, y, z, wall ? (y <= 7 ? Blocks.STONE : Blocks.AIR) : y <= 7 ? Blocks.WATER : Blocks.AIR);
+				}
+			}
+		}
+		ctx.assertTrue(m.spawn("GtDiver", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 7.5, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtDiver");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		BlockPos bottom = ctx.getAbsolutePos(new BlockPos(3, 1, 3));
+		c.jobs().replace(java.util.List.of("goto " + bottom.getX() + " " + bottom.getY() + " " + bottom.getZ() + " the bottom"));
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(c.player().getY() <= bottom.getY() + 1.6, "still at y " + c.player().getY() + " (bottom " + bottom.getY() + "); "
+				+ c.describeActivity());
+			cleanup(m, "GtDiver");
+		});
+	}
 }
