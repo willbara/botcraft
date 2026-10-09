@@ -6,6 +6,7 @@ public enum Objective {
 	FLEE(true),
 	RETREAT(true),
 	EAT(true),
+	SLEEP(false),
 	WORK(false),
 	FOLLOW(false),
 	STAY(false),

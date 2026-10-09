@@ -28,7 +28,7 @@ public class PathFinder {
 	private static final int MAX_WATER_FALL = 12;
 	private static final double HEURISTIC_WEIGHT = 1.15; // slightly greedy: faster, near-optimal
 
-	public record Options(boolean allowBreak, boolean allowBridge, int maxNodes, int maxRange) {
+	public record Options(boolean allowBreak, boolean allowBridge, boolean allowDig, int maxNodes, int maxRange) {
 	}
 
 	private static final class Node {
@@ -39,6 +39,7 @@ public class PathFinder {
 		Node parent;
 		MoveType type;
 		BlockPos aux;
+		List<BlockPos> breaks = List.of();
 		boolean closed;
 
 		Node(BlockPos pos, double g, double h) {
@@ -138,7 +139,7 @@ public class PathFinder {
 		List<PathStep> steps = new ArrayList<>();
 		for (Node n = end; n != null && n != startNode; n = n.parent) {
 			double floor = n.type == MoveType.BRIDGE || n.type == MoveType.BREAK ? n.pos.getY() : terrain.floorY(n.pos);
-			steps.add(new PathStep(n.pos, n.type, floor, n.aux));
+			steps.add(new PathStep(n.pos, n.type, floor, n.aux, n.breaks));
 		}
 		Collections.reverse(steps);
 		return steps;
@@ -221,8 +222,30 @@ public class PathFinder {
 					c = Double.POSITIVE_INFINITY;
 				}
 				if (c < Double.POSITIVE_INFINITY) {
-					add(cur, t, base + c, MoveType.BREAK, null);
+					add(cur, t, base + c, MoveType.BREAK, null, blocked(t.up(), t));
 				}
+			}
+
+			// Dig mode: tunnel up one level (a staircase), clearing head room as needed.
+			if (options.allowDig() && !diag && terrain.kind(t) == Terrain.SOLID && terrain.support(t)) {
+				BlockPos u = t.up();
+				if (terrain.clearable(p.up(2)) && terrain.clearable(u) && terrain.clearable(u.up())
+					&& terrain.kind(u.up(2)) != Terrain.LAVA && terrain.kind(u.up(2)) != Terrain.WATER) {
+					double c = terrain.breakCost(p.up(2)) + terrain.breakCost(u) + terrain.breakCost(u.up());
+					List<BlockPos> br = blocked(p.up(2), u.up(), u);
+					if (!br.isEmpty() && c < Double.POSITIVE_INFINITY) {
+						add(cur, u, base + 1.5 + c, MoveType.BREAK, null, br);
+					}
+				}
+			}
+		}
+
+		// Dig mode: dig straight down one block (never onto lava/water or over a drop).
+		if (options.allowDig() && !inWater) {
+			BlockPos d = p.down();
+			if (terrain.kind(d) == Terrain.SOLID && terrain.support(d.down()) && terrain.breakCost(d) < Double.POSITIVE_INFINITY
+				&& inRange(d) && terrain.kind(d.down()) != Terrain.LAVA) {
+				add(cur, d, 5.0 + terrain.breakCost(d), MoveType.BREAK, null, List.of(d.toImmutable()));
 			}
 		}
 
@@ -244,7 +267,22 @@ public class PathFinder {
 		return Math.abs(t.getX() - start.getX()) <= r && Math.abs(t.getZ() - start.getZ()) <= r && Math.abs(t.getY() - start.getY()) <= r;
 	}
 
+	/** The given positions that are not passable yet (to be mined, in order). */
+	private List<BlockPos> blocked(BlockPos... positions) {
+		List<BlockPos> out = new ArrayList<>();
+		for (BlockPos b : positions) {
+			if (!terrain.passable(b)) {
+				out.add(b.toImmutable());
+			}
+		}
+		return out;
+	}
+
 	private void add(Node from, BlockPos pos, double cost, MoveType type, @Nullable BlockPos aux) {
+		add(from, pos, cost, type, aux, List.of());
+	}
+
+	private void add(Node from, BlockPos pos, double cost, MoveType type, @Nullable BlockPos aux, List<BlockPos> breaks) {
 		long key = pos.asLong();
 		if (avoid.contains(key)) {
 			return;
@@ -263,6 +301,7 @@ public class PathFinder {
 		n.parent = from;
 		n.type = type;
 		n.aux = aux == null ? null : aux.toImmutable();
+		n.breaks = breaks;
 		open.add(n); // duplicates are skipped later via the closed flag
 	}
 }

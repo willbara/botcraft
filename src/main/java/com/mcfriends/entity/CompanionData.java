@@ -27,6 +27,8 @@ public class CompanionData {
 	public String mode = "follow";
 	/** Current job spec, e.g. "gather logs 12" (remaining count), or null. Restored after restarts. */
 	public String job;
+	/** Jobs waiting after the current one, as specs (see brain.Jobs). */
+	public java.util.List<String> jobs = new java.util.ArrayList<>();
 	/** Defend-owner mode ("defend me"). */
 	public boolean defendOwner;
 }

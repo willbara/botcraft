@@ -1,6 +1,9 @@
 package com.mcfriends.nav;
 
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.BlockView;
+import org.jetbrains.annotations.Nullable;
 
 /** A* goal over feet positions. */
 public interface Goal {
@@ -15,7 +18,15 @@ public interface Goal {
 
 	/** Stand somewhere the eyes can reach the block (for mining / using it). */
 	static Goal reach(BlockPos block, double reach) {
-		return new Reach(block.toImmutable(), reach);
+		return new Reach(block.toImmutable(), reach, null);
+	}
+
+	/**
+	 * Like {@link #reach} but also requires a clear line from the eyes to the block, ignoring
+	 * the standing spot's own two blocks (the path will clear those).
+	 */
+	static Goal reachVisible(BlockView world, BlockPos block, double reach) {
+		return new Reach(block.toImmutable(), reach, world);
 	}
 
 	static double octile(int dx, int dz) {
@@ -39,7 +50,7 @@ public interface Goal {
 		}
 	}
 
-	record Reach(BlockPos block, double reach) implements Goal {
+	record Reach(BlockPos block, double reach, @Nullable BlockView world) implements Goal {
 		@Override
 		public boolean isGoal(BlockPos feet) {
 			if (feet.equals(block) || feet.up().equals(block)) {
@@ -48,7 +59,30 @@ public interface Goal {
 			double ex = feet.getX() + 0.5 - (block.getX() + 0.5);
 			double ey = feet.getY() + 1.62 - (block.getY() + 0.5);
 			double ez = feet.getZ() + 0.5 - (block.getZ() + 0.5);
-			return ex * ex + ey * ey + ez * ez <= reach * reach;
+			if (ex * ex + ey * ey + ez * ez > reach * reach) {
+				return false;
+			}
+			return world == null || clearLine(feet);
+		}
+
+		/** Sample the eye->block line; any solid block on it (other than our body cells) blocks it. */
+		private boolean clearLine(BlockPos feet) {
+			Vec3d from = new Vec3d(feet.getX() + 0.5, feet.getY() + 1.62, feet.getZ() + 0.5);
+			Vec3d to = Vec3d.ofCenter(block);
+			Vec3d d = to.subtract(from);
+			int steps = (int) Math.ceil(d.length() / 0.2);
+			BlockPos.Mutable m = new BlockPos.Mutable();
+			for (int i = 1; i < steps; i++) {
+				Vec3d pt = from.add(d.multiply((double) i / steps));
+				m.set(pt.x, pt.y, pt.z);
+				if (m.equals(block) || m.equals(feet) || m.equals(feet.up())) {
+					continue;
+				}
+				if (!world.getBlockState(m).getCollisionShape(world, m).isEmpty()) {
+					return false;
+				}
+			}
+			return true;
 		}
 
 		@Override
