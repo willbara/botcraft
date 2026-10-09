@@ -1017,4 +1017,26 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtMole");
 		});
 	}
+
+	/** Companions don't use up player slots: with every slot taken by companions, a real player can still join. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "slots")
+	public void companionsDontFillTheServer(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		floor(ctx, 8);
+		var pm = ctx.getWorld().getServer().getPlayerManager();
+		int slots = pm.getMaxPlayerCount();
+		java.util.List<String> names = new java.util.ArrayList<>();
+		for (int i = 0; pm.getCurrentPlayerCount() < slots + 1 && i < 16; i++) {
+			String n = "GtSlot" + i;
+			names.add(n);
+			m.remove(n);
+			ctx.assertTrue(m.spawn(n, "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(1.5 + (i % 6), 1, 1.5 + i / 6)), 0.0F) == null, "spawn " + n);
+		}
+		ctx.assertTrue(pm.getCurrentPlayerCount() > slots, "companions should be able to go past the slot count");
+		var verdict = pm.checkCanJoin(new java.net.InetSocketAddress("127.0.0.1", 25565),
+			new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "RealPlayer"));
+		ctx.assertTrue(verdict == null, "a real player was turned away: " + (verdict == null ? "" : verdict.getString()) + " (" + slots + " slots)");
+		cleanup(m, names.toArray(new String[0]));
+		ctx.complete();
+	}
 }

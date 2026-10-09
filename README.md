@@ -195,7 +195,7 @@ com.mcfriends
 └─ gametest/ headless GameTests
 ```
 
-**Fake player.** `CompanionPlayer` joins through the vanilla `PlayerManager#onPlayerConnect`, so it gets a name tag, a tab-list entry, join and leave messages, and vanilla playerdata persistence (position, inventory, health, XP). Its connection has no channel and drops outgoing packets. Because the network handler is never ticked, the player calls `playerTick()` itself, which runs real server-side physics. `fall()` is routed through `handleFall` so fall damage applies. Movement exhaustion is applied from server-side motion. No mixins are used.
+**Fake player.** `CompanionPlayer` joins through the vanilla `PlayerManager#onPlayerConnect`, so it gets a name tag, a tab-list entry, join and leave messages, and vanilla playerdata persistence (position, inventory, health, XP). Its connection has no channel and drops outgoing packets. Because the network handler is never ticked, the player calls `playerTick()` itself, which runs real server-side physics. `fall()` is routed through `handleFall` so fall damage applies. Movement exhaustion is applied from server-side motion. The only mixin (`PlayerManagerMixin`) makes the "server is full" check count real players only.
 
 **Each tick:** perception → brain (drives every N ticks, current task every tick) → navigator → actions. Actions turn intentions into the same inputs a client produces: `forwardSpeed`, `sidewaysSpeed`, jumping, sprinting, sneaking, rotation, and `ServerPlayerInteractionManager` calls.
 
@@ -217,7 +217,7 @@ Interrupt objectives (fight, flee, retreat, eat) are pushed on top of the stack 
 ## Development
 
 - `./gradlew build`: compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest`: runs a headless server with 35 GameTests covering movement, pathfinding (shafts, ladders, parkour, diving, digging out), gathering, mining, crafting, smelting, hunting, combat, free mode, shelter, chat, banter, sharing, spreading out, tool prep, searching for animals, picking up drops and heading home when lost. It resets its world on every run.
+- `./gradlew runGametest`: runs a headless server with 36 GameTests covering movement, pathfinding (shafts, ladders, parkour, diving, digging out), gathering, mining, crafting, smelting, hunting, combat, free mode, shelter, chat, banter, sharing, spreading out, tool prep, searching for animals, picking up drops and heading home when lost. It resets its world on every run.
 - `./gradlew runServer`: dev dedicated server in `run/server`. Type commands into the console.
 - To see AI decisions, set `verboseAiLogging: true` and grep `latest.log` for `[<name>]`.
 
@@ -228,7 +228,7 @@ See [docs/TESTING.md](docs/TESTING.md) for the manual checklist.
 - **Skins**: a registered-account skin needs network access once per name. Without it, the companion falls back to a default skin.
 - **Death and reskinning**: a dead companion leaves and rejoins after `respawnDelayTicks`, and changing skins also rejoins, so chat shows a leave/join pair.
 - **They count as players**:
-  - They appear in the tab list and player count, and they get stats and advancements.
+  - They appear in the tab list and player count, and they get stats and advancements. They don't take up player slots, though: a world full of companions never turns a real player away (one small mixin on the join check).
   - They're added to `usercache.json` like any joining player.
   - The night only skips if every companion near you finds a free bed (or lower `playersSleepingPercentage`).
 - **Spawn protection** on dedicated servers stops non-op companions from breaking blocks near spawn.
