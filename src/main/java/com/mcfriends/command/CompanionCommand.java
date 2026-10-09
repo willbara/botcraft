@@ -150,7 +150,8 @@ public final class CompanionCommand {
 			ctx.getSource().sendError(Text.literal(error));
 			return 0;
 		}
-		ctx.getSource().sendFeedback(() -> Text.literal(name + ": " + c.describeActivity()), false);
+		String msg = spec.trim().equalsIgnoreCase("status") ? c.describeActivity() : "ok (" + spec.trim() + ")";
+		ctx.getSource().sendFeedback(() -> Text.literal(name + ": " + msg), false);
 		return 1;
 	}
 }

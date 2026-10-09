@@ -43,6 +43,7 @@ public final class FakePlayers {
 			player.refreshPositionAndAngles(pos.x, pos.y, pos.z, yaw, 0.0F);
 		}
 		FakeClientConnection connection = new FakeClientConnection();
+		player.setFakeConnection(connection);
 		server.getPlayerManager().onPlayerConnect(connection, player);
 		if (CompanionConfig.get().forceSurvival && player.interactionManager.getGameMode() != GameMode.SURVIVAL) {
 			player.changeGameMode(GameMode.SURVIVAL);
@@ -59,6 +60,8 @@ public final class FakePlayers {
 		if (player.isDisconnected()) {
 			return;
 		}
+		// The vanilla path passes the reason through a packet callback we drop, so set it first.
+		player.fakeConnection().disconnect(Text.literal(reason));
 		player.networkHandler.disconnect(Text.literal(reason));
 	}
 }
