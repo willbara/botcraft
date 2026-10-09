@@ -141,6 +141,26 @@ class IntentParserTest {
 	}
 
 	@Test
+	void huntAndCook() {
+		Intent i = parse("bob go hunting").intent();
+		assertEquals(Intent.Type.HUNT, i.type());
+		i = parse("bob kill 2 cows").intent();
+		assertEquals(Intent.Type.HUNT, i.type());
+		assertEquals("cows", i.item());
+		assertEquals(2, i.count());
+		assertEquals("food", parse("bob get us some food").intent().item());
+		i = parse("bob cook the beef").intent();
+		assertEquals(Intent.Type.SMELT, i.type());
+		assertEquals("beef", i.item());
+		i = parse("bob smelt 5 iron").intent();
+		assertEquals(Intent.Type.SMELT, i.type());
+		assertEquals("iron", i.item());
+		assertEquals(5, i.count());
+		// Defending still wins over hunting words.
+		assertEquals(Intent.Type.DEFEND, parse("bob kill it!").intent().type());
+	}
+
+	@Test
 	void homeAndSleep() {
 		assertEquals(Intent.Type.HOME_SET, type("bob, this is home"));
 		assertEquals(Intent.Type.HOME_SET, type("bob set this as home"));

@@ -129,6 +129,20 @@ public final class Inventories {
 		return speed;
 	}
 
+	/** Any usable pickaxe we carry, or null. */
+	@org.jetbrains.annotations.Nullable
+	public static ItemStack bestPickaxe(PlayerInventory inv) {
+		ItemStack best = null;
+		for (int i = 0; i < inv.main.size(); i++) {
+			ItemStack s = inv.getStack(i);
+			if (s.getItem() instanceof net.minecraft.item.PickaxeItem && (best == null
+				|| s.getMiningSpeedMultiplier(net.minecraft.block.Blocks.STONE.getDefaultState()) > best.getMiningSpeedMultiplier(net.minecraft.block.Blocks.STONE.getDefaultState()))) {
+				best = s;
+			}
+		}
+		return best;
+	}
+
 	/** Melee damage of a stack in the main hand (base 1 + item modifiers + Sharpness etc). */
 	public static double attackDamage(ItemStack s) {
 		double dmg = 1.0;

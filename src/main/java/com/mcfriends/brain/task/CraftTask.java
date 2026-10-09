@@ -7,7 +7,6 @@ import com.mcfriends.brain.Task;
 import com.mcfriends.entity.CompanionPlayer;
 import com.mcfriends.knowledge.CraftPlanner;
 import com.mcfriends.knowledge.ItemNames;
-import com.mcfriends.knowledge.OreKind;
 import com.mcfriends.nav.Goal;
 import com.mcfriends.nav.Navigator;
 import com.mcfriends.nav.Terrain;
@@ -111,6 +110,9 @@ public class CraftTask extends Task {
 	}
 
 	private Status plan(CompanionPlayer p) {
+		if (!CraftPlanner.craftable(c.server, item) && com.mcfriends.knowledge.Smelting.smeltable(c.server, item)) {
+			return deferTo(List.of("smelt " + ItemNames.id(item) + " " + count)); // e.g. "make iron ingots"
+		}
 		plan = CraftPlanner.plan(c.server, inventoryCounts(p.getInventory()), item, count);
 		AiLog.log(c.name(), "craft {} x{}: {} crafts, missing {}, problem {}", ItemNames.id(item), count, plan.crafts().size(), plan.missing(), plan.problem());
 		if (plan.problem() != null) {
@@ -124,11 +126,11 @@ public class CraftTask extends Task {
 					logs += e.getValue();
 					continue;
 				}
-				OreKind ore = OreKind.byDrop(e.getKey());
-				if (ore == null) {
+				String spec = com.mcfriends.brain.Jobs.sourceSpec(c, e.getKey(), e.getValue());
+				if (spec == null) {
 					return fail("I don't know how to get " + ItemNames.display(e.getKey()));
 				}
-				prereqs.add("mine " + ore.word + " " + e.getValue());
+				prereqs.add(spec);
 			}
 			if (logs > 0) {
 				prereqs.add(0, "gather logs " + logs);

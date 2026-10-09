@@ -534,4 +534,54 @@ public class CompanionGameTests implements FabricGameTest {
 		Companion[] c = ownerAndFollower(ctx, "GtFar", "GtJumper", new Vec3d(10.5, 9, 4.5), new Vec3d(1.5, 9, 4.5));
 		expectNear(ctx, c[1], c[0], 4.0, "GtFar", "GtJumper");
 	}
+
+	static void give(Companion c, net.minecraft.item.Item item, int n) {
+		c.player().getInventory().insertStack(new net.minecraft.item.ItemStack(item, n));
+	}
+
+	/** Mechanics: "craft an iron pickaxe" from raw iron: crafts + places a furnace, smelts, then crafts. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 2600, batchId = "smelt_iron")
+	public void smeltsIronForPickaxe(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtSmith");
+		flatArena(ctx, 8);
+		ctx.assertTrue(m.spawn("GtSmith", "efe", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(4.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtSmith");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.RAW_IRON, 3);
+		give(c, net.minecraft.item.Items.OAK_LOG, 2);
+		give(c, net.minecraft.item.Items.COBBLESTONE, 8);
+		give(c, net.minecraft.item.Items.COAL, 2);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "craft an iron pickaxe", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.IRON_PICKAXE) == 1, "no iron pickaxe; " + c.describeActivity()
+				+ "; queued " + c.jobs().pending() + "; inv " + c.player().getInventory().main.stream().filter(st -> !st.isEmpty()).toList());
+			cleanup(m, "GtSmith");
+		});
+	}
+
+	/** Mechanics: hunt a cow (only when there are more than two) and cook the beef. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 2000, batchId = "hunt_cook")
+	public void huntsAndCooks(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtHunter");
+		flatArena(ctx, 12);
+		for (int i = 0; i < 4; i++) {
+			ctx.spawnEntity(net.minecraft.entity.EntityType.COW, new BlockPos(8 + (i % 2), 1, 4 + i * 2)).setPersistent();
+		}
+		ctx.assertTrue(m.spawn("GtHunter", "zuri", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 6.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtHunter");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_SWORD, 1);
+		give(c, net.minecraft.item.Items.FURNACE, 1);
+		give(c, net.minecraft.item.Items.COAL, 1);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "kill 1 cow and then cook the beef", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.COOKED_BEEF) >= 1, "no cooked beef; " + c.describeActivity()
+				+ "; queued " + c.jobs().pending() + "; inv " + c.player().getInventory().main.stream().filter(st -> !st.isEmpty()).toList());
+			cleanup(m, "GtHunter");
+		});
+	}
 }
