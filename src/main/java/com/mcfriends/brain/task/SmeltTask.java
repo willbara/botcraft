@@ -56,6 +56,10 @@ public class SmeltTask extends Task {
 	@Nullable
 	private BlockPos furnace;
 	private boolean placedFurnace;
+	private int relocations;
+	private final java.util.Set<BlockPos> badSpots = new java.util.HashSet<>();
+	private int spotFails;
+	private final java.util.Random random = new java.util.Random();
 	private int made;
 	private int waitTicks;
 
@@ -206,17 +210,25 @@ public class SmeltTask extends Task {
 			}
 			return Status.RUNNING;
 		}
-		BlockPos spot = Spots.placeSpot(c);
+		BlockPos spot = Spots.placeSpot(c, badSpots);
 		if (spot == null) {
-			return phaseTicks > 60 ? fail("no room to put down a furnace") : Status.RUNNING;
+			// Cramped (on a pillar, in leaves...): step out somewhere more open and try again.
+			if (phaseTicks % 60 == 20 && relocations++ < 3) {
+				c.nav().moveTo(com.mcfriends.nav.Goal.near(p.getBlockPos().add(random.nextInt(9) - 4, 0, random.nextInt(9) - 4), 1.5), false);
+			}
+			return phaseTicks > 60 * 4 ? fail("no room to put down a furnace") : Status.RUNNING;
 		}
 		if (c.actions().placeBlock(spot, s -> s.isOf(Items.FURNACE))) {
 			furnace = spot;
 			placedFurnace = true;
 			c.memory().setPlace("furnace", spot, c.dimension(), p.getWorld().getTime());
 			AiLog.log(c.name(), "placed a furnace at {}", spot.toShortString());
-		} else if (phaseTicks > 60) {
-			return fail("couldn't place a furnace");
+		} else if (++spotFails % 10 == 0) {
+			AiLog.log(c.name(), "can't place a furnace at {} ({}), trying elsewhere", spot.toShortString(), p.getWorld().getBlockState(spot).getBlock());
+			badSpots.add(spot);
+			if (badSpots.size() > 6) {
+				return fail("couldn't place a furnace");
+			}
 		}
 		return Status.RUNNING;
 	}

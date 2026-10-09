@@ -43,6 +43,9 @@ public class Brain {
 	private Scores lastScores = new Scores();
 	private final int thinkOffset;
 	private boolean thinkNow = true;
+	/** Interrupts that just ended almost immediately: don't start them again right away. */
+	private final EnumMap<Objective, Long> quickEnd = new EnumMap<>(Objective.class);
+	private long now;
 
 	/** Creates tasks for interrupt objectives (may return null, e.g. EAT with no food). */
 	public interface TaskFactory {
@@ -135,6 +138,7 @@ public class Brain {
 	// ---- ticking --------------------------------------------------------------------------------
 
 	public void tick(long serverTick) {
+		now = serverTick;
 		int interval = CompanionConfig.get().aiTickInterval;
 		if (thinkNow || current() == null || (serverTick + thinkOffset) % interval == 0) {
 			thinkNow = false;
@@ -175,6 +179,9 @@ public class Brain {
 		float bestScore = scores.get(best);
 
 		if (best.interrupts) {
+			if (now < quickEnd.getOrDefault(best, 0L)) {
+				return; // it just ended on its own; give the situation a moment to change
+			}
 			if (top == null || (top.objective() != best && bestScore > scores.get(top.objective()) + HYSTERESIS)) {
 				Task t = factory.create(c, best);
 				if (t != null) {
@@ -228,6 +235,9 @@ public class Brain {
 		Entry top = interrupts.peek();
 		if (top != null && top.task() == task) {
 			interrupts.pop();
+			if (task.ticks() < 10) {
+				quickEnd.put(top.objective(), now + 40);
+			}
 			task.stop();
 			AiLog.log(c.name(), "{} finished: {}", top.objective(), status);
 			c.onTaskFinished(task, status, true);

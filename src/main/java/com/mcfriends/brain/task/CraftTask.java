@@ -55,6 +55,10 @@ public class CraftTask extends Task {
 	@Nullable
 	private BlockPos table;
 	private boolean placedTable;
+	private int relocations;
+	private final java.util.Set<BlockPos> badSpots = new java.util.HashSet<>();
+	private int spotFails;
+	private final java.util.Random random = new java.util.Random();
 	private boolean tableBroken;
 	private int made;
 
@@ -170,14 +174,22 @@ public class CraftTask extends Task {
 		table = null;
 		BlockPos spot = placeSpot(p);
 		if (spot == null) {
-			return phaseTicks > 40 ? fail("no room to put down a crafting table") : Status.RUNNING;
+			// Cramped (on a pillar, in leaves...): step out somewhere more open and try again.
+			if (phaseTicks % 60 == 20 && relocations++ < 3) {
+				c.nav().moveTo(com.mcfriends.nav.Goal.near(p.getBlockPos().add(random.nextInt(9) - 4, 0, random.nextInt(9) - 4), 1.5), false);
+			}
+			return phaseTicks > 60 * 4 ? fail("no room to put down a crafting table") : Status.RUNNING;
 		}
 		if (c.actions().placeBlock(spot, s -> s.isOf(Items.CRAFTING_TABLE))) {
 			table = spot;
 			placedTable = true;
 			AiLog.log(c.name(), "placed a crafting table at {}", spot.toShortString());
-		} else if (phaseTicks > 40) {
-			return fail("couldn't place a crafting table");
+		} else if (++spotFails % 10 == 0) {
+			AiLog.log(c.name(), "can't place a crafting table at {} ({}), trying elsewhere", spot.toShortString(), p.getWorld().getBlockState(spot).getBlock());
+			badSpots.add(spot);
+			if (badSpots.size() > 6) {
+				return fail("couldn't place a crafting table");
+			}
 		}
 		return Status.RUNNING;
 	}
