@@ -79,7 +79,9 @@ public final class CraftPlanner {
 
 	/** Items we know how to collect directly rather than craft. */
 	public static boolean isGatherable(Item item) {
-		return new ItemStack(item).isIn(ItemTags.LOGS) || OreKind.byDrop(item) != null;
+		ItemStack s = new ItemStack(item);
+		return s.isIn(ItemTags.LOGS) || OreKind.byDrop(item) != null || s.isOf(net.minecraft.item.Items.WHITE_WOOL)
+			|| Animals.RAW_MEAT.contains(item);
 	}
 
 	private void need(Item item, int n, int depth, boolean isTarget) {

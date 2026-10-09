@@ -664,4 +664,36 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtTiller");
 		});
 	}
+
+	/** Autonomy: told "do your own thing" with nothing, it decides to chop wood and make itself a sword. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 3000, batchId = "free_mode")
+	public void freeModeArmsItself(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtFree");
+		grassArena(ctx, 12);
+		for (int y = 1; y <= 4; y++) {
+			ctx.setBlockState(8, y, 6, Blocks.OAK_LOG);
+		}
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				for (int y = 4; y <= 5; y++) {
+					if ((dx != 0 || dz != 0) && Math.abs(dx) + Math.abs(dz) < 4) {
+						ctx.setBlockState(8 + dx, y, 6 + dz, Blocks.OAK_LEAVES);
+					}
+				}
+			}
+		}
+		ctx.assertTrue(m.spawn("GtFree", "sunny", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 6.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtFree");
+		c.player().getInventory().clear();
+		c.data.initiative = 1.0F;
+		c.data.curiosity = 0.0F; // no exploring off the test area
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "do your own thing", null) == null, "order");
+		ctx.assertTrue("free".equals(c.data.mode), "mode " + c.data.mode);
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.WOODEN_SWORD) >= 1, "no sword; " + c.describeActivity()
+				+ "; inv " + c.player().getInventory().main.stream().filter(st -> !st.isEmpty()).toList());
+			cleanup(m, "GtFree");
+		});
+	}
 }

@@ -35,6 +35,8 @@ public final class IntentParser {
 		"\\s*(?:,|\\band\\b)\\s*(?=(go|get|mine|chop|gather|collect|craft|make|come|follow|bring|give|stay|stop|defend|protect|sleep|dig|find|fetch|cut|build|head|return|wait)\\b)");
 
 	private static final Pattern CANCEL = Pattern.compile("\\b(never ?mind|cancel( that| it)?|forget (it|that|about it)|scratch that|abort|drop it)\\b");
+	private static final Pattern FREE = Pattern.compile(
+		"\\b(do (your|ur) own thing|go play|you'?re free|live (your|ur) life|be free|go explore|explore|do whatever|have fun|you can go|dismissed|at ease|free roam|play minecraft|go survive)\\b");
 	private static final Pattern HOME_SET = Pattern.compile(
 		"\\b((set|make|mark) (this|here)( as| to)?( (your|our|my|the))? home|this is (your |our |my |the )?home|remember this place|home is here)\\b");
 	private static final Pattern HOME_GO = Pattern.compile("\\b(go home|go back home|head home|return home|back home|get home)\\b");
@@ -160,6 +162,9 @@ public final class IntentParser {
 		}
 		if (CANCEL.matcher(text).find()) {
 			return Intent.of(Intent.Type.CANCEL);
+		}
+		if (FREE.matcher(text).find()) {
+			return Intent.of(Intent.Type.FREE);
 		}
 		if (HOME_SET.matcher(text).find()) {
 			return Intent.of(Intent.Type.HOME_SET);

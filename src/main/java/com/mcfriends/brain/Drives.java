@@ -158,6 +158,7 @@ public final class Drives {
 		if ("stay".equals(c.data.mode)) {
 			out.propose(Objective.STAY, 0.3F, "told to stay");
 		}
+		// Free mode: idling means pottering about near home (Life queues real activities).
 		out.propose(Objective.IDLE, 0.1F + b.personality().curiosity() * 0.05F, "nothing to do");
 	}
 }

@@ -38,7 +38,7 @@ public class IdleTask extends Task {
 
 	@Override
 	protected void onStart(boolean resumed) {
-		anchor = c.player().getBlockPos();
+		anchor = "free".equals(c.data.mode) ? com.mcfriends.brain.Life.home(c) : c.player().getBlockPos();
 		nextStroll = 200 + random.nextInt(400);
 	}
 

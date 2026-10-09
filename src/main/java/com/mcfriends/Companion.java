@@ -4,7 +4,7 @@ import com.mcfriends.action.ActionController;
 import com.mcfriends.action.Inventories;
 import com.mcfriends.brain.Brain;
 import com.mcfriends.brain.Drives;
-import com.mcfriends.brain.Initiative;
+import com.mcfriends.brain.Life;
 import com.mcfriends.brain.Interrupts;
 import com.mcfriends.brain.JobQueue;
 import com.mcfriends.brain.Jobs;
@@ -63,7 +63,7 @@ public class Companion {
 	private final Speech speech;
 	private final JobQueue jobs;
 	private final Memory memory;
-	private final Initiative initiative = new Initiative();
+	private final Life life = new Life();
 	private final EventWatcher events = new EventWatcher();
 	private final Random random = new Random();
 
@@ -160,7 +160,7 @@ public class Companion {
 			AiLog.log(name(), "put on better armour");
 		}
 		jobs.tick();
-		initiative.tick(this, serverTick);
+		life.tick(this, serverTick);
 		brain.tick(serverTick);
 		nav.tick();
 		actions.tick();
@@ -266,10 +266,14 @@ public class Companion {
 			return;
 		}
 		if (status == Status.FAILED) {
+			life.failed(now);
 			int dropped = jobs.abandonRest();
 			speech.event(dropped > 0 ? "event.plan_failed" : "event.task_failed",
 				Map.of("reason", task.failReason(), "job", Jobs.describe(task.spec())), 0, 1.0F);
 			return;
+		}
+		if (jobs.pending().isEmpty()) {
+			life.succeeded();
 		}
 		String result = resultPhrase(task);
 		if (!jobs.pending().isEmpty()) {
