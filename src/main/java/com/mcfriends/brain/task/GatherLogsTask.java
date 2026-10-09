@@ -130,6 +130,7 @@ public class GatherLogsTask extends Task {
 		int now = Inventories.count(p.getInventory(), Inventories::isLog);
 		if (lastCount >= 0 && now > lastCount) {
 			gathered += now - lastCount;
+			c.memory().count("logs_chopped", now - lastCount);
 			c.data.job = "gather logs " + Math.max(0, wanted - gathered);
 		}
 		lastCount = now;
@@ -158,7 +159,8 @@ public class GatherLogsTask extends Task {
 		}
 		emptyScans = 0;
 		AiLog.log(c.name(), "gather: picked tree at {}", treeBase.toShortString());
-		c.nav().moveTo(Goal.reach(treeBase, ActionController.BLOCK_REACH - 0.5), p.getBlockPos().getSquaredDistance(treeBase) > 100);
+		c.memory().sight("tree", treeBase, c.dimension(), p.getWorld().getTime());
+		c.nav().moveTo(Goal.reachVisible(p.getWorld(), treeBase, ActionController.BLOCK_REACH - 0.5), p.getBlockPos().getSquaredDistance(treeBase) > 100);
 		setPhase(Phase.APPROACH);
 		return Status.RUNNING;
 	}
@@ -233,7 +235,7 @@ public class GatherLogsTask extends Task {
 				return Status.RUNNING;
 			}
 		}
-		Vec3d at = collecting.getPos();
+		Vec3d at = Vec3d.ofBottomCenter(collecting.getBlockPos());
 		if (p.getPos().squaredDistanceTo(at) < 2.5 * 2.5 && Math.abs(at.y - p.getY()) < 1.5) {
 			c.nav().stop();
 			c.actions().moveTo(at);

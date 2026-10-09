@@ -2,6 +2,7 @@ package com.mcfriends.brain;
 
 import com.mcfriends.Companion;
 import com.mcfriends.util.AiLog;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * A unit of behaviour. Tasks are ticked every server tick while on top of the stack, can be
@@ -13,6 +14,9 @@ public abstract class Task {
 	private int ticks;
 	private boolean started;
 	private String failReason = "";
+	@Nullable
+	private String spec;
+	private boolean silent;
 
 	protected Task(Companion c) {
 		this.c = c;
@@ -74,5 +78,39 @@ public abstract class Task {
 
 	public String failReason() {
 		return failReason;
+	}
+
+	/** Mark this task as a queued job created from {@code spec} (see Jobs). */
+	public Task asJob(String spec) {
+		this.spec = spec;
+		return this;
+	}
+
+	@Nullable
+	public String spec() {
+		return spec;
+	}
+
+	/** Finished without anything worth announcing (e.g. it handed over to prerequisite jobs). */
+	public boolean silent() {
+		return silent;
+	}
+
+	/**
+	 * Something else has to happen first: queue those jobs, then this one again, and end quietly.
+	 * A retry counter in the spec stops endless loops (e.g. a prerequisite that keeps failing).
+	 */
+	protected Status deferTo(java.util.List<String> prerequisites) {
+		String self = spec != null ? spec : name();
+		int attempt = Jobs.attempt(self);
+		if (attempt >= 3) {
+			return fail("I keep going in circles");
+		}
+		java.util.List<String> list = new java.util.ArrayList<>(prerequisites);
+		list.add(Jobs.withAttempt(self, attempt + 1));
+		c.jobs().pushFront(list);
+		AiLog.log(c.name(), "{} needs {} first", name(), prerequisites);
+		silent = true;
+		return Status.SUCCESS;
 	}
 }

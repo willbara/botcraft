@@ -102,7 +102,7 @@ public class CompanionGameTests implements FabricGameTest {
 		Terrain terrain = new Terrain(ctx.getWorld());
 		BlockPos start = ctx.getAbsolutePos(new BlockPos(1, 1, 2));
 		BlockPos end = ctx.getAbsolutePos(new BlockPos(10, 1, 2));
-		PathFinder pf = new PathFinder(terrain, start, Goal.near(end, 0.5), new PathFinder.Options(false, false, 5000, 64), new LongOpenHashSet());
+		PathFinder pf = new PathFinder(terrain, start, Goal.near(end, 0.5), new PathFinder.Options(false, false, false, 5000, 64), new LongOpenHashSet());
 		TickBudget.begin(1000);
 		PathFinder.Status st = pf.step(100000);
 		ctx.assertTrue(st == PathFinder.Status.FOUND, "expected FOUND, got " + st + " after " + pf.expanded() + " nodes");
@@ -315,6 +315,80 @@ public class CompanionGameTests implements FabricGameTest {
 			ctx.assertTrue(p.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST).isOf(net.minecraft.item.Items.IRON_CHESTPLATE), "chest " + p.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST));
 			ctx.assertTrue(p.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD).isOf(net.minecraft.item.Items.GOLDEN_HELMET), "head");
 			cleanup(m, "GtKnight");
+		});
+	}
+
+	static int count(Companion c, net.minecraft.item.Item item) {
+		return com.mcfriends.action.Inventories.count(c.player().getInventory(), s -> s.isOf(item));
+	}
+
+	/** Milestone 8: craft a wooden pickaxe from 3 logs: planks, sticks, a crafting table placed and picked back up. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 800, batchId = "craft")
+	public void craftsPickaxeFromLogs(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtCrafter");
+		flatArena(ctx, 7);
+		ctx.assertTrue(m.spawn("GtCrafter", "noor", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtCrafter");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		c.player().getInventory().insertStack(new net.minecraft.item.ItemStack(net.minecraft.item.Items.BIRCH_LOG, 3));
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "craft a wooden pickaxe", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.WOODEN_PICKAXE) == 1, "no pickaxe; " + c.describeActivity() + "; inv " + c.player().getInventory().main);
+			ctx.assertTrue(count(c, net.minecraft.item.Items.CRAFTING_TABLE) == 1, "table not picked back up");
+			ctx.assertTrue(c.jobs().isIdle(), "still busy: " + c.describeActivity());
+			cleanup(m, "GtCrafter");
+		});
+	}
+
+	/** Milestone 8: told to mine stone without a pickaxe: crafts one from its logs first, then mines. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "mine_stone")
+	public void minesStoneAfterMakingPickaxe(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtMiner");
+		flatArena(ctx, 8);
+		ctx.assertTrue(m.spawn("GtMiner", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(4.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtMiner");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		c.player().getInventory().insertStack(new net.minecraft.item.ItemStack(net.minecraft.item.Items.OAK_LOG, 4));
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "mine 3 stone", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.COBBLESTONE) >= 3, "cobblestone " + count(c, net.minecraft.item.Items.COBBLESTONE)
+				+ "; " + c.describeActivity() + "; queued " + c.jobs().pending());
+			ctx.assertTrue(count(c, net.minecraft.item.Items.WOODEN_PICKAXE) == 1, "made a pickaxe");
+			cleanup(m, "GtMiner");
+		});
+	}
+
+	/** Milestone 7/8: a chained chat order tunnels through natural stone to coal hidden in a wall. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1200, batchId = "mine_coal")
+	public void tunnelsToCoal(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtDigger");
+		flatArena(ctx, 12);
+		for (int x = 6; x <= 11; x++) {
+			for (int z = 0; z <= 11; z++) {
+				for (int y = 1; y <= 4; y++) {
+					ctx.setBlockState(x, y, z, Blocks.STONE);
+				}
+			}
+		}
+		ctx.setBlockState(9, 1, 5, Blocks.COAL_ORE);
+		ctx.assertTrue(m.spawn("GtDigger", "sunny", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 5.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtDigger");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		c.player().getInventory().insertStack(new net.minecraft.item.ItemStack(net.minecraft.item.Items.STONE_PICKAXE));
+		c.player().getInventory().insertStack(new net.minecraft.item.ItemStack(net.minecraft.item.Items.SPRUCE_LOG));
+		var parsed = com.mcfriends.chat.IntentParser.parse("GtDigger, mine 1 coal and then craft a torch", java.util.List.of("GtDigger"));
+		ctx.assertTrue(parsed.intents().size() == 2, "intents " + parsed.intents());
+		ctx.assertTrue(com.mcfriends.chat.ChatRouter.respond(c, null, parsed.intents(), false) == null, "respond");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.TORCH) >= 1, "no torch; coal " + count(c, net.minecraft.item.Items.COAL)
+				+ "; " + c.describeActivity() + "; queued " + c.jobs().pending());
+			cleanup(m, "GtDigger");
 		});
 	}
 }

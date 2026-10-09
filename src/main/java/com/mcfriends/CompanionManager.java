@@ -102,6 +102,7 @@ public final class CompanionManager {
 		List<CompanionData> list = new ArrayList<>();
 		for (Companion c : companions.values()) {
 			list.add(c.data);
+			c.memory().saveIfDirty(server, c.name());
 		}
 		CompanionStore.save(server, list);
 	}
@@ -271,6 +272,18 @@ public final class CompanionManager {
 	}
 
 	// ---- ticking ----------------------------------------------------------------------------
+
+	/** A player joined: their companions say hello. */
+	static void onPlayerJoin(ServerPlayerEntity player) {
+		if (instance == null || player instanceof CompanionPlayer) {
+			return;
+		}
+		for (Companion c : instance.ownedBy(player)) {
+			if (c.isOnline()) {
+				c.onOwnerJoined(player);
+			}
+		}
+	}
 
 	static void onEndTick(MinecraftServer server) {
 		if (instance != null && instance.server == server) {

@@ -28,7 +28,25 @@ public final class Templates {
 		put("ack.give", "Here you go, {count} {item}.", "Catch!", "Take these.");
 		put("give.none", "I don't have any {item}.", "I'm out of {item}.", "No {item} on me, sorry.");
 		put("give.far", "Come closer and I'll toss them to you.", "You're too far to throw to.");
-		put("cant.gather", "I don't know how to get {item} yet. I can chop wood, though.", "{item}? Not sure how. Wood I can do.");
+		put("cant.do", "I can't do that: {reason}.", "Hmm, {reason}.", "Sorry, {reason}.");
+		put("ack.plan", "Okay: {plan}.", "On it. I'll {plan}.", "Got it, {plan}.", "Sure thing: {plan}.");
+		put("ack.plan_more", "Okay, after that I'll {plan}.", "Added to my list: {plan}.", "Sure, I'll {plan} next.");
+		put("ack.cancel", "Okay, forget it.", "Cancelled.", "Alright, dropping that.");
+		put("ack.home_set", "Got it, this is home ({x}, {y}, {z}).", "Home sweet home. I'll remember it.", "Noted: home is at {x}, {y}, {z}.");
+		put("no_home", "We don't have a home yet. Say 'this is home' somewhere.", "Where's home? Tell me with 'set home here'.");
+		put("not_night", "It's not night, I'm not sleepy.", "Sleep? It's daytime!");
+		put("where", "I'm at {x}, {y}, {z}, about {dist} blocks {dir} of you.", "{dist} blocks {dir} of you, at {x}, {y}, {z} ({biome}).",
+			"Over here! {x}, {y}, {z}, roughly {dist} blocks {dir}.");
+		put("where.near", "Right here, next to you!", "Look around, I'm right here.", "Behind you! Well, close by anyway.");
+		put("where.far", "I'm at {x}, {y}, {z} in a {biome}.", "{x}, {y}, {z}. Not in your dimension, though.");
+		put("inventory", "I've got {items}.", "In my pockets: {items}.", "Let's see... {items}.");
+		put("inventory.empty", "My pockets are empty.", "Nothing, I'm broke.", "Not a thing.");
+		put("stats", "So far I've chopped {logs} logs, mined {ores} ores, crafted {crafted} things, beaten {kills} monsters and died {deaths} times.",
+			"Logs: {logs}. Ores: {ores}. Crafted: {crafted}. Monsters: {kills}. Deaths: {deaths}.");
+		put("found", "I've seen {list}.", "Spotted {list}.", "Last I saw: {list}.");
+		put("found.none", "I haven't seen {item} yet.", "No {item} so far.");
+		put("help", "I can follow you, stay, come here, chop wood, mine (coal, iron, stone...), craft things, bring you stuff, defend you, sleep, and tell you where I am or what I'm carrying. Chain orders with 'then'.");
+		put("greeting.friend", "Hey {player}! Good to see you.", "{player}! What's the plan?", "Hi boss.");
 		put("not_owner", "Sorry {player}, I only take orders from {owner}.", "Ask {owner}, they're my boss.");
 		put("confused", "Hm?", "Sorry, what was that?", "I didn't catch that.", "Not sure what you mean, {player}.");
 		put("greeting", "Hey {player}!", "Hi {player}!", "Hello!", "Oh hey, {player}.", "Yo!");
@@ -47,9 +65,15 @@ public final class Templates {
 		put("event.low_health.brave", "Just a scratch. Mostly.", "I'm hurt, but I'll live.");
 		put("event.creeper", "Creeper! Watch out!", "Creeper, run!", "Uh oh. Creeper!", "Hsss... CREEPER!");
 		put("event.creeper.brave", "Creeper over there, careful!", "Heads up, creeper!");
-		put("event.task_done", "Done! Got {count} {item}.", "Finished, {count} {item} collected.", "All done with the {item}.",
-			"That's {count} {item}. What next?");
-		put("event.task_failed", "I couldn't finish: {reason}.", "Sorry, I gave up: {reason}.", "That didn't work out ({reason}).");
+		put("event.task_done", "Done! I {result}.", "All done, {result}.", "Finished: {result}. What next?", "There we go, {result}.");
+		put("event.task_failed", "I couldn't {job}: {reason}.", "Sorry, I gave up on that: {reason}.", "That didn't work out ({reason}).");
+		put("event.step_done", "Okay, {result}. Now I'll {next}.", "That's done ({result}). Next: {next}.", "{result}! On to {next}.");
+		put("event.plan_failed", "I couldn't {job} ({reason}), so I'm stopping there.", "Plan's off, sorry: {reason}.");
+		put("event.initiative", "I'm going to {plan}, {reason}.", "Mind if I {plan}? {reason}.", "Quick thing: I'll {plan}. {reason}.");
+		put("event.no_bed", "There's no bed for me, I'll keep watch.", "No spare bed, I'll stand guard.", "Can't sleep: {reason}.");
+		put("event.owner_back", "Welcome back, {player}!", "Hey {player}, you're back!", "Oh hi {player}.");
+		put("event.owner_back_long", "{player}! It's been a while.", "Long time no see, {player}!", "I missed you, {player}.");
+		put("event.flee_unarmed", "I've got no weapon, running!", "Can't fight that bare-handed!", "No sword, no chance. Bye!");
 		put("event.arrived", "Here I am.", "Made it.", "I'm here.");
 		put("event.hungry", "I'm starving and out of food.", "Anyone have something to eat?", "My stomach is growling and I have no food.");
 		put("event.kill", "Got it!", "Take that!", "One less {mob}.", "That {mob} won't bother us anymore.");

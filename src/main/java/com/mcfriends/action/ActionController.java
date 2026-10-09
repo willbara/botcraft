@@ -12,6 +12,8 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.world.RaycastContext;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
@@ -263,8 +265,48 @@ public class ActionController {
 		return (float) Math.toDegrees(Math.acos(dot));
 	}
 
+	/**
+	 * The block in the way when the target is within reach distance but hidden, or null (not in
+	 * reach at all, or visible).
+	 */
+	@Nullable
+	public BlockPos obstruction(BlockPos pos) {
+		CompanionPlayer p = player();
+		Vec3d eye = p.getEyePos();
+		Vec3d center = Vec3d.ofCenter(pos);
+		if (eye.squaredDistanceTo(center) > BLOCK_REACH * BLOCK_REACH) {
+			return null;
+		}
+		BlockHitResult hit = p.getWorld().raycast(new RaycastContext(eye, center, RaycastContext.ShapeType.OUTLINE,
+			RaycastContext.FluidHandling.NONE, p));
+		if (hit.getType() == HitResult.Type.BLOCK && !hit.getBlockPos().equals(pos)) {
+			return hit.getBlockPos();
+		}
+		return null;
+	}
+
+	/** For logs: why canReachBlock fails. */
+	public String reachDebug(BlockPos pos) {
+		CompanionPlayer p = player();
+		Vec3d eye = p.getEyePos();
+		Vec3d center = Vec3d.ofCenter(pos);
+		BlockHitResult hit = p.getWorld().raycast(new RaycastContext(eye, center, RaycastContext.ShapeType.OUTLINE,
+			RaycastContext.FluidHandling.NONE, p));
+		return String.format("eye %s dist %.2f hit %s %s", eye, Math.sqrt(eye.squaredDistanceTo(center)), hit.getType(),
+			hit.getType() == HitResult.Type.BLOCK ? hit.getBlockPos().toShortString() + " " + p.getWorld().getBlockState(hit.getBlockPos()).getBlock() : "");
+	}
+
+	/** Within reach and visible: like a player, we can't mine or use blocks through other blocks. */
 	public boolean canReachBlock(BlockPos pos) {
-		return player().getEyePos().squaredDistanceTo(Vec3d.ofCenter(pos)) <= BLOCK_REACH * BLOCK_REACH;
+		CompanionPlayer p = player();
+		Vec3d eye = p.getEyePos();
+		Vec3d center = Vec3d.ofCenter(pos);
+		if (eye.squaredDistanceTo(center) > BLOCK_REACH * BLOCK_REACH) {
+			return false;
+		}
+		BlockHitResult hit = p.getWorld().raycast(new RaycastContext(eye, center, RaycastContext.ShapeType.OUTLINE,
+			RaycastContext.FluidHandling.NONE, p));
+		return hit.getType() == HitResult.Type.MISS || hit.getBlockPos().equals(pos);
 	}
 
 	// =========================================================================================

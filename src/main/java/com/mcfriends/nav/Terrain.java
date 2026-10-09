@@ -34,8 +34,16 @@ public class Terrain {
 	private final Long2DoubleOpenHashMap tops = new Long2DoubleOpenHashMap();
 	private final BlockPos.Mutable mutable = new BlockPos.Mutable();
 
+	private final boolean dig;
+
 	public Terrain(ServerWorld world) {
+		this(world, false);
+	}
+
+	/** @param dig allow digging through natural terrain (explicit mining orders) */
+	public Terrain(ServerWorld world, boolean dig) {
 		this.world = world;
+		this.dig = dig;
 		kinds.defaultReturnValue((byte) -1);
 		tops.defaultReturnValue(Double.NaN);
 	}
@@ -194,10 +202,19 @@ public class Terrain {
 			return Double.POSITIVE_INFINITY;
 		}
 		BlockState s = world.getBlockState(pos);
-		if (!BreakPolicy.canBreakForNav(world, mutable.set(pos), s)) {
+		if (!BreakPolicy.canBreakForNav(world, mutable.set(pos), s, dig)) {
 			return Double.POSITIVE_INFINITY;
 		}
 		return 2.0 + s.getHardness(world, pos) * 4.0;
+	}
+
+	public boolean digMode() {
+		return dig;
+	}
+
+	/** Passable now, or breakable (finite cost). */
+	public boolean clearable(BlockPos pos) {
+		return passable(pos) || (kind(pos) == SOLID && breakCost(pos) < Double.POSITIVE_INFINITY);
 	}
 
 	/** A full-face solid block we can click to place against. */

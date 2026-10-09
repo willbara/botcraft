@@ -16,7 +16,7 @@ public final class Drives {
 	}
 
 	public static List<Drive> all() {
-		return List.of(Drives::safety, Drives::health, Drives::hunger, Drives::owner, Drives::night, Drives::work, Drives::idle);
+		return List.of(Drives::safety, Drives::health, Drives::hunger, Drives::sleep, Drives::owner, Drives::night, Drives::work, Drives::idle);
 	}
 
 	/** Melee damage at which we consider ourselves armed (wooden/gold sword = 4, any axe more). */
@@ -99,6 +99,17 @@ public final class Drives {
 		}
 		if (s > 0) {
 			out.propose(Objective.EAT, s, "food " + food + ", health " + Math.round(p.getHealth()));
+		}
+	}
+
+	/** Go to bed when the owner does, so the night can be skipped (everyone must sleep). */
+	static void sleep(Companion c, Brain b, Scores out) {
+		if (!CompanionConfig.get().sleepWithOwner || !c.perception().isNight() || c.now() < c.sleepRetryAfter) {
+			return;
+		}
+		var owner = c.perception().owner();
+		if (owner != null && owner.isSleeping() && c.perception().threats().isEmpty() && c.perception().ownerDistance() < 48) {
+			out.propose(Objective.SLEEP, 0.8F, "owner is sleeping");
 		}
 	}
 

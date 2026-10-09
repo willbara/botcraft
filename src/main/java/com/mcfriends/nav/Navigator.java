@@ -51,6 +51,11 @@ public class Navigator {
 	private int index;
 	private boolean sprint;
 	private boolean allowBridge = true;
+	private boolean digMode;
+	/** We started the current block-break (so stop() may abort it; tasks' own mining is left alone). */
+	private boolean miningForPath;
+	private int breaksThisStep;
+	private int breakStepIndex = -1;
 	private String failReason = "";
 
 	private double bestDist;
@@ -99,12 +104,29 @@ public class Navigator {
 		plan();
 	}
 
+	/** Allow digging through natural terrain (set by mining jobs, cleared by them on stop). */
+	public void setDigMode(boolean dig) {
+		if (dig != digMode) {
+			digMode = dig;
+			if (isBusy() && goal != null) {
+				plan();
+			}
+		}
+	}
+
+	public boolean digMode() {
+		return digMode;
+	}
+
 	public void stop() {
 		state = State.IDLE;
 		goal = null;
 		finder = null;
 		path = null;
-		actions.abortMining();
+		if (miningForPath) {
+			actions.abortMining();
+			miningForPath = false;
+		}
 	}
 
 	private void plan() {
@@ -113,13 +135,13 @@ public class Navigator {
 			return;
 		}
 		BlockPos start = feet(p);
-		Terrain terrain = new Terrain(p.getServerWorld());
+		Terrain terrain = new Terrain(p.getServerWorld(), digMode);
 		// If we're standing somewhere odd (half in a block, mid-air) start from the nearest standable spot.
 		if (!terrain.standable(start) && terrain.standable(start.up())) {
 			start = start.up();
 		}
 		boolean canBridge = allowBridge && Inventories.count(p.getInventory(), Inventories::isThrowaway) > 0;
-		PathFinder.Options opts = new PathFinder.Options(true, canBridge, CompanionConfig.get().maxPathNodes, SEARCH_RANGE);
+		PathFinder.Options opts = new PathFinder.Options(true, canBridge, digMode, CompanionConfig.get().maxPathNodes, SEARCH_RANGE);
 		finder = new PathFinder(terrain, start, goal, opts, avoid);
 		path = null;
 		state = State.SEARCHING;
@@ -292,21 +314,36 @@ public class Navigator {
 		}
 
 		if (step.type() == MoveType.BREAK) {
-			for (BlockPos pos : new BlockPos[]{step.pos().up(), step.pos()}) {
+			if (breakStepIndex != index) {
+				breakStepIndex = index;
+				breaksThisStep = 0;
+			}
+			for (BlockPos pos : step.breaks()) {
 				BlockState s = world.getBlockState(pos);
-				if (s.getCollisionShape(world, pos).isEmpty()) {
+				if (s.getCollisionShape(world, pos).isEmpty() && s.getFluidState().isEmpty()) {
 					continue;
 				}
-				if (!BreakPolicy.canBreakForNav(world, pos, s)) {
+				if (!s.getFluidState().isEmpty()) {
+					avoid.add(step.pos().asLong());
+					stuck(p, "fluid in the way at " + pos.toShortString());
+					return true;
+				}
+				if (!BreakPolicy.canBreakForNav(world, pos, s, digMode)) {
 					avoid.add(step.pos().asLong());
 					stuck(p, "may not break " + s.getBlock().getName().getString());
 					return true;
 				}
 				if (!actions.canReachBlock(pos)) {
-					actions.moveTo(Vec3d.ofBottomCenter(pos));
+					actions.moveTo(Vec3d.ofBottomCenter(step.pos()));
 					return true;
 				}
 				ActionController.MineResult r = actions.mineBlock(pos);
+				miningForPath = r == ActionController.MineResult.IN_PROGRESS;
+				if (r == ActionController.MineResult.DONE && ++breaksThisStep > 12) {
+					avoid.add(step.pos().asLong());
+					stuck(p, "blocks keep falling in at " + pos.toShortString()); // e.g. a gravel column
+					return true;
+				}
 				if (r == ActionController.MineResult.FAILED) {
 					avoid.add(step.pos().asLong());
 					stuck(p, "could not mine " + pos.toShortString());
@@ -373,6 +410,7 @@ public class Navigator {
 		stuckCount++;
 		AiLog.log(companion.name(), "stuck ({}/{}): {}", stuckCount, MAX_STUCK, why);
 		actions.abortMining();
+		miningForPath = false;
 		actions.sneak(false);
 		resetProgress();
 		if (stuckCount >= MAX_STUCK) {

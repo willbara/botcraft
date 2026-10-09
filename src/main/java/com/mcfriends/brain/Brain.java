@@ -219,6 +219,7 @@ public class Brain {
 			case FOLLOW -> baseTasks.computeIfAbsent(objective, o -> new FollowOwnerTask(c));
 			case STAY -> baseTasks.computeIfAbsent(objective, o -> new StayTask(c));
 			case IDLE -> baseTasks.computeIfAbsent(objective, o -> new IdleTask(c));
+			case SLEEP -> baseTasks.computeIfAbsent(objective, o -> new com.mcfriends.brain.task.SleepTask(c));
 			default -> null;
 		};
 	}

@@ -67,6 +67,10 @@ public final class CompanionCommand {
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
 					.executes(CompanionCommand::remove)))
+			.then(CommandManager.literal("info")
+				.then(CommandManager.argument("name", StringArgumentType.word())
+					.suggests(COMPANION_NAMES)
+					.executes(CompanionCommand::info)))
 			.then(CommandManager.literal("list")
 				.executes(CompanionCommand::list))
 			.then(CommandManager.literal("stop")
@@ -185,6 +189,28 @@ public final class CompanionCommand {
 			ctx.getSource().sendFeedback(() -> line, false);
 		}
 		return m.all().size();
+	}
+
+	/** Debug view: personality, orders, plan, memory highlights. */
+	private static int info(CommandContext<ServerCommandSource> ctx) {
+		String name = StringArgumentType.getString(ctx, "name");
+		Companion c = manager(ctx).byName(name);
+		if (c == null) {
+			ctx.getSource().sendError(Text.literal("No companion named " + name));
+			return 0;
+		}
+		var d = c.data;
+		List<String> lines = new ArrayList<>();
+		lines.add(name + " (skin " + d.skin + ", owner " + (d.ownerName == null ? "nobody" : d.ownerName) + ")");
+		lines.add(String.format("personality: chatty %.2f, brave %.2f, curious %.2f, helpful %.2f", d.chattiness, d.bravery, d.curiosity, d.helpfulness));
+		lines.add("mode: " + d.mode + (d.defendOwner ? " + defend" : "") + "; doing: " + c.describeActivity());
+		lines.add("queued: " + (c.jobs().pending().isEmpty() ? "nothing" : String.join(" | ", c.jobs().pending())));
+		lines.add("drives: " + c.brain().lastScores());
+		lines.add("memory: places " + c.memory().places.keySet() + ", " + c.memory().sightings.size() + " sightings, stats " + c.memory().stats);
+		for (String l : lines) {
+			ctx.getSource().sendFeedback(() -> Text.literal(l).formatted(Formatting.GRAY), false);
+		}
+		return 1;
 	}
 
 	private static int task(CommandContext<ServerCommandSource> ctx, String spec) {

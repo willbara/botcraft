@@ -56,6 +56,13 @@ public class CompanionConfig {
 	public boolean allowSkinLookup = true;
 	/** When /companion spawn has no skin argument, try the account with the companion's own name. */
 	public boolean autoSkinFromName = false;
+	/**
+	 * How readily idle companions set their own goals (make tools, gather wood). 0 = never act
+	 * without orders, 1 = eager. Personality scales it further.
+	 */
+	public float initiative = 0.5F;
+	/** Companions go to bed when their owner sleeps (so the night can be skipped). */
+	public boolean sleepWithOwner = true;
 	/** Put companions in survival mode when they join (they gather/fight like survival players). */
 	public boolean forceSurvival = true;
 	/** Permission level required for /companion. */
@@ -108,5 +115,6 @@ public class CompanionConfig {
 		treeSearchRadius = Math.max(4, Math.min(64, treeSearchRadius));
 		respawnDelayTicks = Math.max(1, respawnDelayTicks);
 		commandPermissionLevel = Math.max(0, Math.min(4, commandPermissionLevel));
+		initiative = Math.max(0.0F, Math.min(1.0F, initiative));
 	}
 }
