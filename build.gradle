@@ -1,0 +1,111 @@
+plugins {
+	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// Loom adds Mojang/Fabric repositories automatically.
+}
+
+loom {
+	runs {
+		// Dedicated server run used for fast iteration (./gradlew runServer).
+		server {
+			runDir = 'run/server'
+		}
+		client {
+			runDir = 'run/client'
+		}
+		// Headless GameTest server (./gradlew runGametest). Uses the 1.20.1-era
+		// fabric-gametest-api-v1 system property; exits with non-zero on failure.
+		gametest {
+			server()
+			name = 'Game Test'
+			vmArg '-Dfabric-api.gametest'
+			vmArg "-Dfabric-api.gametest.report-file=${project.layout.buildDirectory.get()}/gametest/junit.xml"
+			runDir = 'build/gametest'
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	testImplementation platform('org.junit:junit-bom:5.10.2')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 17
+	it.options.encoding = 'UTF-8'
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
+}
+
+test {
+	useJUnitPlatform()
+}
+
+jar {
+	from("LICENSE") {
+		rename { "${it}_${project.archives_base_name}" }
+	}
+}
+
+// Copies the remapped mod jar into <MC_DIR>/mods, removing older copies first.
+// MC_DIR comes from the MC_DIR env var, else the mc_dir Gradle property.
+tasks.register('deployToTest') {
+	group = 'mcfriends'
+	description = 'Builds the mod and copies it into MC_DIR/mods (replacing older MCFriends/Companions jars).'
+	dependsOn tasks.named('build')
+
+	def mcDirValue = System.getenv('MC_DIR') ?: project.findProperty('mc_dir')
+	def jarFile = tasks.named('remapJar').flatMap { it.archiveFile }
+	inputs.file(jarFile)
+
+	doLast {
+		if (!mcDirValue) {
+			throw new GradleException('MC_DIR is not set (env var MC_DIR or gradle property mc_dir)')
+		}
+		def modsDir = new File(mcDirValue.toString(), 'mods')
+		if (!modsDir.isDirectory()) {
+			throw new GradleException("Mods folder not found: ${modsDir}")
+		}
+		def built = jarFile.get().asFile
+		modsDir.listFiles().findAll { f ->
+			def n = f.name.toLowerCase()
+			f.isFile() && n.endsWith('.jar') && (n.startsWith('mcfriends') || n.startsWith('companions'))
+		}.each { old ->
+			logger.lifecycle("Removing old jar ${old.name}")
+			if (!old.delete()) throw new GradleException("Could not delete ${old}")
+		}
+		def target = new File(modsDir, built.name)
+		target.bytes = built.bytes
+		logger.lifecycle("Deployed ${built.name} -> ${target}")
+	}
+}
