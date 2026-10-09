@@ -519,15 +519,18 @@ public class GatherLogsTask extends Task {
 	private BlockPos pickTree(ServerWorld world, List<BlockPos> found, BlockPos from) {
 		Set<BlockPos> seenBases = new HashSet<>();
 		int checked = 0;
+		BlockPos best = null;
+		double bestScore = Double.MAX_VALUE;
+		int candidates = 0;
 		for (BlockPos log : found) {
-			if (++checked > 200) {
+			if (++checked > 200 || candidates >= 8) {
 				break;
 			}
 			BlockPos base = log;
 			while (world.getBlockState(base.down()).isIn(BlockTags.LOGS) && from.getY() - base.getY() < 12) {
 				base = base.down();
 			}
-			if (!seenBases.add(base) || blacklist.containsKey(base)) {
+			if (!seenBases.add(base) || blacklist.containsKey(base) || claimedByOther(base)) {
 				continue;
 			}
 			if (!new Terrain(world).support(base.down())) {
@@ -536,9 +539,56 @@ public class GatherLogsTask extends Task {
 			if (!CompanionConfig.get().griefing && !isNaturalTree(world, base)) {
 				continue;
 			}
-			return base;
+			// Prefer trees about the size we need: we always finish a tree we start, so a
+			// 50-log giant is a poor choice when we only want a few logs.
+			candidates++;
+			int size = treeSize(world, base);
+			int need = Math.max(1, wanted - gathered);
+			double score = Math.sqrt(base.getSquaredDistance(from)) + Math.max(0, size - need - 8) * 1.5;
+			if (score < bestScore) {
+				bestScore = score;
+				best = base;
+			}
 		}
-		return null;
+		if (best != null) {
+			CLAIMED.put(best, c.name());
+		}
+		return best;
+	}
+
+	/** Trees other companions are working on (so two don't fight over one). */
+	private static final java.util.Map<BlockPos, String> CLAIMED = new java.util.concurrent.ConcurrentHashMap<>();
+
+	private boolean claimedByOther(BlockPos base) {
+		String who = CLAIMED.get(base);
+		if (who == null || who.equals(c.name())) {
+			return false;
+		}
+		var m = com.mcfriends.CompanionManager.get();
+		var other = m == null ? null : m.byName(who);
+		if (other == null || !(other.brain().job() instanceof GatherLogsTask g) || !base.equals(g.treeBase)) {
+			CLAIMED.remove(base); // stale claim
+			return false;
+		}
+		return true;
+	}
+
+	private static int treeSize(ServerWorld world, BlockPos base) {
+		Set<BlockPos> seen = new HashSet<>();
+		java.util.ArrayDeque<BlockPos> q = new java.util.ArrayDeque<>();
+		q.add(base);
+		seen.add(base);
+		while (!q.isEmpty() && seen.size() < 64) {
+			BlockPos cur = q.poll();
+			for (BlockPos n : BlockPos.iterate(cur.add(-1, 0, -1), cur.add(1, 1, 1))) {
+				BlockPos im = n.toImmutable();
+				if (im.getY() >= base.getY() && !seen.contains(im) && world.getBlockState(im).isIn(BlockTags.LOGS)) {
+					seen.add(im);
+					q.add(im);
+				}
+			}
+		}
+		return seen.size();
 	}
 
 	/** A log column topped with tree-grown (non-persistent) leaves. */

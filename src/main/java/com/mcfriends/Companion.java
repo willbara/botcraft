@@ -303,13 +303,14 @@ public class Companion {
 
 	private static String resultPhrase(Task task) {
 		if (task instanceof GatherLogsTask g) {
-			return "got " + g.gathered() + " logs";
+			return "got " + g.gathered() + (g.gathered() == 1 ? " log" : " logs");
 		}
 		if (task instanceof MineTask m) {
 			return "got " + m.gathered() + " " + m.kind().noun();
 		}
 		if (task instanceof CraftTask cr) {
-			return "made " + (cr.made() > 1 ? cr.made() + " " : "a ") + ItemNames.display(cr.item());
+			String what = ItemNames.display(cr.item());
+			return "made " + (cr.made() > 1 ? cr.made() + " " + ItemNames.plural(what, cr.made()) : (what.matches("^[aeiou].*") ? "an " : "a ") + what);
 		}
 		if (task instanceof com.mcfriends.brain.task.SmeltTask sm) {
 			return (sm.output() == null ? "cooked " : "smelted ") + sm.made() + " " + (sm.output() == null ? "food" : ItemNames.display(sm.output()));

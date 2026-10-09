@@ -21,7 +21,7 @@ import java.util.List;
  * owner. Ends once nothing hostile is within the safe distance.
  */
 public class FleeTask extends Task {
-	private static final double SAFE_DISTANCE = 12.0;
+	public static final double SAFE_DISTANCE = 12.0;
 	private final boolean retreat;
 	private int replanIn;
 

@@ -53,7 +53,8 @@ public final class Drives {
 		if (threats.isEmpty()) {
 			return; // unarmed: can't help the owner, but nothing is after us
 		}
-		boolean coming = nearest.getTarget() == p || d < 10;
+		// Same distance FleeTask considers safe, so we don't start fleeing from something it would ignore.
+		boolean coming = d < com.mcfriends.brain.task.FleeTask.SAFE_DISTANCE && (nearest.getTarget() == p || d < 10);
 		if (creeper != null || coming) {
 			out.propose(Objective.FLEE, d < 6 ? 0.9F : 0.8F, String.format("%s %.1f away, no weapon", what, d));
 		}
