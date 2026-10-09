@@ -321,7 +321,7 @@ public class Companion {
 			return "hunted " + h.kills() + (h.kills() == 1 ? " animal" : " animals");
 		}
 		if (task instanceof DeliverTask d) {
-			return "gave you " + d.given() + " " + d.label();
+			return "gave " + d.recipientName() + " " + d.given() + " " + d.label();
 		}
 		return "done";
 	}

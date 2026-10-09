@@ -33,9 +33,20 @@ public class FollowOwnerTask extends Task {
 		return "follow";
 	}
 
+	/** Who we follow: someone we were told to ("follow alex") if they're around, else the owner. */
+	private ServerPlayerEntity leader() {
+		if (c.data.followTarget != null) {
+			ServerPlayerEntity t = com.mcfriends.chat.ChatRouter.findByName(c, c.data.followTarget);
+			if (t != null && t != c.player() && t.isAlive()) {
+				return t;
+			}
+		}
+		return c.perception().owner();
+	}
+
 	@Override
 	public String describe() {
-		ServerPlayerEntity o = c.perception().owner();
+		ServerPlayerEntity o = leader();
 		return o == null ? "waiting for my owner" : "following " + o.getGameProfile().getName();
 	}
 
@@ -53,14 +64,14 @@ public class FollowOwnerTask extends Task {
 	@Override
 	protected Status onTick() {
 		CompanionPlayer p = c.player();
-		ServerPlayerEntity owner = c.perception().owner();
+		ServerPlayerEntity owner = leader();
 		if (owner == null) {
 			glances.tick(c, null);
 			return Status.RUNNING;
 		}
 		double comfy = CompanionConfig.get().followDistance * (c.perception().isNight() ? 0.75 : 1.0);
 		double tp = CompanionConfig.get().teleportToOwnerDistance;
-		double d = c.perception().ownerDistance();
+		double d = owner.getWorld() == p.getWorld() ? owner.distanceTo(p) : Double.POSITIVE_INFINITY;
 		if (tp > 0 && (d > tp || owner.getWorld() != p.getWorld())) {
 			teleportNear(owner);
 			return Status.RUNNING;

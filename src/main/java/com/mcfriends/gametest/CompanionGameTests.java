@@ -680,4 +680,28 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtMole");
 		});
 	}
+
+	/** Sharing: missing wood for a craft, a companion asks a nearby friend, who brings some over. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1200, batchId = "share")
+	public void friendSharesLogs(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtNeedy", "GtGiver");
+		flatArena(ctx, 10);
+		ctx.assertTrue(m.spawn("GtNeedy", "ari", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 5.5)), -90.0F) == null, "spawn a");
+		ctx.assertTrue(m.spawn("GtGiver", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(8.5, 1, 5.5)), 90.0F) == null, "spawn b");
+		Companion a = m.byName("GtNeedy");
+		Companion b = m.byName("GtGiver");
+		com.mcfriends.chat.CommandTasks.stay(a);
+		com.mcfriends.chat.CommandTasks.stay(b);
+		a.player().getInventory().clear();
+		b.player().getInventory().clear();
+		give(b, net.minecraft.item.Items.OAK_LOG, 10);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(a, "craft a crafting table", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(a, net.minecraft.item.Items.CRAFTING_TABLE) >= 1, "no table; a: " + a.describeActivity() + "; b: " + b.describeActivity()
+				+ "; b logs " + count(b, net.minecraft.item.Items.OAK_LOG) + "; a said " + a.speech().spokenKeys());
+			ctx.assertTrue(count(b, net.minecraft.item.Items.OAK_LOG) < 10, "b didn't share");
+			cleanup(m, "GtNeedy", "GtGiver");
+		});
+	}
 }

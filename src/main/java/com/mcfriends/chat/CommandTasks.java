@@ -33,6 +33,7 @@ public final class CommandTasks {
 	public static void follow(Companion c, @Nullable ServerPlayerEntity who) {
 		claimOwner(c, who);
 		c.data.defendOwner = false;
+		c.data.followTarget = null;
 		c.data.mode = "follow";
 		c.jobs().clear();
 		c.brain().reconsider();

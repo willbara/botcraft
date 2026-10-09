@@ -56,7 +56,10 @@ public class Life {
 	public record Goal(String key, List<String> jobs, String reason) {
 	}
 
+	private long nextFoodAsk;
+
 	public void tick(Companion c, long now) {
+		askForFood(c, now);
 		float level = c.data.initiative != null ? c.data.initiative : CompanionConfig.get().initiative;
 		if (level <= 0 || now < nextDecision || now % 20 != 0) {
 			return;
@@ -92,6 +95,23 @@ public class Life {
 		c.jobs().append(g.jobs());
 		c.speech().event("event.initiative", Map.of("plan", String.join(", then ", g.jobs().stream().map(Jobs::describe).toList()),
 			"reason", g.reason()), 20 * 30, free ? 0.5F : 0.8F);
+	}
+
+	/** Hungry with nothing to eat: a friend might share before we go hunting. */
+	private void askForFood(Companion c, long now) {
+		if (now < nextFoodAsk || now % 40 != 0) {
+			return;
+		}
+		CompanionPlayer p = c.player();
+		if (p.getHungerManager().getFoodLevel() >= 12 || Inventories.foodCount(p.getInventory()) > 0
+			|| !c.perception().threats().isEmpty()) {
+			return;
+		}
+		nextFoodAsk = now + 20 * 60 * 2;
+		Companion helper = Sharing.ask(c, "food", "something to eat", 3, false);
+		if (helper != null) {
+			c.jobs().interruptWith(List.of("await food 3 " + helper.name()));
+		}
 	}
 
 	/** A job from a life goal failed: leave that goal alone for a while. */

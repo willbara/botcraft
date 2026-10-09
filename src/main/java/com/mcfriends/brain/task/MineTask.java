@@ -83,6 +83,7 @@ public class MineTask extends Task {
 	@Nullable
 	private BlockPos digging;
 	private int replans;
+	private boolean askedForPickaxe;
 
 	public MineTask(Companion c, OreKind kind, int count) {
 		super(c);
@@ -147,6 +148,13 @@ public class MineTask extends Task {
 			return Status.SUCCESS;
 		}
 		if (!hasPickaxe(p)) {
+			if (!askedForPickaxe) {
+				askedForPickaxe = true;
+				com.mcfriends.Companion helper = com.mcfriends.brain.Sharing.ask(c, kind.pickaxe, kind.pickaxe.replace('_', ' '), 1, true);
+				if (helper != null) {
+					return deferTo(List.of("await " + kind.pickaxe + " 1 " + helper.name()));
+				}
+			}
 			return deferTo(List.of("craft " + kind.pickaxe + " 1"));
 		}
 		if (failures >= MAX_FAILURES) {

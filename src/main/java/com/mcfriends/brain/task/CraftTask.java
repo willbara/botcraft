@@ -123,6 +123,17 @@ public class CraftTask extends Task {
 			return fail(plan.problem());
 		}
 		if (!plan.missing().isEmpty()) {
+			// First see if a friend nearby can spare the first thing we're missing.
+			if (!askedFriend) {
+				askedFriend = true;
+				Map.Entry<Item, Integer> first = plan.missing().entrySet().iterator().next();
+				String key = shareKey(first.getKey());
+				String label = key.equals("logs") ? "logs" : ItemNames.plural(ItemNames.display(first.getKey()), first.getValue());
+				com.mcfriends.Companion helper = com.mcfriends.brain.Sharing.ask(c, key, label, first.getValue(), false);
+				if (helper != null) {
+					return deferTo(List.of("await " + key + " " + first.getValue() + " " + helper.name()));
+				}
+			}
 			List<String> prereqs = new ArrayList<>();
 			int logs = 0;
 			for (Map.Entry<Item, Integer> e : plan.missing().entrySet()) {
@@ -306,6 +317,17 @@ public class CraftTask extends Task {
 	}
 
 	// ---- helpers --------------------------------------------------------------------------------
+
+	private boolean askedFriend;
+
+	/** Delivery key for an item (any kind of log counts as "logs"). */
+	static String shareKey(Item item) {
+		if (new ItemStack(item).isIn(ItemTags.LOGS)) {
+			return "logs";
+		}
+		var ore = com.mcfriends.knowledge.OreKind.byDrop(item);
+		return ore != null ? ore.word : ItemNames.id(item);
+	}
 
 	static Map<Item, Integer> inventoryCounts(PlayerInventory inv) {
 		Map<Item, Integer> m = new HashMap<>();

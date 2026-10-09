@@ -178,6 +178,45 @@ class IntentParserTest {
 	}
 
 	@Test
+	void targetsAndPurpose() {
+		IntentParser.Parsed p = IntentParser.parse("alex go to steve", List.of("alex", "steve"), List.of());
+		assertEquals(List.of("alex"), p.addressed());
+		assertEquals(Intent.Type.COME_HERE, p.intent().type());
+		assertEquals("steve", p.intent().target());
+
+		p = IntentParser.parse("steve, give alex your logs", List.of("alex", "steve"), List.of());
+		assertEquals(List.of("steve"), p.addressed());
+		assertEquals(Intent.Type.GIVE, p.intent().type());
+		assertEquals("alex", p.intent().target());
+		assertEquals("logs", p.intent().item());
+
+		p = IntentParser.parse("bob follow gonzome", NAMES, List.of("gonzome"));
+		assertEquals(Intent.Type.FOLLOW, p.intent().type());
+		assertEquals("gonzome", p.intent().target());
+
+		// The planner works out the means; keep the purpose.
+		p = parse("bob make a furnace to smelt iron and then make an iron pickaxe");
+		assertEquals(List.of(Intent.Type.SMELT, Intent.Type.CRAFT), p.intents().stream().map(Intent::type).toList());
+		assertEquals("iron pickaxe", p.intents().get(1).item());
+		p = parse("bob craft iron to make iron pickaxes");
+		assertEquals(Intent.Type.CRAFT, p.intent().type());
+		assertEquals("iron pickaxe", p.intent().item());
+	}
+
+	@Test
+	void typosSlangAndFallback() {
+		assertEquals(Intent.Type.FOLLOW, type("bob folow me"));
+		Intent i = parse("bob mien some coal").intent();
+		assertEquals(Intent.Type.MINE, i.type());
+		assertEquals("coal", i.item());
+		assertEquals(Intent.Type.CRAFT, type("bob crfat a stone pickaxe"));
+		assertEquals(Intent.Type.WHERE, type("bob where r u"));
+		assertEquals(Intent.Type.GIVE, type("bob gimme the logs"));
+		assertEquals(Intent.Type.FOLLOW, type("bob could you start following me around"));
+		assertEquals(Intent.Type.GATHER, type("bob maybe some chopping would be good"));
+	}
+
+	@Test
 	void freeMode() {
 		assertEquals(Intent.Type.FREE, parse("bob, do your own thing").intent().type());
 		assertEquals(Intent.Type.FREE, parse("bob go explore").intent().type());

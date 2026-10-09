@@ -242,6 +242,11 @@ public final class Inventories {
 		return best;
 	}
 
+	/** Edible and not something we'd only eat when starving. */
+	public static boolean isGoodFood(ItemStack s) {
+		return s.getItem().getFoodComponent() != null && !BAD_FOOD.contains(s.getItem());
+	}
+
 	public static int foodCount(PlayerInventory inv) {
 		return count(inv, s -> s.getItem().getFoodComponent() != null && !BAD_FOOD.contains(s.getItem()));
 	}
