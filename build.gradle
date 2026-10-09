@@ -77,6 +77,13 @@ jar {
 	}
 }
 
+// Fresh world for every GameTest run so companions from earlier runs aren't restored.
+tasks.matching { it.name == 'runGametest' }.configureEach {
+	doFirst {
+		delete layout.buildDirectory.dir('gametest/world')
+	}
+}
+
 // Copies the remapped mod jar into <MC_DIR>/mods, removing older copies first.
 // MC_DIR comes from the MC_DIR env var, else the mc_dir Gradle property.
 tasks.register('deployToTest') {

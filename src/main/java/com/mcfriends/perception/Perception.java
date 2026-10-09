@@ -1,0 +1,181 @@
+package com.mcfriends.perception;
+
+import com.mcfriends.Companion;
+import com.mcfriends.action.Inventories;
+import com.mcfriends.entity.CompanionPlayer;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.mob.CreeperEntity;
+import net.minecraft.entity.mob.EndermanEntity;
+import net.minecraft.entity.mob.HostileEntity;
+import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.mob.Monster;
+import net.minecraft.entity.mob.PiglinEntity;
+import net.minecraft.entity.mob.SpiderEntity;
+import net.minecraft.entity.mob.ZombifiedPiglinEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+/**
+ * Cached world queries for one companion. Results are recomputed at most every few ticks so
+ * drives and tasks can ask freely.
+ */
+public class Perception {
+	public static final double THREAT_RADIUS = 16.0;
+	private static final int THREAT_TTL = 5;
+	private static final int INVENTORY_TTL = 20;
+
+	private final Companion companion;
+	private final BlockScanner scanner;
+
+	private long now;
+	private long threatsAt = -1000;
+	private List<MobEntity> threats = List.of();
+	private long inventoryAt = -1000;
+	private InventorySummary inventory = InventorySummary.EMPTY;
+
+	public Perception(Companion companion) {
+		this.companion = companion;
+		this.scanner = new BlockScanner(companion);
+	}
+
+	public void tick(long serverTick) {
+		this.now = serverTick;
+	}
+
+	public BlockScanner blocks() {
+		return scanner;
+	}
+
+	@Nullable
+	public ServerPlayerEntity owner() {
+		ServerPlayerEntity o = companion.owner();
+		return o != null && o.isAlive() && !o.isSpectator() ? o : null;
+	}
+
+	/** Distance to owner, or +inf if the owner is offline or in another dimension. */
+	public double ownerDistance() {
+		ServerPlayerEntity o = owner();
+		CompanionPlayer p = companion.player();
+		if (o == null || p == null || o.getWorld() != p.getWorld()) {
+			return Double.POSITIVE_INFINITY;
+		}
+		return o.distanceTo(p);
+	}
+
+	// ---- threats ------------------------------------------------------------------------------
+
+	/** Hostile mobs within 16 blocks that are (or would be) hostile to us or our owner, nearest first. */
+	public List<MobEntity> threats() {
+		if (now - threatsAt >= THREAT_TTL) {
+			threatsAt = now;
+			threats = computeThreats();
+		}
+		return threats;
+	}
+
+	@Nullable
+	public MobEntity nearestThreat() {
+		List<MobEntity> t = threats();
+		return t.isEmpty() ? null : t.get(0);
+	}
+
+	@Nullable
+	public CreeperEntity nearestCreeper(double radius) {
+		CompanionPlayer p = companion.player();
+		for (MobEntity m : threats()) {
+			if (m instanceof CreeperEntity c && m.distanceTo(p) <= radius) {
+				return c;
+			}
+		}
+		return null;
+	}
+
+	private List<MobEntity> computeThreats() {
+		CompanionPlayer p = companion.player();
+		if (p == null) {
+			return List.of();
+		}
+		ServerPlayerEntity owner = owner();
+		Box box = p.getBoundingBox().expand(THREAT_RADIUS, 6.0, THREAT_RADIUS);
+		List<MobEntity> list = new ArrayList<>(p.getServerWorld().getEntitiesByClass(MobEntity.class, box,
+			m -> m.isAlive() && m instanceof Monster && isHostileTo(m, p, owner)));
+		list.sort(Comparator.comparingDouble(m -> m.squaredDistanceTo(p)));
+		return list;
+	}
+
+	private static boolean isHostileTo(MobEntity m, CompanionPlayer p, @Nullable ServerPlayerEntity owner) {
+		LivingEntity target = m.getTarget();
+		boolean targetingUs = target == p || (owner != null && target == owner);
+		// Neutral mobs only count when they're already after us.
+		if (m instanceof EndermanEntity || m instanceof ZombifiedPiglinEntity || m instanceof PiglinEntity) {
+			return targetingUs;
+		}
+		if (m instanceof SpiderEntity && target == null && p.getWorld().isDay()) {
+			return false;
+		}
+		if (!(m instanceof HostileEntity) && !targetingUs) {
+			// e.g. slimes, phantoms, ghasts: only when engaged or close
+			return m.squaredDistanceTo(p) < 8 * 8;
+		}
+		return targetingUs || m.canSee(p) || m.squaredDistanceTo(p) < 6 * 6;
+	}
+
+	// ---- environment --------------------------------------------------------------------------
+
+	public long timeOfDay() {
+		CompanionPlayer p = companion.player();
+		return p == null ? 0 : p.getWorld().getTimeOfDay() % 24000L;
+	}
+
+	/** Night as players see it: mobs can spawn on the surface (dusk 13000 to dawn 23000). */
+	public boolean isNight() {
+		long t = timeOfDay();
+		return t >= 13000 && t < 23000;
+	}
+
+	public int lightLevel() {
+		CompanionPlayer p = companion.player();
+		if (p == null) {
+			return 15;
+		}
+		BlockPos pos = p.getBlockPos();
+		return p.getWorld().getLightLevel(pos);
+	}
+
+	// ---- inventory ----------------------------------------------------------------------------
+
+	public InventorySummary inventory() {
+		if (now - inventoryAt >= INVENTORY_TTL) {
+			inventoryAt = now;
+			CompanionPlayer p = companion.player();
+			inventory = p == null ? InventorySummary.EMPTY : InventorySummary.of(p.getInventory());
+		}
+		return inventory;
+	}
+
+	public void invalidateInventory() {
+		inventoryAt = -1000;
+	}
+
+	public record InventorySummary(int food, int logs, int throwaway, double bestWeapon, int freeSlots) {
+		static final InventorySummary EMPTY = new InventorySummary(0, 0, 0, 1.0, 36);
+
+		static InventorySummary of(PlayerInventory inv) {
+			int free = 0;
+			for (int i = 0; i < inv.main.size(); i++) {
+				if (inv.getStack(i).isEmpty()) {
+					free++;
+				}
+			}
+			return new InventorySummary(Inventories.foodCount(inv), Inventories.count(inv, Inventories::isLog),
+				Inventories.count(inv, Inventories::isThrowaway), Inventories.bestWeaponDamage(inv), free);
+		}
+	}
+}
