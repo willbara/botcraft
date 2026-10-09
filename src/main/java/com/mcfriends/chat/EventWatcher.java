@@ -73,7 +73,8 @@ public class EventWatcher {
 		String biome = p.getWorld().getBiome(p.getBlockPos()).getKey().map(k -> k.getValue().getPath()).orElse("");
 		if (!biome.equals(lastBiome)) {
 			if (initialized && !biome.isEmpty() && c.memory().stat("biome_" + biome) == 0) {
-				s.event("event.biome", Map.of("biome", biome.replace('_', ' ')), 120 * SECOND, 0.4F);
+				String b = biome.replace('_', ' ');
+				s.event("event.biome", Map.of("biome", b, "biome_a", (b.matches("^[aeiou].*") ? "an " : "a ") + b), 120 * SECOND, 0.4F);
 			}
 			if (!biome.isEmpty()) {
 				c.memory().count("biome_" + biome, 1);

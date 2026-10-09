@@ -59,7 +59,7 @@ class TemplatesTest {
 				Map.entry("biome", "plains"), Map.entry("items", "a stick"), Map.entry("ores", "5"), Map.entry("kills", "2"),
 				Map.entry("crafted", "1"), Map.entry("deaths", "0"), Map.entry("list", "coal at 1, 2, 3"), Map.entry("nick", "boss"),
 				Map.entry("friend", "Alice"), Map.entry("thing", "food"), Map.entry("fav", "cake"), Map.entry("topic", "creepers"),
-				Map.entry("time", "noon"));
+				Map.entry("time", "noon"), Map.entry("biome_a", "a plains"));
 			String line = Templates.fill(Templates.pick(key, "brave", vars, r), vars);
 			assertFalse(line.isEmpty(), key);
 			assertFalse(line.contains("{"), key + " left a placeholder: " + line);

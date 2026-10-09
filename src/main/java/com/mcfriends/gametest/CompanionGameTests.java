@@ -719,4 +719,33 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtAnna", "GtBen");
 		});
 	}
+
+	/** Night without a weapon or bed: digs three blocks down and roofs itself in. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "shelter")
+	public void digsShelter(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtMole");
+		for (int x = -1; x <= 6; x++) {
+			for (int z = -1; z <= 6; z++) {
+				for (int y = 0; y <= 3; y++) {
+					ctx.setBlockState(x, y, z, y == 3 ? Blocks.GRASS_BLOCK : Blocks.DIRT);
+				}
+				for (int y = 4; y <= 8; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+		ctx.assertTrue(m.spawn("GtMole", "efe", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 4, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtMole");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		c.brain().setJob(new com.mcfriends.brain.task.ShelterTask(c, false).asJob("shelter"));
+		int ground = ctx.getAbsolutePos(new BlockPos(0, 4, 0)).getY();
+		ctx.addInstantFinalTask(() -> {
+			BlockPos feet = com.mcfriends.nav.Navigator.feet(c.player());
+			ctx.assertTrue(feet.getY() <= ground - 3, "not dug in: feet " + feet.toShortString() + " ground " + ground);
+			ctx.assertTrue(!ctx.getWorld().getBlockState(feet.up(2)).isAir(), "no roof over " + feet.toShortString());
+			cleanup(m, "GtMole");
+		});
+	}
 }

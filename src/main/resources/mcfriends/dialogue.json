@@ -76,7 +76,7 @@
   "event.flee_unarmed": ["I've got no weapon, running!", "Can't fight that bare-handed!", "No sword, no chance. Bye!"],
   "event.rain": ["Great, rain.", "It's raining. Mobs might stay out longer.", "Rain! Good for the crops at least.", "Anyone bring an umbrella?"],
   "event.thunder": ["Thunderstorm! Stay inside if you can.", "Whoa, lightning!", "That's a big storm."],
-  "event.biome": ["Ooh, a {biome}.", "Huh, {biome}. Never been here before.", "Welcome to the {biome}, I guess.", "Nice, a {biome}!"],
+  "event.biome": ["Ooh, {biome_a}.", "Huh, {biome_a}. Never been in one of these.", "Welcome to the {biome}, I guess.", "Nice, {biome_a}!"],
   "event.owner_hurt": ["You okay, {nick}? You look hurt.", "{player}, eat something, you're low!", "Careful {nick}, you're hurt!"],
   "event.owner_died": ["Noooo! {player}!", "{player}! I'll get your stuff... maybe.", "Oh no. RIP {player}.", "That's not good, {nick}!"],
   "event.diamonds": ["DIAMONDS!", "Diamonds! I see diamonds!", "Ooh, shiny. Diamonds over here!"],

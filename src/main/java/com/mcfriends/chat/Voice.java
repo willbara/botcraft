@@ -46,11 +46,13 @@ public record Voice(boolean casual, int energy, List<String> fillers, String emo
 		if (!fillers.isEmpty() && random.nextFloat() < 0.18F) {
 			String f = fillers.get(random.nextInt(fillers.size()));
 			if (!f.isEmpty() && s.length() > 1) {
-				s = f + Character.toLowerCase(s.charAt(0)) + s.substring(1);
+				s = f + lowerFirst(s);
 			}
 		}
 		if (casual) {
-			s = s.toLowerCase(Locale.ROOT).replace("okay", "ok").replace("going to", "gonna").replaceAll("\\byou\\b", random.nextFloat() < 0.3F ? "u" : "you");
+			// Casual typing: lowercase sentence starts, but keep names and "I" as they are.
+			s = lowerFirst(s).replace("Okay", "ok").replace("okay", "ok").replace("going to", "gonna")
+				.replaceAll("\\byou\\b", random.nextFloat() < 0.3F ? "u" : "you");
 			if (s.endsWith(".") && !s.endsWith("...")) {
 				s = s.substring(0, s.length() - 1);
 			}
@@ -62,6 +64,20 @@ public record Voice(boolean casual, int energy, List<String> fillers, String emo
 		}
 		return s;
 	}
+
+	/** Lowercase the first letter unless it's "I"/"I'm" or looks like a name (we can't tell, so only common words). */
+	private static String lowerFirst(String s) {
+		if (s.length() < 2) {
+			return s.toLowerCase(Locale.ROOT);
+		}
+		String first = s.split("[ ,.!?']", 2)[0];
+		if (first.equals("I") || !COMMON_START.contains(first.toLowerCase(Locale.ROOT))) {
+			return s;
+		}
+		return Character.toLowerCase(s.charAt(0)) + s.substring(1);
+	}
+
+	private static final java.util.Set<String> COMMON_START = java.util.Set.of("okay", "ok", "on", "got", "sure", "can", "you", "alright", "right", "following", "coming", "stopping", "here", "take", "catch", "all", "done", "finished", "there", "that", "step", "so", "yeah", "yep", "hey", "hi", "hello", "oh", "hmm", "well", "nice", "good", "thanks", "no", "not", "sorry", "just", "i'll", "it's", "its", "the", "a", "my", "we", "let's", "lets", "what", "where", "how", "hang", "leave", "made", "quick", "mind", "gonna", "time", "night", "morning", "sun's", "new", "creeper", "run", "nope", "too", "ouch", "help", "low", "back", "respawned", "anyone", "great", "rain", "whoa", "ooh", "huh", "welcome", "careful", "diamonds", "noooo", "big", "show", "plan's", "hit", "can't", "couldn't", "nothing", "lovely", "is", "psst", "go", "ha", "boo", "lol", "easy", "noted", "every", "don't", "right?", "it");
 
 	/** What to call the owner: their name, or the nickname this companion likes. */
 	public String nickFor(String ownerName, Random random) {
