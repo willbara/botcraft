@@ -91,6 +91,12 @@ public abstract class Task {
 		return spec;
 	}
 
+	/** End successfully without announcing anything (e.g. a wait that just gave up). */
+	protected Status quietSuccess() {
+		silent = true;
+		return Status.SUCCESS;
+	}
+
 	/** Finished without anything worth announcing (e.g. it handed over to prerequisite jobs). */
 	public boolean silent() {
 		return silent;

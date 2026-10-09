@@ -681,9 +681,9 @@ public class CompanionGameTests implements FabricGameTest {
 		});
 	}
 
-	/** Sharing: missing wood for a craft, a companion asks a nearby friend, who brings some over. */
+	/** Sharing: missing coal for torches, a companion asks an idle friend, who brings some over. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1200, batchId = "share")
-	public void friendSharesLogs(TestContext ctx) {
+	public void friendSharesCoal(TestContext ctx) {
 		CompanionManager m = manager(ctx);
 		cleanup(m, "GtNeedy", "GtGiver");
 		flatArena(ctx, 10);
@@ -695,31 +695,33 @@ public class CompanionGameTests implements FabricGameTest {
 		com.mcfriends.chat.CommandTasks.stay(b);
 		a.player().getInventory().clear();
 		b.player().getInventory().clear();
-		give(b, net.minecraft.item.Items.OAK_LOG, 10);
-		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(a, "craft a crafting table", null) == null, "order");
+		give(a, net.minecraft.item.Items.OAK_LOG, 2);
+		give(b, net.minecraft.item.Items.COAL, 6);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(a, "craft 4 torches", null) == null, "order");
 		ctx.addInstantFinalTask(() -> {
-			ctx.assertTrue(count(a, net.minecraft.item.Items.CRAFTING_TABLE) >= 1, "no table; a: " + a.describeActivity() + "; b: " + b.describeActivity()
-				+ "; b logs " + count(b, net.minecraft.item.Items.OAK_LOG) + "; a said " + a.speech().spokenKeys());
-			ctx.assertTrue(count(b, net.minecraft.item.Items.OAK_LOG) < 10, "b didn't share");
+			ctx.assertTrue(count(a, net.minecraft.item.Items.TORCH) >= 4, "no torches; a: " + a.describeActivity() + "; b: " + b.describeActivity()
+				+ "; b coal " + count(b, net.minecraft.item.Items.COAL) + "; a said " + a.speech().spokenKeys());
+			ctx.assertTrue(count(b, net.minecraft.item.Items.COAL) < 6, "b didn't share");
 			cleanup(m, "GtNeedy", "GtGiver");
 		});
 	}
 
-	/** Free mode ends as soon as the companion is given another order. */
-	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 100, batchId = "free_ends")
-	public void orderEndsFreeMode(TestContext ctx) {
+	/** Sharing is only for things worth a trip: cobblestone is never requested. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "share_cheap")
+	public void noAskingForCobblestone(TestContext ctx) {
 		CompanionManager m = manager(ctx);
-		cleanup(m, "GtLoose");
-		flatArena(ctx, 6);
-		ctx.assertTrue(m.spawn("GtLoose", "zuri", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
-		Companion c = m.byName("GtLoose");
-		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "do your own thing", null) == null, "free");
-		ctx.assertTrue("free".equals(c.data.mode), "mode " + c.data.mode);
-		c.jobs().append(java.util.List.of("gather logs 16")); // something it chose itself
-		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "mine 3 coal", null) == null, "order");
-		ctx.assertTrue("follow".equals(c.data.mode), "still " + c.data.mode);
-		ctx.assertTrue(!c.jobs().pending().contains("gather logs 16"), "own job not dropped: " + c.jobs().pending());
-		cleanup(m, "GtLoose");
+		cleanup(m, "GtCheapA", "GtCheapB");
+		flatArena(ctx, 8);
+		ctx.assertTrue(m.spawn("GtCheapA", "ari", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 4.5)), 0.0F) == null, "spawn a");
+		ctx.assertTrue(m.spawn("GtCheapB", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(5.5, 1, 4.5)), 0.0F) == null, "spawn b");
+		Companion a = m.byName("GtCheapA");
+		Companion b = m.byName("GtCheapB");
+		com.mcfriends.chat.CommandTasks.stay(a);
+		com.mcfriends.chat.CommandTasks.stay(b);
+		give(b, net.minecraft.item.Items.COBBLESTONE, 32);
+		ctx.assertTrue(com.mcfriends.brain.Sharing.ask(a, "stone", "cobblestone", 3, false) == null, "asked for cobblestone");
+		ctx.assertTrue(com.mcfriends.brain.Sharing.ask(a, "logs", "logs", 3, false) == null, "asked for logs");
+		cleanup(m, "GtCheapA", "GtCheapB");
 		ctx.complete();
 	}
 
