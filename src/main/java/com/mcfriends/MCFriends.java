@@ -19,6 +19,14 @@ public class MCFriends implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		CompanionConfig.load();
+		try {
+			int n = com.mcfriends.chat.Templates.loadOverrides(net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("mcfriends-dialogue.json"));
+			if (n >= 0) {
+				LOG.info("Loaded {} dialogue override(s) from mcfriends-dialogue.json", n);
+			}
+		} catch (Exception e) {
+			LOG.error("Could not read config/mcfriends-dialogue.json", e);
+		}
 		ServerLifecycleEvents.SERVER_STARTED.register(CompanionManager::onServerStarted);
 		ServerLifecycleEvents.SERVER_STOPPING.register(CompanionManager::onServerStopping);
 		ServerLifecycleEvents.SERVER_STOPPED.register(CompanionManager::onServerStopped);

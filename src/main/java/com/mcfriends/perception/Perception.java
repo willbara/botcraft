@@ -125,7 +125,9 @@ public class Perception {
 
 	private static boolean isHostileTo(MobEntity m, CompanionPlayer p, @Nullable ServerPlayerEntity owner) {
 		LivingEntity target = m.getTarget();
-		boolean targetingUs = target == p || (owner != null && target == owner);
+		// Mobs after us, our owner, or a fellow companion nearby (we look out for each other).
+		boolean targetingUs = target == p || (owner != null && target == owner)
+			|| (target instanceof CompanionPlayer friend && friend.squaredDistanceTo(p) < 16 * 16);
 		// Neutral mobs only count when they're already after us.
 		if (m instanceof EndermanEntity || m instanceof ZombifiedPiglinEntity || m instanceof PiglinEntity) {
 			return targetingUs;

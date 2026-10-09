@@ -11,7 +11,16 @@ public record Intent(Type type, String item, int count) {
 		GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT, FARM, HARVEST,
 		HOME_SET, HOME_GO, SLEEP,
 		WHERE, INVENTORY, STATS, FOUND, HELP, STATUS,
+		JOKE, COMPLIMENT, INSULT, WHO, LOVE, BYE, TIME, FAVORITE, OPINION, FEELING, SORRY,
 		GREETING, THANKS, UNKNOWN;
+
+		/** Chit-chat handled by SmallTalk. */
+		public boolean isSmallTalk() {
+			return switch (this) {
+				case JOKE, COMPLIMENT, INSULT, WHO, LOVE, BYE, TIME, FAVORITE, OPINION, FEELING, SORRY -> true;
+				default -> false;
+			};
+		}
 
 		/** Orders change behaviour; only the owner may give them. */
 		public boolean isOrder() {

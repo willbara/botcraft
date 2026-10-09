@@ -227,6 +227,12 @@ public final class ChatRouter {
 					}
 					speech.reply("thanks", sender, vars);
 				}
+				case JOKE, COMPLIMENT, INSULT, WHO, LOVE, BYE, TIME, FAVORITE, OPINION, FEELING, SORRY -> {
+					if (intent.type() == Intent.Type.COMPLIMENT && sender != null) {
+						c.memory().person(sender.getGameProfile().getName(), c.server.getOverworld().getTime()).thanks++;
+					}
+					SmallTalk.reply(c, sender, intent);
+				}
 				case UNKNOWN -> {
 					if (sender == null) {
 						error = "I don't understand that order";

@@ -696,4 +696,27 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtFree");
 		});
 	}
+
+	/** Social: companions chat with each other; sharing an ore sighting teaches the listener where it is. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 400, batchId = "social")
+	public void companionsBanterAndShare(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtAnna", "GtBen");
+		flatArena(ctx, 8);
+		ctx.assertTrue(m.spawn("GtAnna", "ari", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 4.5)), -90.0F) == null, "spawn a");
+		ctx.assertTrue(m.spawn("GtBen", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(5.5, 1, 4.5)), 90.0F) == null, "spawn b");
+		Companion a = m.byName("GtAnna");
+		Companion b = m.byName("GtBen");
+		com.mcfriends.chat.CommandTasks.stay(a);
+		com.mcfriends.chat.CommandTasks.stay(b);
+		BlockPos iron = ctx.getAbsolutePos(new BlockPos(1, -20, 1));
+		a.memory().sight("iron", iron, a.dimension(), 0);
+		ctx.runAtTick(60, () -> com.mcfriends.chat.Social.banter(a, b, "found"));
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(a.speech().spokenKeys().contains("banter.found"), "a said " + a.speech().spokenKeys());
+			ctx.assertTrue(b.speech().spokenKeys().contains("banter.found.reply"), "b said " + b.speech().spokenKeys());
+			ctx.assertTrue(!b.memory().sightings("iron", iron, a.dimension(), 2).isEmpty(), "b didn't learn the iron spot");
+			cleanup(m, "GtAnna", "GtBen");
+		});
+	}
 }

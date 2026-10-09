@@ -309,6 +309,7 @@ public final class CompanionManager {
 				MCFriends.LOG.error("Error ticking companion {}", c.name(), e);
 			}
 		}
+		com.mcfriends.chat.Social.tick(companions.values(), tickCount);
 		if (tickCount % AUTOSAVE_TICKS == 0) {
 			save();
 		}

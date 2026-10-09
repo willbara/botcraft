@@ -29,6 +29,10 @@ class IntentParserTest {
 		assertTrue(parse("follow me").addressed().isEmpty());
 		assertTrue(parse("gather all the logs").addressed().isEmpty());
 		assertTrue(parse("bobsled time").addressed().isEmpty());
+		// Typos in a direct address still reach the right companion.
+		assertEquals(List.of("herobrine"), parse("herobrin, follow me").addressed());
+		assertEquals(List.of("Alice_2"), parse("alice_3 come here").addressed());
+		assertTrue(parse("i saw a bobcat").addressed().isEmpty());
 		// The reported bug: an order for Bob must not address herobrine.
 		assertEquals(List.of("Bob"), parse("bob, go mine logs").addressed());
 	}
@@ -71,6 +75,19 @@ class IntentParserTest {
 		assertEquals(Intent.Type.GREETING, type("hi bob"));
 		assertEquals(Intent.Type.THANKS, type("thanks bob"));
 		assertEquals(Intent.Type.UNKNOWN, type("bob the weather is nice"));
+		assertEquals(Intent.Type.JOKE, type("bob tell me a joke"));
+		assertEquals(Intent.Type.WHO, type("who are you bob"));
+		assertEquals(Intent.Type.TIME, type("bob what time is it"));
+		assertEquals(Intent.Type.COMPLIMENT, type("good job bob"));
+		assertEquals(Intent.Type.INSULT, type("bob you suck"));
+		assertEquals(Intent.Type.BYE, type("bye bob"));
+		assertEquals(Intent.Type.LOVE, type("i love you bob"));
+		Intent fav = parse("bob what's your favorite food").intent();
+		assertEquals(Intent.Type.FAVORITE, fav.type());
+		assertEquals("food", fav.item());
+		Intent op = parse("bob do you like creepers?").intent();
+		assertEquals(Intent.Type.OPINION, op.type());
+		assertEquals("creepers", op.item());
 	}
 
 	@Test
