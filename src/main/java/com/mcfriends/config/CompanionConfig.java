@@ -49,6 +49,13 @@ public class CompanionConfig {
 	public int treeSearchRadius = 32;
 	/** Ticks before a dead companion rejoins. */
 	public int respawnDelayTicks = 100;
+	/**
+	 * Allow looking up skins of registered Minecraft accounts by name (one request to Mojang per
+	 * new name, off the server thread, same as player heads). Results are stored with the companion.
+	 */
+	public boolean allowSkinLookup = true;
+	/** When /companion spawn has no skin argument, try the account with the companion's own name. */
+	public boolean autoSkinFromName = false;
 	/** Put companions in survival mode when they join (they gather/fight like survival players). */
 	public boolean forceSurvival = true;
 	/** Permission level required for /companion. */

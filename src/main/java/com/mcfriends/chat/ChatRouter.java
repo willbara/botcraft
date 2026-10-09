@@ -13,14 +13,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Routes player chat to companions. A message is for a companion if it names it ("Bob, follow
- * me"), addresses everyone ("everyone stop"), or - without a name - if the sender owns exactly
- * one companion within 32 blocks and the message is a clear order. Orders from anyone but
- * the owner are politely refused.
+ * Routes player chat to companions. A message is only for a companion if it says its name
+ * ("Bob, follow me") or addresses everyone ("everyone stop" - only your own companions).
+ * Companions never pick up un-addressed chat, so one companion's work isn't interrupted by
+ * orders meant for another. Orders from anyone but the owner are politely refused.
  */
 public final class ChatRouter {
-	private static final double IMPLICIT_RANGE = 32.0;
-
 	private ChatRouter() {
 	}
 
@@ -49,17 +47,6 @@ public final class ChatRouter {
 				if (c != null) {
 					targets.add(c);
 				}
-			}
-		} else if (intent.type().isOrder() || intent.type() == Intent.Type.STATUS) {
-			List<Companion> mine = new ArrayList<>();
-			for (Companion c : m.ownedBy(sender)) {
-				CompanionPlayer p = c.player();
-				if (p != null && p.getWorld() == sender.getWorld() && p.distanceTo(sender) < IMPLICIT_RANGE) {
-					mine.add(c);
-				}
-			}
-			if (mine.size() == 1) {
-				targets.addAll(mine);
 			}
 		}
 		for (Companion c : targets) {

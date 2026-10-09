@@ -8,6 +8,7 @@ import com.mcfriends.brain.Task;
 import com.mcfriends.entity.CompanionPlayer;
 import com.mcfriends.nav.Goal;
 import com.mcfriends.util.AiLog;
+import net.minecraft.entity.mob.CreeperEntity;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
@@ -82,6 +83,15 @@ public class FightTask extends Task {
 			return Status.SUCCESS; // it ran off; good enough
 		}
 		c.actions().lookAt(target);
+
+		// A hissing creeper: get out of blast range, then come back and hit it again.
+		if (target instanceof CreeperEntity creeper && creeper.getFuseSpeed() > 0 && d < 5.0) {
+			Vec3d away = p.getPos().subtract(target.getPos()).normalize();
+			c.nav().stop();
+			c.actions().moveTo(p.getPos().add(away.multiply(3)));
+			c.actions().sprint(true);
+			return Status.RUNNING;
+		}
 
 		if (backOff > 0) {
 			backOff--;
