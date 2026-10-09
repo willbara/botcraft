@@ -1,6 +1,8 @@
 package com.mcfriends.entity;
 
 import com.mcfriends.MCFriends;
+import com.mcfriends.config.CompanionConfig;
+import net.minecraft.world.GameMode;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import net.minecraft.server.MinecraftServer;
@@ -42,6 +44,9 @@ public final class FakePlayers {
 		}
 		FakeClientConnection connection = new FakeClientConnection();
 		server.getPlayerManager().onPlayerConnect(connection, player);
+		if (CompanionConfig.get().forceSurvival && player.interactionManager.getGameMode() != GameMode.SURVIVAL) {
+			player.changeGameMode(GameMode.SURVIVAL);
+		}
 		if (pos != null && world != null) {
 			player.teleport(world, pos.x, pos.y, pos.z, yaw, 0.0F);
 		}

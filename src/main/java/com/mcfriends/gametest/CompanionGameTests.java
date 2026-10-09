@@ -135,4 +135,42 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtOwner", "GtFollow");
 		});
 	}
+
+	/** Milestone 3: gather 3 logs from a small natural tree (bare hands). */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "gather")
+	public void gatherLogs(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtLumber");
+		for (int x = -2; x <= 10; x++) {
+			for (int z = -2; z <= 8; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.GRASS_BLOCK);
+				for (int y = 1; y <= 9; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+		// Trunk of 4 logs at (6, 1..4, 3) with a leaf canopy (tree-grown leaves are non-persistent by default).
+		for (int y = 1; y <= 4; y++) {
+			ctx.setBlockState(6, y, 3, Blocks.OAK_LOG);
+		}
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				for (int y = 4; y <= 5; y++) {
+					if ((dx != 0 || dz != 0) && Math.abs(dx) + Math.abs(dz) < 4) {
+						ctx.setBlockState(6 + dx, y, 3 + dz, Blocks.OAK_LEAVES);
+					}
+				}
+			}
+		}
+		ctx.setBlockState(6, 5, 3, Blocks.OAK_LEAVES);
+		ctx.assertTrue(m.spawn("GtLumber", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(1.5, 1, 3.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtLumber");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.gather(c, "logs", 3, null) == null, "gather order");
+		ctx.addInstantFinalTask(() -> {
+			int logs = com.mcfriends.action.Inventories.count(c.player().getInventory(), com.mcfriends.action.Inventories::isLog);
+			ctx.assertTrue(logs >= 3, "has " + logs + " logs; " + c.describeActivity() + ", job " + c.data.job);
+			cleanup(m, "GtLumber");
+		});
+	}
 }

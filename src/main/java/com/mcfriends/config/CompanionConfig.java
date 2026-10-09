@@ -49,6 +49,8 @@ public class CompanionConfig {
 	public int treeSearchRadius = 32;
 	/** Ticks before a dead companion rejoins. */
 	public int respawnDelayTicks = 100;
+	/** Put companions in survival mode when they join (they gather/fight like survival players). */
+	public boolean forceSurvival = true;
 	/** Permission level required for /companion. */
 	public int commandPermissionLevel = 2;
 	/** Log AI decisions at INFO (instead of DEBUG) so they show up in latest.log without log config. */

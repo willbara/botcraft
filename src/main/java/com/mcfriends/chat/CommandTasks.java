@@ -1,6 +1,7 @@
 package com.mcfriends.chat;
 
 import com.mcfriends.Companion;
+import com.mcfriends.brain.task.GatherLogsTask;
 import com.mcfriends.brain.task.GoToTask;
 import com.mcfriends.util.AiLog;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -43,6 +44,19 @@ public final class CommandTasks {
 			case "status" -> {
 				return null;
 			}
+			case "gather", "get", "chop", "collect", "fetch" -> {
+				String item = words.length > 1 ? words[1] : "logs";
+				int count = 16;
+				for (String w : words) {
+					if (w.matches("\\d{1,4}")) {
+						count = Integer.parseInt(w);
+					}
+				}
+				if (words.length > 2 && words[1].matches("\\d{1,4}")) {
+					item = words[2];
+				}
+				return gather(c, item, count, source);
+			}
 			default -> {
 				return "Unknown task '" + spec + "'. Try: " + String.join(", ", EXAMPLES);
 			}
@@ -71,9 +85,38 @@ public final class CommandTasks {
 		AiLog.log(c.name(), "order: come to {}", who.getBlockPos().toShortString());
 	}
 
+	/** Item words we understand for gathering. Only wood is supported in this baseline. */
+	public static boolean isWoodWord(String item) {
+		return item.matches("logs?|wood|woods|trees?|timber|oak|birch|spruce|jungle|acacia");
+	}
+
+	/** @return null on success, otherwise an error message. */
+	@Nullable
+	public static String gather(Companion c, String item, int count, @Nullable ServerPlayerEntity who) {
+		if (!isWoodWord(item)) {
+			return "I only know how to gather logs so far";
+		}
+		claimOwner(c, who);
+		count = Math.max(1, Math.min(count, 640));
+		c.brain().setJob(new GatherLogsTask(c, count));
+		c.data.job = "gather logs " + count;
+		AiLog.log(c.name(), "order: gather {} logs", count);
+		return null;
+	}
+
 	/** Restore a persisted job after a restart / respawn. */
 	public static void restoreJob(Companion c) {
-		AiLog.log(c.name(), "restoring job '{}'", c.data.job);
+		String job = c.data.job;
+		AiLog.log(c.name(), "restoring job '{}'", job);
+		String[] w = job.trim().split("\\s+");
+		if (w.length == 3 && w[0].equals("gather") && w[2].matches("\\d+")) {
+			int remaining = Integer.parseInt(w[2]);
+			if (remaining > 0) {
+				gather(c, w[1], remaining, null);
+				return;
+			}
+		}
+		c.data.job = null;
 	}
 
 	/** A companion without an owner adopts whoever gives it an order. */
