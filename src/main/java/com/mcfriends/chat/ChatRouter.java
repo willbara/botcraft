@@ -245,6 +245,15 @@ public final class ChatRouter {
 			}
 		}
 
+		// Any order other than "do your own thing" ends free mode, so the companion's own plans
+		// never compete with what it was just told to do.
+		boolean ordered = intents.stream().anyMatch(i -> i.type().isOrder() && i.type() != Intent.Type.FREE);
+		if (ordered && "free".equals(c.data.mode) && (mode == null || "free".equals(mode))) {
+			mode = "follow";
+			if (!jobs.isEmpty()) {
+				c.jobs().clear(); // drop self-chosen jobs; the order's jobs are queued below
+			}
+		}
 		if (sender != null && (mode != null || !jobs.isEmpty())) {
 			CommandTasks.claimOwner(c, sender);
 			c.memory().person(sender.getGameProfile().getName(), c.server.getOverworld().getTime()).orders++;
