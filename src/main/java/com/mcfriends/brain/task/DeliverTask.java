@@ -80,7 +80,10 @@ public class DeliverTask extends Task {
 			return fail("I don't have any " + label);
 		}
 		double d = owner.getWorld() == p.getWorld() ? owner.distanceTo(p) : Double.POSITIVE_INFINITY;
-		if (d <= 3.5 && p.canSee(owner)) {
+		// Close enough to toss: in sight, or right next to them (a ledge can block the eye line), or
+		// as close as the path gets us.
+		boolean arrived = c.nav().state() == Navigator.State.ARRIVED;
+		if (d <= 4.5 && (p.canSee(owner) || d <= 2.5 || arrived)) {
 			c.nav().stop();
 			given = c.actions().giveItems(owner, what, count);
 			c.perception().invalidateInventory();

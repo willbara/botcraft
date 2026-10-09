@@ -44,7 +44,7 @@ public class AwaitTask extends Task {
 
 	@Override
 	protected int timeoutTicks() {
-		return 20 * 75;
+		return 20 * 130;
 	}
 
 	@Override
@@ -67,7 +67,11 @@ public class AwaitTask extends Task {
 		}
 		ServerPlayerEntity friend = ChatRouter.findByName(c, from);
 		glances.tick(c, friend);
-		if (ticks() > 20 * 60) {
+		// Keep waiting while the friend is still on their way to us (up to 2 minutes).
+		var m = com.mcfriends.CompanionManager.get();
+		var friendC = m == null ? null : m.byName(from);
+		boolean coming = friendC != null && friendC.brain().job() instanceof DeliverTask dt && dt.recipientName().equalsIgnoreCase(c.name());
+		if (ticks() > 20 * (coming ? 120 : 60)) {
 			// Took too long: carry on (our job will gather it the hard way if it still needs to).
 			return have > start ? Status.SUCCESS : fail(from + " didn't make it");
 		}
