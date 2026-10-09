@@ -7,6 +7,7 @@ import com.mcfriends.brain.Status;
 import com.mcfriends.brain.Task;
 import com.mcfriends.config.CompanionConfig;
 import com.mcfriends.entity.CompanionPlayer;
+import com.mcfriends.nav.BreakPolicy;
 import com.mcfriends.nav.Goal;
 import com.mcfriends.nav.Navigator;
 import com.mcfriends.nav.Terrain;
@@ -43,7 +44,7 @@ import java.util.Set;
  * no trees are within range.
  */
 public class GatherLogsTask extends Task {
-	private enum Phase { SCAN, APPROACH, CHOP, CLIMB, COLLECT }
+	private enum Phase { SCAN, APPROACH, CHOP, CLIMB, PILLAR, DESCEND, GET_DIRT, COLLECT }
 
 	private static final int BLACKLIST_TICKS = 20 * 60 * 5;
 	private static final int MAX_TREE_FAILURES = 6;
@@ -62,6 +63,18 @@ public class GatherLogsTask extends Task {
 	private int emptyScans;
 	@Nullable
 	private ItemEntity collecting;
+	private final Pickup pickup = new Pickup();
+	private static final int MAX_PILLAR = 24;
+	/** Blocks we placed to climb the current tree (bottom first), dug back down afterwards. */
+	private final List<BlockPos> pillar = new ArrayList<>();
+	private int pillarStage;
+	private int pillarLevel;
+	private int dirtTrips;
+	private int dirtNeeded;
+	@Nullable
+	private BlockPos dirtTarget;
+	@Nullable
+	private BlockPos chopping;
 
 	public GatherLogsTask(Companion c, int count) {
 		super(c);
@@ -93,9 +106,21 @@ public class GatherLogsTask extends Task {
 
 	@Override
 	protected void onStart(boolean resumed) {
-		// Re-scan after an interruption; we may have moved (fled, followed).
-		setPhase(Phase.SCAN);
+		// After an interruption: go back to the tree we were on (if any), otherwise look for one.
+		if (treeBase != null && p().getWorld().getBlockState(treeBase).isIn(BlockTags.LOGS) && pillar.isEmpty()) {
+			c.nav().moveTo(Goal.reachVisible(p().getWorld(), treeBase, ActionController.BLOCK_REACH - 0.5), false);
+			setPhase(Phase.APPROACH);
+		} else if (!pillar.isEmpty()) {
+			setPhase(Phase.DESCEND);
+		} else {
+			treeBase = null;
+			setPhase(Phase.SCAN);
+		}
 		lastCount = -1;
+	}
+
+	private CompanionPlayer p() {
+		return c.player();
 	}
 
 	private void setPhase(Phase p) {
@@ -108,7 +133,8 @@ public class GatherLogsTask extends Task {
 	protected Status onTick() {
 		CompanionPlayer p = c.player();
 		countProgress(p);
-		if (gathered >= wanted) {
+		// Finish the tree we're on before calling it done: no half-chopped floating trees.
+		if (gathered >= wanted && treeBase == null) {
 			return Status.SUCCESS;
 		}
 		if (treeFailures >= MAX_TREE_FAILURES) {
@@ -121,6 +147,9 @@ public class GatherLogsTask extends Task {
 			case APPROACH -> approach(p);
 			case CHOP -> chop(p);
 			case CLIMB -> climb(p);
+			case PILLAR -> pillar(p);
+			case DESCEND -> descend(p);
+			case GET_DIRT -> getDirt(p);
 			case COLLECT -> collect(p);
 		};
 	}
@@ -169,7 +198,9 @@ public class GatherLogsTask extends Task {
 		Navigator.State s = c.nav().state();
 		if (s == Navigator.State.ARRIVED || (c.actions().canReachBlock(treeBase) && p.isOnGround() && phaseTicks > 5)) {
 			c.nav().stop();
-			collectTreeLogs(p.getServerWorld());
+			if (logs.isEmpty()) {
+				collectTreeLogs(p.getServerWorld());
+			}
 			setPhase(Phase.CHOP);
 		} else if (s == Navigator.State.FAILED || s == Navigator.State.IDLE || phaseTicks > 20 * 60) {
 			giveUpOnTree("can't reach it (" + c.nav().failReason() + ")");
@@ -179,35 +210,60 @@ public class GatherLogsTask extends Task {
 
 	private Status chop(CompanionPlayer p) {
 		ServerWorld world = p.getServerWorld();
-		while (!logs.isEmpty() && !world.getBlockState(logs.peek()).isIn(BlockTags.LOGS)) {
-			AiLog.log(c.name(), "gather: {} is now {}", logs.peek().toShortString(), world.getBlockState(logs.peek()));
-			logs.pop();
-			phaseTicks = 0;
+		logs.removeIf(l -> !world.getBlockState(l).isIn(BlockTags.LOGS));
+		if (logs.isEmpty()) {
+			return finishTree();
 		}
-		BlockPos next = logs.peek();
+		if (!p.isOnGround() && !p.isTouchingWater() && !c.actions().isMining()) {
+			return Status.RUNNING; // judge reach once we've landed, not at the top of a jump
+		}
+		// Any log we can reach from here, lowest first.
+		BlockPos next = null;
+		for (BlockPos l : logs) {
+			if (c.actions().canReachBlock(l)) {
+				next = l;
+				break;
+			}
+		}
 		if (next == null) {
-			setPhase(Phase.COLLECT);
-			return Status.RUNNING;
-		}
-		if (!c.actions().canReachBlock(next)) {
-			// Out of reach: if we've opened up the trunk, step into it to reach higher logs.
-			if (canStandIn(world, treeBase)) {
+			if (pillar.isEmpty() && !Navigator.feet(p).equals(treeBase) && canStandIn(world, treeBase)) {
+				// The bottom of the trunk is gone: step into it, the logs above are right overhead.
 				c.nav().moveTo(Goal.near(treeBase, 0.3), false);
 				setPhase(Phase.CLIMB);
+			} else if (highestLog() > p.getEyeY()) {
+				setPhase(Phase.PILLAR);
 			} else {
-				AiLog.log(c.name(), "gather: log at {} out of reach (eye {})", next.toShortString(), p.getEyePos());
-				logs.pop(); // leave it, like most players would
+				// Out of reach sideways (long branches): leave those.
+				AiLog.log(c.name(), "gather: {} logs out of reach, leaving them", logs.size());
+				logs.clear();
 			}
 			return Status.RUNNING;
+		}
+		if (!next.equals(chopping)) {
+			chopping = next;
+			phaseTicks = 0;
 		}
 		ActionController.MineResult r = c.actions().mineBlock(next);
 		if (r == ActionController.MineResult.FAILED || phaseTicks > 20 * 15) {
 			AiLog.log(c.name(), "gather: skipping log at {} ({})", next.toShortString(), r);
 			c.actions().abortMining();
-			logs.pop();
+			logs.remove(next);
 			phaseTicks = 0;
 		}
 		return Status.RUNNING;
+	}
+
+	private Status finishTree() {
+		setPhase(pillar.isEmpty() ? Phase.COLLECT : Phase.DESCEND);
+		return Status.RUNNING;
+	}
+
+	private double highestLog() {
+		double top = Double.NEGATIVE_INFINITY;
+		for (BlockPos l : logs) {
+			top = Math.max(top, l.getY() + 0.5);
+		}
+		return top;
 	}
 
 	private Status climb(CompanionPlayer p) {
@@ -215,41 +271,185 @@ public class GatherLogsTask extends Task {
 		if (s == Navigator.State.ARRIVED || Navigator.feet(p).equals(treeBase)) {
 			c.nav().stop();
 			setPhase(Phase.CHOP);
-			// Only logs reachable from here are worth keeping.
-			logs.removeIf(l -> !c.actions().canReachBlock(l));
 		} else if (s == Navigator.State.FAILED || phaseTicks > 100) {
-			logs.clear();
-			setPhase(Phase.COLLECT);
+			c.nav().stop();
+			setPhase(Phase.PILLAR); // can't get into the trunk: build up from here instead
 		}
 		return Status.RUNNING;
+	}
+
+	/**
+	 * Tower up under ourselves (jump, place a throwaway block below) until the remaining logs are
+	 * in reach, clearing leaves/logs above our head as we go.
+	 */
+	private Status pillar(CompanionPlayer p) {
+		ServerWorld world = p.getServerWorld();
+		logs.removeIf(l -> !world.getBlockState(l).isIn(BlockTags.LOGS));
+		for (BlockPos l : logs) {
+			if (pillarStage == 0 && p.isOnGround() && c.actions().canReachBlock(l)) {
+				pillarStage = 0;
+				setPhase(Phase.CHOP);
+				return Status.RUNNING;
+			}
+		}
+		if (logs.isEmpty() || highestLog() <= p.getEyeY() || pillar.size() >= MAX_PILLAR || phaseTicks > 20 * 60) {
+			logs.clear();
+			return finishTree();
+		}
+		if (Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0) {
+			if (pillar.isEmpty() && dirtTrips < 2) {
+				dirtTrips++;
+				dirtNeeded = (int) Math.min(MAX_PILLAR, Math.ceil(highestLog() - p.getEyeY())) + 2;
+				AiLog.log(c.name(), "gather: need {} blocks to climb, digging some dirt", dirtNeeded);
+				setPhase(Phase.GET_DIRT);
+			} else {
+				AiLog.log(c.name(), "gather: out of blocks to climb with");
+				logs.clear();
+				return finishTree();
+			}
+			return Status.RUNNING;
+		}
+		BlockPos feet = Navigator.feet(p);
+		BlockPos above = feet.up(2);
+		var aboveState = world.getBlockState(above);
+		if (!aboveState.getCollisionShape(world, above).isEmpty()) {
+			// Clear head room: leaves and this tree's logs only.
+			if (aboveState.isIn(BlockTags.LOGS) || BreakPolicy.canBreakForNav(world, above, aboveState)) {
+				c.actions().mineBlock(above);
+				return Status.RUNNING;
+			}
+			logs.clear();
+			return finishTree();
+		}
+		// Stay centred on the block and look down, like a player towering up.
+		c.actions().moveTo(Vec3d.ofBottomCenter(feet), 0.4);
+		c.actions().lookAt(p.getPos().add(0, -2, 0));
+		if (pillarStage == 0) {
+			if (p.isOnGround()) {
+				pillarLevel = feet.getY();
+				c.actions().jump();
+				pillarStage = 1;
+			}
+		} else if (p.getY() >= pillarLevel + 1.05) {
+			BlockPos spot = new BlockPos(feet.getX(), pillarLevel, feet.getZ());
+			if (c.actions().placeBlock(spot, Inventories::isThrowaway)) {
+				pillar.add(spot);
+				AiLog.log(c.name(), "gather: pillar block {} at {}", pillar.size(), spot.toShortString());
+				pillarStage = 0;
+			}
+		} else if (p.isOnGround() && pillarStage == 1 && p.getY() < pillarLevel + 0.5) {
+			pillarStage = 0; // landed without placing: try again
+		}
+		return Status.RUNNING;
+	}
+
+	/** Dig our tower back down (getting the blocks back), one block at a time so falls are short. */
+	private Status descend(CompanionPlayer p) {
+		ServerWorld world = p.getServerWorld();
+		while (!pillar.isEmpty() && world.getBlockState(pillar.get(pillar.size() - 1)).isAir()) {
+			pillar.remove(pillar.size() - 1);
+		}
+		if (pillar.isEmpty() || phaseTicks > 20 * 60) {
+			pillar.clear();
+			setPhase(Phase.COLLECT);
+			return Status.RUNNING;
+		}
+		BlockPos top = pillar.get(pillar.size() - 1);
+		c.actions().moveTo(Vec3d.ofBottomCenter(top.up()), 0.4);
+		if (c.actions().mineBlock(top) == ActionController.MineResult.FAILED) {
+			pillar.remove(pillar.size() - 1); // can't reach it any more; leave it
+		}
+		return Status.RUNNING;
+	}
+
+	/** Dig a few surface dirt/grass blocks nearby to climb with, then go back to the tree. */
+	private Status getDirt(CompanionPlayer p) {
+		ServerWorld world = p.getServerWorld();
+		int have = Inventories.count(p.getInventory(), Inventories::isThrowaway);
+		if (have >= dirtNeeded || phaseTicks > 20 * 60) {
+			dirtTarget = null;
+			c.nav().moveTo(Goal.reachVisible(world, treeBase, ActionController.BLOCK_REACH - 0.5), false);
+			setPhase(have > 0 ? Phase.APPROACH : Phase.COLLECT);
+			if (have == 0) {
+				logs.clear();
+			}
+			return Status.RUNNING;
+		}
+		ItemEntity drop = nearestItem(p, s -> Inventories.isThrowaway(s), 5.0);
+		if (drop != null) {
+			if (!pickup.tick(c, drop)) {
+				dirtTarget = null;
+			}
+			return Status.RUNNING;
+		}
+		if (dirtTarget == null || !isDiggableDirt(world, dirtTarget)) {
+			dirtTarget = findDirt(p);
+			if (dirtTarget == null) {
+				dirtNeeded = 0; // nothing suitable around: carry on with what we have
+				return Status.RUNNING;
+			}
+		}
+		if (c.actions().canReachBlock(dirtTarget)) {
+			c.nav().stop();
+			if (c.actions().mineBlock(dirtTarget) == ActionController.MineResult.FAILED) {
+				dirtTarget = null;
+			}
+		} else {
+			c.nav().moveTo(Goal.reachVisible(world, dirtTarget, ActionController.BLOCK_REACH - 0.5), false);
+			if (c.nav().state() == Navigator.State.FAILED) {
+				c.nav().stop();
+				dirtTarget = null;
+			}
+		}
+		return Status.RUNNING;
+	}
+
+	private boolean isDiggableDirt(ServerWorld world, BlockPos pos) {
+		return world.getBlockState(pos).isIn(BlockTags.DIRT) && world.getBlockState(pos.up()).isAir()
+			&& !(pos.getX() == treeBase.getX() && pos.getZ() == treeBase.getZ());
+	}
+
+	/** Exposed natural dirt/grass near us, not the block we stand on and not under the tree. */
+	@Nullable
+	private BlockPos findDirt(CompanionPlayer p) {
+		ServerWorld world = p.getServerWorld();
+		BlockPos feet = Navigator.feet(p);
+		BlockPos best = null;
+		double bestD = Double.MAX_VALUE;
+		for (BlockPos pos : BlockPos.iterate(feet.add(-6, -3, -6), feet.add(6, 2, 6))) {
+			if (pos.equals(feet.down()) || !isDiggableDirt(world, pos)) {
+				continue;
+			}
+			double d = pos.getSquaredDistance(feet);
+			if (d < bestD && d > 1.5) {
+				bestD = d;
+				best = pos.toImmutable();
+			}
+		}
+		return best;
+	}
+
+	@Nullable
+	private ItemEntity nearestItem(CompanionPlayer p, java.util.function.Predicate<net.minecraft.item.ItemStack> which, double r) {
+		List<ItemEntity> items = p.getServerWorld().getEntitiesByClass(ItemEntity.class, p.getBoundingBox().expand(r, 3.0, r),
+			e -> e.isAlive() && which.test(e.getStack()) && !pickup.ignored(e));
+		items.sort(Comparator.comparingDouble(e -> e.squaredDistanceTo(p)));
+		return items.isEmpty() ? null : items.get(0);
 	}
 
 	private Status collect(CompanionPlayer p) {
 		if (collecting == null || !collecting.isAlive()) {
 			collecting = nearestDrop(p);
-			phaseTicks = 0;
 			if (collecting == null) {
-				blacklist.put(treeBase, ticks() + BLACKLIST_TICKS); // done with this tree
+				// Tree finished and drops collected.
+				blacklist.put(treeBase, ticks() + BLACKLIST_TICKS);
 				treeBase = null;
 				setPhase(Phase.SCAN);
 				return Status.RUNNING;
 			}
 		}
-		Vec3d at = Vec3d.ofBottomCenter(collecting.getBlockPos());
-		if (p.getPos().squaredDistanceTo(at) < 2.5 * 2.5 && Math.abs(at.y - p.getY()) < 1.5) {
-			c.nav().stop();
-			c.actions().moveTo(at);
-		} else {
-			c.nav().moveTo(Goal.near(collecting.getBlockPos(), 1.0), false);
-			if (c.nav().state() == Navigator.State.FAILED) {
-				collecting = null; // unreachable item, skip it
-				c.nav().stop();
-				return Status.RUNNING;
-			}
-		}
-		if (phaseTicks > 20 * 8) {
+		if (!pickup.tick(c, collecting)) {
 			collecting = null;
-			c.nav().stop();
 		}
 		return Status.RUNNING;
 	}
@@ -263,6 +463,7 @@ public class GatherLogsTask extends Task {
 		}
 		treeFailures++;
 		treeBase = null;
+		logs.clear();
 		c.nav().stop();
 		setPhase(Phase.SCAN);
 	}
@@ -271,7 +472,7 @@ public class GatherLogsTask extends Task {
 	private ItemEntity nearestDrop(CompanionPlayer p) {
 		Box box = new Box(treeBase).expand(7.0, 6.0, 7.0);
 		List<ItemEntity> items = p.getServerWorld().getEntitiesByClass(ItemEntity.class, box,
-			e -> e.isAlive() && !e.getStack().isEmpty() && (e.getStack().isIn(net.minecraft.registry.tag.ItemTags.LOGS)
+			e -> e.isAlive() && !e.getStack().isEmpty() && !pickup.ignored(e) && (e.getStack().isIn(net.minecraft.registry.tag.ItemTags.LOGS)
 				|| e.getStack().isIn(net.minecraft.registry.tag.ItemTags.SAPLINGS) || e.getStack().getItem() == net.minecraft.item.Items.APPLE));
 		items.sort(Comparator.comparingDouble(e -> e.squaredDistanceTo(p)));
 		return items.isEmpty() ? null : items.get(0);

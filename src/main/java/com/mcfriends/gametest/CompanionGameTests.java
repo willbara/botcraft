@@ -391,4 +391,49 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtDigger");
 		});
 	}
+
+	/** Your request: a started tree is felled completely, pillaring up on dug dirt for the high logs. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 4000, batchId = "tall_tree")
+	public void fellsWholeTallTree(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtFeller");
+		for (int x = -2; x <= 12; x++) {
+			for (int z = -3; z <= 9; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.GRASS_BLOCK);
+				for (int y = 1; y <= 14; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+		for (int y = 1; y <= 9; y++) {
+			ctx.setBlockState(6, y, 3, Blocks.OAK_LOG);
+		}
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				for (int y = 8; y <= 10; y++) {
+					if ((dx != 0 || dz != 0 || y == 10) && Math.abs(dx) + Math.abs(dz) < 4) {
+						ctx.setBlockState(6 + dx, y, 3 + dz, Blocks.OAK_LEAVES);
+					}
+				}
+			}
+		}
+		ctx.assertTrue(m.spawn("GtFeller", "steve", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 3.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtFeller");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.gather(c, "logs", 2, null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			int left = 0;
+			for (int y = 1; y <= 9; y++) {
+				if (ctx.getWorld().getBlockState(ctx.getAbsolutePos(new BlockPos(6, y, 3))).isOf(Blocks.OAK_LOG)) {
+					left++;
+				}
+			}
+			ctx.assertTrue(left == 0, left + " logs still standing; " + c.describeActivity());
+			ctx.assertTrue(c.jobs().isIdle(), "still busy: " + c.describeActivity());
+			int logs = count(c, net.minecraft.item.Items.OAK_LOG);
+			ctx.assertTrue(logs >= 7, "only " + logs + " logs collected");
+			cleanup(m, "GtFeller");
+		});
+	}
 }
