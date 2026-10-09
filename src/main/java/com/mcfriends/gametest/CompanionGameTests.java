@@ -722,4 +722,34 @@ public class CompanionGameTests implements FabricGameTest {
 		cleanup(m, "GtLoose");
 		ctx.complete();
 	}
+
+	/** "X, give Y your logs" to a companion standing on a ledge (no clean eye line): still delivered. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 800, batchId = "give_ledge")
+	public void givesToFriendOnLedge(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtGiver2", "GtLedge");
+		flatArena(ctx, 10);
+		for (int x = 6; x <= 9; x++) {
+			for (int z = 3; z <= 7; z++) {
+				ctx.setBlockState(x, 1, z, Blocks.STONE_BRICKS);
+				ctx.setBlockState(x, 2, z, Blocks.STONE_BRICKS);
+			}
+		}
+		ctx.assertTrue(m.spawn("GtGiver2", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 5.5)), -90.0F) == null, "spawn a");
+		ctx.assertTrue(m.spawn("GtLedge", "ari", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(7.5, 3, 5.5)), 90.0F) == null, "spawn b");
+		Companion a = m.byName("GtGiver2");
+		Companion b = m.byName("GtLedge");
+		com.mcfriends.chat.CommandTasks.stay(a);
+		com.mcfriends.chat.CommandTasks.stay(b);
+		a.player().getInventory().clear();
+		b.player().getInventory().clear();
+		give(a, net.minecraft.item.Items.OAK_LOG, 6);
+		var parsed = com.mcfriends.chat.IntentParser.parse("GtGiver2, give GtLedge your logs", java.util.List.of("GtGiver2", "GtLedge"));
+		ctx.assertTrue("GtLedge".equals(parsed.intent().target()), "target " + parsed.intent());
+		ctx.assertTrue(com.mcfriends.chat.ChatRouter.respond(a, null, parsed.intents(), false) == null, "respond");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(a, net.minecraft.item.Items.OAK_LOG) == 0, "a still has logs; " + a.describeActivity());
+			cleanup(m, "GtGiver2", "GtLedge");
+		});
+	}
 }

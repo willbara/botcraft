@@ -238,8 +238,16 @@ public class MineTask extends Task {
 			return chooseAmong(p, exposed);
 		}
 		BlockPos here = p.getBlockPos();
-		buried = hidden.stream().filter(b -> Math.abs(b.getX() - here.getX()) <= 12 && Math.abs(b.getZ() - here.getZ()) <= 12
+		List<BlockPos> nearBuried = hidden.stream().filter(b -> Math.abs(b.getX() - here.getX()) <= 12 && Math.abs(b.getZ() - here.getZ()) <= 12
 			&& Math.abs(b.getY() - here.getY()) <= 10).toList();
+		if (!nearBuried.isEmpty()) {
+			buried = nearBuried; // remember these in case the cave trip comes up empty
+		}
+		// Very close buried ore is quicker to dig to than any cave trip.
+		List<BlockPos> veryClose = nearBuried.stream().filter(b -> b.getSquaredDistance(here) <= 6.5 * 6.5).toList();
+		if (!veryClose.isEmpty() && kind != OreKind.STONE) {
+			return chooseAmong(p, veryClose);
+		}
 		if (kind == OreKind.STONE) {
 			if (!hidden.isEmpty()) {
 				return chooseAmong(p, hidden); // stone: just dig some, it's everywhere
