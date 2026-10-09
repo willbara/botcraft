@@ -294,8 +294,10 @@ public class Companion {
 		String result = resultPhrase(task);
 		if (!jobs.pending().isEmpty()) {
 			speech.event("event.step_done", Map.of("result", result, "next", Jobs.describe(jobs.pending().get(0))), 0, 0.6F);
-		} else if (task instanceof GoToTask) {
+		} else if (task instanceof GoToTask g && !g.label().equals("exploring") && !g.label().equals("home")) {
 			speech.event("event.arrived", Map.of(), 10 * 20, 0.4F);
+		} else if (task instanceof GoToTask) {
+			// Our own errands (exploring, heading home): no need to announce arriving.
 		} else if (!(task instanceof SleepTask)) {
 			speech.event("event.task_done", Map.of("result", result), 0, 1.0F);
 		}
@@ -317,13 +319,6 @@ public class Companion {
 		}
 		if (task instanceof com.mcfriends.brain.task.HuntTask h) {
 			return "hunted " + h.kills() + (h.kills() == 1 ? " animal" : " animals");
-		}
-		if (task instanceof com.mcfriends.brain.task.HarvestTask hv) {
-			return "harvested " + hv.harvested() + " crops and replanted them";
-		}
-		if (task instanceof com.mcfriends.brain.task.MakeFarmTask mf) {
-			return "planted a " + mf.size() + "x" + mf.size() + " farm (" + mf.planted() + " seeds)"
-				+ (mf.noWater() ? "; there's no water nearby so it'll grow slowly" : "");
 		}
 		if (task instanceof DeliverTask d) {
 			return "gave you " + d.given() + " " + d.label();

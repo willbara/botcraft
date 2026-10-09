@@ -178,23 +178,6 @@ class IntentParserTest {
 	}
 
 	@Test
-	void farming() {
-		assertEquals(Intent.Type.HARVEST, parse("bob harvest and replant this farm").intent().type());
-		assertEquals(Intent.Type.HARVEST, parse("bob can you harvest the wheat").intent().type());
-		Intent i = parse("bob make a 4x4 farm").intent();
-		assertEquals(Intent.Type.FARM, i.type());
-		assertEquals(4, i.count());
-		assertEquals("wheat", i.item());
-		i = parse("bob, build me a 5 by 5 carrot farm").intent();
-		assertEquals(Intent.Type.FARM, i.type());
-		assertEquals(5, i.count());
-		assertEquals("carrots", i.item());
-		assertEquals(Intent.Type.FARM, parse("bob plant some wheat").intent().type());
-		// Crafting still works for "make".
-		assertEquals(Intent.Type.CRAFT, parse("bob make a wooden hoe").intent().type());
-	}
-
-	@Test
 	void freeMode() {
 		assertEquals(Intent.Type.FREE, parse("bob, do your own thing").intent().type());
 		assertEquals(Intent.Type.FREE, parse("bob go explore").intent().type());

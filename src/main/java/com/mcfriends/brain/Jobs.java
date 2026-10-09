@@ -7,9 +7,6 @@ import com.mcfriends.brain.task.DeliverTask;
 import com.mcfriends.brain.task.GatherLogsTask;
 import com.mcfriends.brain.task.GoToTask;
 import com.mcfriends.brain.task.HuntTask;
-import com.mcfriends.brain.task.GatherSeedsTask;
-import com.mcfriends.brain.task.HarvestTask;
-import com.mcfriends.brain.task.MakeFarmTask;
 import com.mcfriends.brain.task.SmeltTask;
 import com.mcfriends.knowledge.Animals;
 import com.mcfriends.knowledge.CraftPlanner;
@@ -83,22 +80,10 @@ public final class Jobs {
 					}
 					return new SmeltTask(c, it, num(w, 2, 1));
 				}
-				case "harvest" -> {
-					BlockPos at = new BlockPos(Integer.parseInt(w[1]), Integer.parseInt(w[2]), Integer.parseInt(w[3]));
-					return new HarvestTask(c, at, num(w, 4, 8));
-				}
-				case "farm" -> {
-					BlockPos at = new BlockPos(Integer.parseInt(w[1]), Integer.parseInt(w[2]), Integer.parseInt(w[3]));
-					Item seedItem = w.length > 5 ? ItemNames.resolve(w[5].replace('_', ' ')) : net.minecraft.item.Items.WHEAT_SEEDS;
-					return new MakeFarmTask(c, at, num(w, 4, 4), seedItem == null ? net.minecraft.item.Items.WHEAT_SEEDS : seedItem);
-				}
 				case "place" -> {
 					Item it = ItemNames.resolve(w[1].replace('_', ' '));
 					BlockPos at = new BlockPos(Integer.parseInt(w[2]), Integer.parseInt(w[3]), Integer.parseInt(w[4]));
 					return it == null ? null : new com.mcfriends.brain.task.PlaceTask(c, it, at);
-				}
-				case "seeds" -> {
-					return new GatherSeedsTask(c, num(w, 1, 8));
 				}
 				case "hunt" -> {
 					var species = Animals.byWord(w.length > 1 ? w[1] : "meat");
@@ -143,13 +128,6 @@ public final class Jobs {
 				}
 				yield "smelt " + n + " " + ItemNames.plural(what, n);
 			}
-			case "harvest" -> "harvest and replant the farm";
-			case "farm" -> {
-				int n = num(w, 4, 4);
-				String crop = w.length > 5 ? com.mcfriends.knowledge.Crops.cropName(ItemNames.resolve(w[5].replace('_', ' '))) : "wheat";
-				yield "make a " + n + "x" + n + " " + (crop == null ? "" : crop + " ") + "farm";
-			}
-			case "seeds" -> "find some seeds";
 			case "place" -> "set up a " + (w.length > 1 ? w[1].replace('_', ' ') : "block");
 			case "hunt" -> {
 				String what = w.length > 1 ? w[1].replaceAll("s$", "") : "meat";
@@ -184,14 +162,6 @@ public final class Jobs {
 		}
 		if (stack.isIn(net.minecraft.registry.tag.ItemTags.WOOL)) {
 			return "hunt sheep " + n; // each sheep drops a block of wool
-		}
-		if (item == net.minecraft.item.Items.WHEAT_SEEDS) {
-			return "seeds " + n;
-		}
-		if (item == net.minecraft.item.Items.WHEAT || item == net.minecraft.item.Items.CARROT || item == net.minecraft.item.Items.POTATO
-			|| item == net.minecraft.item.Items.BEETROOT) {
-			Memory.Place farm = c.memory().place("farm");
-			return farm == null ? null : "harvest " + farm.x + " " + farm.y + " " + farm.z + " 8";
 		}
 		if (Smelting.smeltable(c.server, item)) {
 			return "smelt " + ItemNames.id(item) + " " + n;

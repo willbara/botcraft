@@ -37,6 +37,17 @@ public final class Smelting {
 		return any;
 	}
 
+	/** All smelting recipes producing {@code output}. */
+	public static java.util.List<SmeltingRecipe> allForOutput(MinecraftServer server, Item output) {
+		java.util.List<SmeltingRecipe> out = new java.util.ArrayList<>();
+		for (SmeltingRecipe r : server.getRecipeManager().listAllOfType(RecipeType.SMELTING)) {
+			if (r.getOutput(server.getRegistryManager()).isOf(output)) {
+				out.add(r);
+			}
+		}
+		return out;
+	}
+
 	/** The recipe that smelts this input, if any. */
 	@Nullable
 	public static SmeltingRecipe forInput(MinecraftServer server, ItemStack input) {

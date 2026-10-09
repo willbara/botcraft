@@ -21,16 +21,16 @@ public class CompanionConfig {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static CompanionConfig instance = new CompanionConfig();
 
-	/** Maximum number of companions on the server at once. */
-	public int maxCompanions = 5;
+	/** Maximum number of companions on the server at once. 0 = no limit. */
+	public int maxCompanions = 0;
 	/** Brain (drive scoring / task selection) runs every N ticks. Body control runs every tick. */
 	public int aiTickInterval = 5;
 	/** Total time (milliseconds) all companions may spend on AI work per server tick. */
 	public double tickBudgetMs = 2.0;
 	/** A* node expansions allowed per companion per tick (also bounded by tickBudgetMs). */
-	public int pathNodesPerTick = 300;
+	public int pathNodesPerTick = 600;
 	/** Abort a path search after this many expanded nodes. */
-	public int maxPathNodes = 6000;
+	public int maxPathNodes = 20000;
 	/** Companions may chat (replies and unprompted remarks). */
 	public boolean chatEnabled = true;
 	/**

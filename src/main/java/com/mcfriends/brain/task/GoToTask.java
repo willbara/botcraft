@@ -18,6 +18,10 @@ public class GoToTask extends Task {
 		this.label = label;
 	}
 
+	public String label() {
+		return label;
+	}
+
 	@Override
 	public String name() {
 		return "goto";
