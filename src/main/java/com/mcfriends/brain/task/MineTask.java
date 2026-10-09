@@ -62,6 +62,7 @@ public class MineTask extends Task {
 	private Direction exploreDir;
 	@Nullable
 	private ItemEntity collecting;
+	private final Pickup pickup = new Pickup();
 	@Nullable
 	private BlockPos digging;
 	private int replans;
@@ -296,27 +297,13 @@ public class MineTask extends Task {
 	private Status collect(CompanionPlayer p) {
 		if (collecting == null || !collecting.isAlive()) {
 			collecting = nearestDrop(p);
-			phaseTicks = 0;
 			if (collecting == null) {
 				setPhase(Phase.SCAN);
 				return Status.RUNNING;
 			}
 		}
-		// Aim for the middle of the item's block: drops in a hole under our feet are only picked
-		// up once we actually step into the hole.
-		Vec3d at = Vec3d.ofBottomCenter(collecting.getBlockPos());
-		if (phaseTicks % 20 == 1) {
-			AiLog.log(c.name(), "mine {}: collecting {} at {} (me at {}, nav {})", kind.word, collecting.getStack(), at, p.getPos(), c.nav().state());
-		}
-		if (p.getPos().squaredDistanceTo(at) < 2.5 * 2.5) {
-			c.nav().stop();
-			c.actions().moveTo(at);
-		} else {
-			c.nav().moveTo(Goal.near(collecting.getBlockPos(), 1.0), false);
-		}
-		if (phaseTicks > 20 * 6 || c.nav().state() == Navigator.State.FAILED) {
+		if (!pickup.tick(c, collecting)) {
 			collecting = null;
-			c.nav().stop();
 		}
 		return Status.RUNNING;
 	}
@@ -389,7 +376,7 @@ public class MineTask extends Task {
 	@Nullable
 	private ItemEntity nearestDrop(CompanionPlayer p) {
 		Box box = p.getBoundingBox().expand(6.0, 3.0, 6.0);
-		List<ItemEntity> items = p.getServerWorld().getEntitiesByClass(ItemEntity.class, box, e -> e.isAlive() && kind.isDrop(e.getStack()));
+		List<ItemEntity> items = p.getServerWorld().getEntitiesByClass(ItemEntity.class, box, e -> e.isAlive() && kind.isDrop(e.getStack()) && !pickup.ignored(e));
 		items.sort(Comparator.comparingDouble(e -> e.squaredDistanceTo(p)));
 		return items.isEmpty() ? null : items.get(0);
 	}
