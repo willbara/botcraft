@@ -50,8 +50,8 @@ public class MineTask extends Task {
 	private enum Phase { SCAN, CHOOSE, APPROACH, MINE, COLLECT, CAVE_SEARCH, CAVE, EXPLORE }
 
 	private static final int SCAN_RADIUS = 24;
-	private static final int MAX_EXPLORES = 6;
-	private static final int MAX_FAILURES = 10;
+	private static final int MAX_EXPLORES = 24;
+	private static final int MAX_FAILURES = 16;
 	private static final int MAX_CHOICES = 16;
 	private static final int MAX_CAVE_SEARCHES = 3;
 
@@ -113,7 +113,7 @@ public class MineTask extends Task {
 
 	@Override
 	protected int timeoutTicks() {
-		return 20 * 60 * 15;
+		return 20 * 60 * (kind.deep() ? 25 : 15);
 	}
 
 	@Override
@@ -131,6 +131,7 @@ public class MineTask extends Task {
 	@Override
 	protected void onStop() {
 		c.nav().setDigMode(false);
+		com.mcfriends.brain.Claims.release(c);
 		super.onStop();
 	}
 
@@ -248,6 +249,10 @@ public class MineTask extends Task {
 		if (!veryClose.isEmpty() && kind != OreKind.STONE) {
 			return chooseAmong(p, veryClose);
 		}
+		// Already down at the ore's depth: dig to what's nearby rather than hunting for more caves.
+		if (!nearBuried.isEmpty() && kind != OreKind.STONE && atDepth(here)) {
+			return chooseAmong(p, nearBuried);
+		}
 		if (kind == OreKind.STONE) {
 			if (!hidden.isEmpty()) {
 				return chooseAmong(p, hidden); // stone: just dig some, it's everywhere
@@ -282,7 +287,8 @@ public class MineTask extends Task {
 	 */
 	private Status chooseAmong(CompanionPlayer p, List<BlockPos> candidates) {
 		BlockPos from = p.getBlockPos();
-		List<BlockPos> sorted = new ArrayList<>(candidates);
+		// Leave veins someone else is already working alone (unless that's all there is).
+		List<BlockPos> sorted = new ArrayList<>(com.mcfriends.brain.Claims.spreadOut(c, candidates, b -> b, 6));
 		sorted.sort(Comparator.comparingDouble(b -> b.getSquaredDistance(from) + 3.0 * (b.getY() - from.getY()) * (b.getY() - from.getY())));
 		choices = sorted.subList(0, Math.min(MAX_CHOICES, sorted.size()));
 		List<Goal> goals = new ArrayList<>();
@@ -306,6 +312,7 @@ public class MineTask extends Task {
 			BlockPos picked = choices.get(Math.max(0, i));
 			AiLog.log(c.name(), "mine {}: locked onto {} (of {} candidates)", kind.word, picked.toShortString(), choices.size());
 			target = picked;
+			com.mcfriends.brain.Claims.claim(c, picked);
 			replans = 0;
 			// Keep following the path that was found; future re-plans aim at this target only.
 			setPhase(Phase.APPROACH);
@@ -366,13 +373,14 @@ public class MineTask extends Task {
 	private Status caveSearch(CompanionPlayer p) {
 		if (phaseTicks == 1) {
 			caveSearches++;
-			caves.start(p.getServerWorld(), p.getBlockPos(), 40);
+			// Deep ores: look further and prefer caves near the ore's depth.
+			caves.start(p.getServerWorld(), p.getBlockPos(), kind.deep() ? 64 : 40, kind.deep() || kind == OreKind.IRON ? kind.bestY : null);
 		}
 		if (!caves.tick()) {
 			return Status.RUNNING;
 		}
 		List<BlockPos> fresh = new ArrayList<>();
-		for (BlockPos cave : caves.results()) {
+		for (BlockPos cave : com.mcfriends.brain.Claims.spreadOut(c, caves.results(), b -> b, 10)) {
 			if (visitedCaves.stream().noneMatch(v -> v.getSquaredDistance(cave) < 12 * 12)) {
 				fresh.add(cave);
 			}
@@ -470,16 +478,26 @@ public class MineTask extends Task {
 				return fail("I couldn't find any " + kind.noun() + " around here");
 			}
 			BlockPos here = p.getBlockPos();
-			int down = here.getY() > kind.searchBelowY ? 6 : 0;
 			int minY = p.getWorld().getBottomY() + 6;
-			BlockPos goal = here.offset(exploreDir, 8).down(Math.min(down, Math.max(0, here.getY() - minY)));
-			AiLog.log(c.name(), "mine {}: nothing in range, digging {} toward {}", kind.word, exploreDir, goal.toShortString());
+			BlockPos goal;
+			if (here.getY() > kind.bestY + 4) {
+				// Too high: staircase down toward the ore's depth, quickly.
+				int down = Math.min(12, Math.max(0, Math.min(here.getY() - kind.bestY, here.getY() - minY)));
+				goal = here.offset(exploreDir, 10).down(down);
+				AiLog.log(c.name(), "mine {}: heading down toward y={} ({} -> {})", kind.word, kind.bestY, here.toShortString(), goal.toShortString());
+			} else {
+				// At the right depth: strip-mine forward and look again.
+				goal = here.offset(exploreDir, 16);
+				AiLog.log(c.name(), "mine {}: strip mining {} toward {}", kind.word, exploreDir, goal.toShortString());
+			}
 			c.nav().moveTo(Goal.near(goal, 1.5), false);
 		}
 		Navigator.State s = c.nav().state();
 		if (s == Navigator.State.ARRIVED || phaseTicks > 20 * 60) {
 			c.nav().stop();
-			caveSearches = Math.min(caveSearches, MAX_CAVE_SEARCHES - 1); // new area: worth one more cave look
+			if (!atDepth(p.getBlockPos()) || explores % 4 == 0) {
+				caveSearches = Math.min(caveSearches, MAX_CAVE_SEARCHES - 1); // new area: worth one more cave look
+			}
 			setPhase(Phase.SCAN);
 		} else if (s == Navigator.State.FAILED || s == Navigator.State.IDLE) {
 			exploreDir = random.nextBoolean() ? exploreDir.rotateYClockwise() : exploreDir.rotateYCounterclockwise();
@@ -490,6 +508,10 @@ public class MineTask extends Task {
 	}
 
 	// ---- helpers --------------------------------------------------------------------------------
+
+	private boolean atDepth(BlockPos here) {
+		return kind != OreKind.STONE && Math.abs(here.getY() - kind.bestY) <= 10;
+	}
 
 	/** If natural terrain hides an in-reach target, mine it. @return true while doing so */
 	private boolean digThrough(CompanionPlayer p, BlockPos goal) {

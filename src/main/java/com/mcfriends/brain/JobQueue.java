@@ -74,6 +74,19 @@ public class JobQueue {
 	public void tick() {
 		while (!c.brain().hasJob() && !queue().isEmpty()) {
 			String spec = queue().remove(0);
+			if (!spec.trim().endsWith("!") && !Jobs.optional(spec)) {
+				// Check tools first: make or upgrade one if it's easy, then come back to this.
+				List<String> prep = com.mcfriends.brain.task.ToolPrep.before(c, spec);
+				String marked = spec.trim() + " !";
+				if (!prep.isEmpty()) {
+					List<String> next = new ArrayList<>(prep);
+					next.add(marked);
+					queue().addAll(0, next);
+					AiLog.log(c.name(), "tool prep before '{}': {}", spec, prep);
+					continue;
+				}
+				spec = marked;
+			}
 			Task t = Jobs.create(c, spec);
 			if (t == null) {
 				AiLog.log(c.name(), "dropping unknown job '{}'", spec);
@@ -82,6 +95,13 @@ public class JobQueue {
 			c.data.job = spec;
 			c.brain().setJob(t.asJob(spec));
 			AiLog.log(c.name(), "next job: {}", spec);
+		}
+	}
+
+	/** An optional prep job failed: skip the prep that followed it, keep the real work. */
+	public void skipOptional() {
+		while (!queue().isEmpty() && Jobs.optional(queue().get(0))) {
+			com.mcfriends.brain.task.ToolPrep.failed(c, queue().remove(0));
 		}
 	}
 

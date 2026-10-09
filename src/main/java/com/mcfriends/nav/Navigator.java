@@ -70,6 +70,8 @@ public class Navigator {
 	private double bestDist;
 	private int noProgress;
 	private int stuckCount;
+	/** Replans after a full path ended just short of the goal (swimming, sliding off the last step). */
+	private int endReplans;
 	private int recoveryTicks;
 	private Vec3d recoveryDir = Vec3d.ZERO;
 	private int pathTicks;
@@ -130,6 +132,7 @@ public class Navigator {
 		}
 		this.goal = newGoal;
 		this.stuckCount = 0;
+		this.endReplans = 0;
 		this.escape = false;
 		this.avoid.clear();
 		this.allowPlace = CompanionConfig.get().allowBridging;
@@ -289,8 +292,15 @@ public class Navigator {
 			if (partial) {
 				AiLog.log(companion.name(), "end of partial path, replanning");
 				plan();
+			} else if (goal.isGoal(here)) {
+				state = State.ARRIVED;
+			} else if (endReplans++ < 2) {
+				PathStep last = path.get(path.size() - 1);
+				AiLog.log(companion.name(), "path ended short of the goal at {} (y {}; last step {} {}), replanning",
+					here.toShortString(), String.format("%.2f", p.getY()), last.type(), last.pos().toShortString());
+				plan();
 			} else {
-				state = goal.isGoal(here) ? State.ARRIVED : State.FAILED;
+				state = State.FAILED;
 				failReason = "path ended short of goal";
 			}
 			return;
@@ -346,7 +356,9 @@ public class Navigator {
 		int remaining = path.size() - index;
 		actions.sprint(sprint && remaining > 4 && step.type() != MoveType.BRIDGE);
 		if (p.isTouchingWater()) {
-			if (rise > -0.3 || p.isSubmergedInWater()) {
+			if (rise < -0.3 && p.getAir() > 80) {
+				p.swimDown(); // heading down: dive instead of bobbing at the surface
+			} else if (rise > -0.3 || p.isSubmergedInWater()) {
 				actions.holdJump();
 			}
 		} else if (p.isOnGround() && ((rise > 0.6 && hd < 1.6) || (p.horizontalCollision && rise > -0.5))) {
@@ -411,6 +423,10 @@ public class Navigator {
 		double dy = p.getY() - s.floorY();
 		if (s.type() == MoveType.PILLAR || s.type() == MoveType.CLIMB) {
 			return dx * dx + dz * dz < 0.5 * 0.5 && dy > -0.2 && dy < 0.9 && (p.isOnGround() || p.isClimbing());
+		}
+		if (s.type() == MoveType.SWIM) {
+			// Floating feet sit well above the node: only count it once we've sunk most of the way in.
+			return dx * dx + dz * dz < 0.45 * 0.45 && dy > -0.6 && dy < 0.05;
 		}
 		return dx * dx + dz * dz < 0.45 * 0.45 && dy > -0.6 && dy < 0.9;
 	}

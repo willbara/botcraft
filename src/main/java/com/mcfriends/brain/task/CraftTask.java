@@ -124,7 +124,7 @@ public class CraftTask extends Task {
 		}
 		if (!plan.missing().isEmpty()) {
 			// First see if a friend nearby can spare the first thing we're missing.
-			if (!askedFriend) {
+			if (!askedFriend && !com.mcfriends.brain.Jobs.optional(spec())) {
 				askedFriend = true;
 				Map.Entry<Item, Integer> first = plan.missing().entrySet().iterator().next();
 				String key = shareKey(first.getKey());
@@ -186,10 +186,10 @@ public class CraftTask extends Task {
 		BlockPos spot = Spots.placeSpot(c, badSpots);
 		if (spot == null) {
 			// Cramped (on a pillar, in leaves...): step out somewhere more open and try again.
-			if (phaseTicks % 60 == 20 && relocations++ < 3) {
-				c.nav().moveTo(com.mcfriends.nav.Goal.near(p.getBlockPos().add(random.nextInt(9) - 4, 0, random.nextInt(9) - 4), 1.5), false);
+			if (phaseTicks >= 20 && !c.nav().isBusy() && relocations++ < 3) {
+				c.nav().moveTo(com.mcfriends.nav.Goal.near(Spots.roomySpot(c, random), 1.5), false);
 			}
-			return phaseTicks > 60 * 4 ? fail("no room to put down a crafting table") : Status.RUNNING;
+			return phaseTicks > 20 * 40 ? fail("no room to put down a crafting table") : Status.RUNNING;
 		}
 		if (c.actions().placeBlock(spot, s -> s.isOf(Items.CRAFTING_TABLE))) {
 			table = spot;
@@ -329,7 +329,7 @@ public class CraftTask extends Task {
 		return ore != null ? ore.word : ItemNames.id(item);
 	}
 
-	static Map<Item, Integer> inventoryCounts(PlayerInventory inv) {
+	public static Map<Item, Integer> inventoryCounts(PlayerInventory inv) {
 		Map<Item, Integer> m = new HashMap<>();
 		for (int i = 0; i < inv.main.size(); i++) {
 			ItemStack s = inv.getStack(i);

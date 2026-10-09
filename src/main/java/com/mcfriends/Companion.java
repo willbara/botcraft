@@ -281,6 +281,12 @@ public class Companion {
 		if (task.spec() == null || task.silent()) {
 			return;
 		}
+		if (status == Status.FAILED && Jobs.optional(task.spec())) {
+			// Tool prep didn't work out: get on with the actual job.
+			com.mcfriends.brain.task.ToolPrep.failed(this, task.spec());
+			jobs.skipOptional();
+			return;
+		}
 		if (status == Status.FAILED) {
 			life.failed(now);
 			int dropped = jobs.abandonRest();

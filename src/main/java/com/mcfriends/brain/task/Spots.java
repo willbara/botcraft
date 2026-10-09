@@ -30,7 +30,10 @@ final class Spots {
 		BlockPos best = null;
 		double bestD = Double.MAX_VALUE;
 		for (BlockPos spot : BlockPos.iterate(feet.add(-3, -1, -3), feet.add(3, 1, 3))) {
-			if (world.getBlockState(spot).isReplaceable() && world.getFluidState(spot).isEmpty() && t.placeableAgainst(spot.down())
+			// The block under it must have a solid top face: leaves, glass panes, fences don't take a block.
+			BlockPos under = spot.down();
+			if (world.getBlockState(spot).isReplaceable() && world.getFluidState(spot).isEmpty() && t.placeableAgainst(under)
+				&& world.getBlockState(under).isSideSolidFullSquare(world, under, net.minecraft.util.math.Direction.UP)
 				&& !exclude.contains(spot) && !p.getBoundingBox().intersects(new Box(spot)) && c.actions().canReachBlock(spot)
 				// Anyone standing there (another companion, a sheep...) blocks placement.
 				&& world.getEntitiesByClass(net.minecraft.entity.LivingEntity.class, new Box(spot), e -> e.isAlive()).isEmpty()) {
@@ -43,6 +46,38 @@ final class Spots {
 			}
 		}
 		return best;
+	}
+
+	/**
+	 * Somewhere nearby to stand on real ground (not leaves) with room around it, for when the
+	 * current spot is too cramped to put a block down: a tree top, a pillar, a ledge.
+	 */
+	static BlockPos roomySpot(Companion c, java.util.Random random) {
+		CompanionPlayer p = c.player();
+		ServerWorld world = p.getServerWorld();
+		BlockPos feet = p.getBlockPos();
+		BlockPos best = null;
+		double bestD = Double.MAX_VALUE;
+		for (int dx = -10; dx <= 10; dx += 2) {
+			for (int dz = -10; dz <= 10; dz += 2) {
+				int x = feet.getX() + dx;
+				int z = feet.getZ() + dz;
+				int y = world.getTopY(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+				BlockPos stand = new BlockPos(x, y, z);
+				BlockPos under = stand.down();
+				if (Math.abs(y - feet.getY()) > 24 || !world.getFluidState(under).isEmpty()
+					|| !world.getBlockState(under).isSideSolidFullSquare(world, under, net.minecraft.util.math.Direction.UP)
+					|| !world.getBlockState(stand).isReplaceable() || !world.getBlockState(stand.up()).isReplaceable()) {
+					continue;
+				}
+				double d = stand.getSquaredDistance(feet) + random.nextInt(8);
+				if (dx * dx + dz * dz >= 9 && d < bestD) {
+					bestD = d;
+					best = stand;
+				}
+			}
+		}
+		return best != null ? best : feet.add(random.nextInt(9) - 4, 0, random.nextInt(9) - 4);
 	}
 
 	/** Nearest block of a type within a horizontal radius (and 4 up/down), or null. */
