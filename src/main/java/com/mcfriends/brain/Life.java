@@ -122,15 +122,23 @@ public class Life {
 		String h = home.getX() + " " + home.getY() + " " + home.getZ();
 		double fromHome = Math.sqrt(p.getBlockPos().getSquaredDistance(home));
 
-		// 1. Night: bed, else home.
+		// 1. Night: bed, else home (armed) or a dug-in shelter.
 		if (c.perception().isNight()) {
 			if (bedNear(c, home) && allowed("sleep", now)) {
 				return new Goal("sleep", List.of("sleep"), "it's late");
 			}
-			if (fromHome > 8 && allowed("home", now)) {
-				return new Goal("home", List.of("home"), "it's getting dark");
+			// No bed: armed companions can stand guard at home; everyone else digs in like a
+			// player's first night.
+			if (Inventories.bestWeaponDamage(inv) >= Drives.ARMED_DAMAGE) {
+				if (fromHome > 8 && allowed("home", now)) {
+					return new Goal("home", List.of("home"), "it's getting dark");
+				}
+				return null;
 			}
-			return null; // stay put at home and keep watch
+			if (allowed("shelter", now)) {
+				return new Goal("shelter", List.of("shelter"), "I'm not facing the night without a sword");
+			}
+			return null;
 		}
 		List<Goal> goals = new ArrayList<>();
 		// 2. Food.

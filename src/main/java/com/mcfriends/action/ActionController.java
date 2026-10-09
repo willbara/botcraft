@@ -461,6 +461,8 @@ public class ActionController {
 				p.swingHand(Hand.MAIN_HAND);
 				return !world.getBlockState(target).isReplaceable();
 			}
+			com.mcfriends.util.AiLog.log(companion.name(), "place at {} against {} {} refused: {} (holding {})", target.toShortString(),
+				support.toShortString(), dir.getOpposite(), r, p.getMainHandStack());
 		}
 		return false;
 	}

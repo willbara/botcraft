@@ -89,7 +89,11 @@ public class FleeTask extends Task {
 			}
 		}
 		if (!c.nav().isBusy()) {
-			// No path: just run.
+			// No path: just run - but never off a cliff in the dark; turn aside instead.
+			Terrain t = new Terrain(p.getServerWorld());
+			for (int turn = 0; turn < 4 && !safeStep(t, p.getBlockPos(), away); turn++) {
+				away = rotate(away, Math.PI / 2);
+			}
 			c.actions().moveTo(p.getPos().add(away.multiply(3)));
 			c.actions().sprint(true);
 			if (p.horizontalCollision && p.isOnGround()) {
@@ -121,6 +125,20 @@ public class FleeTask extends Task {
 			}
 		}
 		return null;
+	}
+
+	/** The next block that way has something to stand on within a safe fall. */
+	private static boolean safeStep(Terrain t, BlockPos from, Vec3d dir) {
+		BlockPos next = BlockPos.ofFloored(from.getX() + 0.5 + dir.x * 1.2, from.getY(), from.getZ() + 0.5 + dir.z * 1.2);
+		for (int k = 0; k <= 3; k++) {
+			if (t.standable(next.down(k)) && !t.isWater(next.down(k))) {
+				return true;
+			}
+			if (!t.passable(next.down(k))) {
+				return k == 0 && t.standable(next.up()); // a step up is fine
+			}
+		}
+		return false;
 	}
 
 	private static Vec3d rotate(Vec3d v, double angle) {

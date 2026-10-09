@@ -172,7 +172,7 @@ public class CraftTask extends Task {
 			return Status.RUNNING;
 		}
 		table = null;
-		BlockPos spot = placeSpot(p);
+		BlockPos spot = Spots.placeSpot(c, badSpots);
 		if (spot == null) {
 			// Cramped (on a pillar, in leaves...): step out somewhere more open and try again.
 			if (phaseTicks % 60 == 20 && relocations++ < 3) {
@@ -347,21 +347,4 @@ public class CraftTask extends Task {
 		return best;
 	}
 
-	/** An empty spot next to us, on solid ground, not where we stand. */
-	@Nullable
-	private BlockPos placeSpot(CompanionPlayer p) {
-		ServerWorld world = p.getServerWorld();
-		Terrain t = new Terrain(world);
-		BlockPos feet = p.getBlockPos();
-		for (Direction d : Direction.Type.HORIZONTAL) {
-			for (int dist = 1; dist <= 2; dist++) {
-				BlockPos spot = feet.offset(d, dist);
-				if (world.getBlockState(spot).isReplaceable() && world.getFluidState(spot).isEmpty() && t.placeableAgainst(spot.down())
-					&& c.actions().canReachBlock(spot) && !p.getBoundingBox().intersects(new net.minecraft.util.math.Box(spot))) {
-					return spot;
-				}
-			}
-		}
-		return null;
-	}
 }

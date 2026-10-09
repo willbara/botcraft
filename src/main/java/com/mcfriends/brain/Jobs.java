@@ -72,6 +72,9 @@ public final class Jobs {
 				case "sleep" -> {
 					return new SleepTask(c);
 				}
+				case "shelter" -> {
+					return new com.mcfriends.brain.task.ShelterTask(c);
+				}
 				case "smelt" -> {
 					String what = w.length > 1 ? w[1] : "food";
 					Item it = what.equals("food") ? null : ItemNames.resolve(what.replace('_', ' '));
@@ -128,6 +131,7 @@ public final class Jobs {
 			case "goto" -> "go " + (w.length > 4 ? String.join(" ", java.util.Arrays.copyOfRange(w, 4, w.length)) : "there");
 			case "home" -> "go home";
 			case "sleep" -> "go to bed";
+			case "shelter" -> "dig in for the night";
 			case "smelt" -> {
 				String what = w.length > 1 ? w[1].replace('_', ' ') : "food";
 				int n = num(w, 2, 1);
