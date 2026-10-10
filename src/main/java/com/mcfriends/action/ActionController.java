@@ -572,12 +572,14 @@ public class ActionController {
 		if (aimError(target.getBoundingBox().getCenter()) > 30.0F) {
 			return false;
 		}
-		p.swingHand(Hand.MAIN_HAND);
 		if (random.nextFloat() < 0.06F) {
-			p.resetLastAttackedTicks(); // a miss: swing at air
+			p.swingHand(Hand.MAIN_HAND); // a miss: swing at air (swinging resets the attack charge)
 			return true;
 		}
+		// Hit first, then swing, like the client does: swinging resets the attack charge, and a
+		// swing-then-hit lands every blow uncharged (20% damage).
 		p.attack(target);
+		p.swingHand(Hand.MAIN_HAND);
 		return true;
 	}
 
