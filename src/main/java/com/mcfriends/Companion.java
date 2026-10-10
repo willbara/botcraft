@@ -290,7 +290,8 @@ public class Companion {
 			AiLog.log(name(), "not going back for my things: that place has killed me {} times", nearby);
 			return;
 		}
-		leftovers.expect(death.pos(), 6.0);
+		// Items last 5 minutes from the death; keep looking for them that long.
+		leftovers.expect(death.pos(), 6.0, Math.max(20 * 30, 20 * 60 * 5 - age));
 		BlockPos at = death.pos();
 		jobs.pushFront(List.of("goto " + at.getX() + " " + at.getY() + " " + at.getZ() + " my things"));
 		AiLog.log(name(), "going back for my things at {}", at.toShortString());

@@ -6,7 +6,7 @@ AI companions for Minecraft **1.20.1 (Fabric)** that join the server as real pla
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.
 - **One optional network call.** Looking up the skin of a registered Minecraft account goes to Mojang, the same way player heads do. Turn it off with `allowSkinLookup`.
 
-This document describes version **0.6.1**.
+This document describes version **0.6.2**.
 
 ---
 
@@ -236,14 +236,14 @@ While mining:
 ### Combat and safety
 
 - **Fighting.** With at least 4 melee damage it fights any hostile mob, creepers included, backing off while a creeper hisses.
-- **Fleeing.** Unarmed, it runs (never off a cliff). At low health it retreats.
+- **Fleeing.** Unarmed, it runs (never off a cliff). At low health it retreats from monsters that are close. Hurt with no food, it can't heal (natural healing needs a nearly full hunger bar), so it asks a friend for food or hunts.
 - **Armour.** It wears the best armour it has.
 - **Protecting others.** Companions defend each other: a mob going after a nearby companion counts as a threat. With "defend me", it also attacks mobs targeting you.
 
 ### Death, rejoining and getting lost
 
 - **Respawning.** A companion that dies comes back after `respawnDelayTicks`. It returns at its bed, else home, else next to you if you're standing somewhere safe, else world spawn, always on dry, solid ground. It never reappears looking dead.
-- **Getting its things back.** After respawning it goes back for what it dropped (items last 5 minutes), unless it died in lava, fire, the void or by drowning, or that spot has already killed it twice in 10 minutes. A death also counts as a failed goal, so free mode puts that goal aside for a while.
+- **Getting its things back.** After respawning it goes back for what it dropped, and keeps looking for as long as the items last (5 minutes from the death), unless it died in lava, fire, the void or by drowning, or that spot has already killed it twice in 10 minutes. A death also counts as a failed goal, so free mode puts that goal aside for a while.
 - **Unsafe saves.** A companion saved somewhere deadly (under water, in lava, inside a block) is moved to the nearest safe spot when the world loads.
 - **Not getting lost.**
   - **Nobody to follow:** in follow mode with you offline, spectating or in another dimension, a companion that's finished or whose job failed heads home if it's more than 24 blocks away.
