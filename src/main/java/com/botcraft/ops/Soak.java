@@ -170,6 +170,9 @@ public final class Soak {
 		double avgMs = SoakStats.ticks == 0 ? 0 : SoakStats.tickNanos / 1e6 / SoakStats.ticks;
 		sb.append(String.format("| AI time per tick (all companions) | avg %.2f ms, max %.1f ms, over budget %d ticks |%n", avgMs,
 			SoakStats.maxTickNanos / 1e6, SoakStats.ticksOverBudget));
+		sb.append(String.format("| AI budget per tick | avg %.2f ms |%n", SoakStats.ticks == 0 ? 0.0 : SoakStats.budgetSum / SoakStats.ticks));
+		sb.append(String.format("| Server tick time (whole server, smoothed) | avg %.1f ms, over 50 ms on %d ticks |%n",
+			SoakStats.ticks == 0 ? 0.0 : SoakStats.serverMsSum / SoakStats.ticks, SoakStats.serverSlowTicks));
 		sb.append(String.format("| Loaded chunks at the end | %d |%n", server.getOverworld().getChunkManager().getLoadedChunkCount()));
 		com.botcraft.colony.Colony colony = com.botcraft.colony.Colony.get();
 		int inChests = colony == null ? 0 : colony.stock().values().stream().mapToInt(Integer::intValue).sum();
@@ -212,6 +215,7 @@ public final class Soak {
 			colony.stock().forEach((item, n) -> stock.put(com.botcraft.knowledge.ItemNames.id(item), n));
 			section(sb, "Base stock", stock);
 		}
+		navigation(sb);
 		section(sb, "Deaths by cause", SoakStats.deathCauses);
 		section(sb, "Failed jobs (task: reason)", SoakStats.failReasons);
 		section(sb, "Stalls", SoakStats.stalls);
@@ -220,6 +224,32 @@ public final class Soak {
 		section(sb, "Interrupts", SoakStats.interrupts);
 		section(sb, "Request board", SoakStats.board);
 		return sb.toString();
+	}
+
+	private static void navigation(StringBuilder sb) {
+		sb.append("## Navigation\n\n");
+		List<Integer> lat = new ArrayList<>(SoakStats.searchTicks);
+		lat.sort(null);
+		int n = lat.size();
+		sb.append(String.format("| Metric | Value |%n|---|---|%n"));
+		sb.append(String.format("| Path searches | %d (%.0f nodes each on average) |%n", n, n == 0 ? 0.0 : (double) SoakStats.searchNodes / n));
+		sb.append(String.format("| Search time in ticks | median %d, p90 %d, p99 %d, max %d |%n", pct(lat, 50), pct(lat, 90), pct(lat, 99),
+			n == 0 ? 0 : lat.get(n - 1)));
+		sb.append(String.format("| Companion-ticks spent waiting on a search | %d, of which %d got no nodes (budget used up) |%n",
+			SoakStats.searchingTicks, SoakStats.starvedTicks));
+		sb.append(String.format("| Search CPU | %.2f ms per server tick on average |%n",
+			SoakStats.ticks == 0 ? 0.0 : SoakStats.searchNanos / 1e6 / SoakStats.ticks));
+		int stuck = SoakStats.stuck.values().stream().mapToInt(Integer::intValue).sum();
+		int fails = SoakStats.navFails.values().stream().mapToInt(Integer::intValue).sum();
+		sb.append(String.format("| Stuck events / navigation failures | %d / %d |%n%n", stuck, fails));
+		section(sb, "Search outcomes", SoakStats.searches);
+		section(sb, "Stuck while following a path", SoakStats.stuck);
+		section(sb, "Navigation failures", SoakStats.navFails);
+		section(sb, "Other navigation events", SoakStats.navEvents);
+	}
+
+	private static int pct(List<Integer> sorted, int p) {
+		return sorted.isEmpty() ? 0 : sorted.get(Math.min(sorted.size() - 1, sorted.size() * p / 100));
 	}
 
 	private static void section(StringBuilder sb, String title, Map<String, Integer> counts) {

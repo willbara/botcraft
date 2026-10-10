@@ -114,7 +114,7 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
 
 ### Moving around
 
-- **Pathfinding (Baritone-style).** A* is weighted in game-tick costs and spread over ticks within a time budget. The moves are:
+- **Pathfinding (Baritone-style).** A* is weighted in game-tick costs and spread over ticks within a time budget, which grows when the server has time to spare. The moves are:
   - walk, diagonal step, jump up one block, drop down;
   - dig through and dig down (natural terrain only);
   - pillar up and bridge gaps with throwaway blocks;
@@ -124,7 +124,7 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
   - open doors and fence gates.
 - **Smooth walking.** On open ground it walks straight at the furthest reachable step instead of zig-zagging from node to node.
 - **Avoiding hazards.**
-  - **Lava** and fire are strongly avoided.
+  - **Lava** and fire are strongly avoided. A companion that ends up in lava anyway wades straight to the nearest dry footing within 10 blocks (path finding can't help there, since every block around counts as deadly).
   - **Water:** swimming costs extra, being fully underwater costs much more, and currents (rivers, waterfalls) cost more still. Paths go around water whenever a dry route exists.
   - **Waterfalls:** no climbing (vines, ladders) or swimming up in or right beside falling water, which drags you back down. No digging-up-and-pillaring while standing in water either.
   - **Swimming upright:** in water a companion only sprint-swims (the swimming pose, head under) where the route itself goes under water. Across the surface it swims upright, so it can breathe.
@@ -134,6 +134,10 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
   - **No normal path:** escape mode digs through natural terrain and pillars.
   - **Underground with the goal above:** it digs straight up like a player, breaking the block overhead, jumping and placing a block underneath. It stops before fluids, sand and gravel, and anything that isn't natural terrain.
   - **Short or failed searches:** a path that ends just short of the goal re-plans, and a search that fails almost at once is retried after a moment.
+  - **Long searches:** after about a second, a search hands over the best partial path if it gets at least 8 blocks closer. The companion walks it and plans the next stretch on the way, so it is usually ready on arrival.
+  - **The world changing ahead:** four times a second it re-checks the next five steps. If a block appeared, the floor was dug out or lava flowed in, it re-plans at once.
+  - **Slow steps:** a step that takes more than twice what the planner expected, plus 5 seconds, counts as stuck.
+  - **Bridges:** after two bridge blocks it couldn't place, it looks for a way round without bridging. Bridges are only planned off blocks with solid faces (not leaves).
 - **Breathing.** When a companion's air drops below half, it stops everything and swims to the nearest air the water actually leads to: up to about 32 blocks of swimming, never air behind a wall or above a solid ceiling. It swims that route itself, block by block (sideways, down, up), without the pathfinder. With no air in reach it swims straight up.
 - **Giving up on wet jobs.** A job that sends a companion up for air three times is abandoned ("there's too much water here"), and counts as a failure of that method.
 
@@ -376,7 +380,7 @@ Pillars, bridges and staircases built while travelling are left in the world. So
 ### Navigation
 
 - **Not supported:** boats, elytra, water buckets, ender pearls, and parkour beyond 2-block gaps.
-- **Search size.** One search covers about 96 blocks (`maxPathNodes`). Longer trips use partial paths and re-plans.
+- **Search size.** One search covers about 96 blocks (`maxPathNodes`). Longer trips use partial paths, planned on while walking.
 - **Very large height differences** are slow. Escape mode and digging straight up get there, but climbing from deep caves to a mountain top can take minutes.
 - **Digging out needs the right tools and blocks.** It needs a pickaxe for stone and at least one throwaway block. A companion with an empty inventory deep underground is stuck, just as a player would be, until the teleport-to-owner fallback (follow mode) or the failsafe (free mode, after 90 seconds of digging by hand) brings it out.
 - **Sealed underwater caves.** If no air is reachable within about 32 blocks of swimming, a companion can still drown. Paths keep breathing room, but currents can push a companion off its route.
@@ -418,7 +422,8 @@ Pillars, bridges and staircases built while travelling are left in the world. So
 |---|---|---|
 | `maxCompanions` | 0 | Server-wide limit (0 = unlimited). |
 | `aiTickInterval` | 5 | Drives are re-scored every N ticks (body control runs every tick). |
-| `tickBudgetMs` | 2.0 | Total AI time per server tick, shared by all companions. |
+| `tickBudgetMs` | 2.0 | AI time per server tick that is always available, shared by all companions. |
+| `maxTickBudgetMs` | 8.0 | When the rest of the server leaves room (a whole tick under 35 ms), the AI budget grows up to this. |
 | `pathNodesPerTick` / `maxPathNodes` | 600 / 20000 | A* time slicing and search limit. |
 | `chatEnabled` | true | Replies and unprompted remarks. |
 | `griefing` | false | When off, navigation only breaks natural leaves and only natural trees are chopped. Containers and block entities are never broken either way. |

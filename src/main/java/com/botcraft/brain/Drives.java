@@ -22,6 +22,10 @@ public final class Drives {
 	/** Head under water and the air running out: get to air before anything else. */
 	static void breath(Companion c, Brain b, Scores out) {
 		var p = c.player();
+		if (p != null && p.isInLava() && com.botcraft.util.Experiments.on("lavaEscape")) {
+			out.propose(Objective.BREATHE, 0.99F, "in lava");
+			return;
+		}
 		if (p == null || !p.isSubmergedInWater()) {
 			// Keep breathing until the air bar is back, or we'd dive straight back in.
 			if (p != null && b.currentObjective() == Objective.BREATHE && p.getAir() < p.getMaxAir() - 20) {

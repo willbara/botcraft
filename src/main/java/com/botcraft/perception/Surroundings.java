@@ -70,11 +70,9 @@ public final class Surroundings {
 						}
 						continue;
 					}
-					for (OreKind k : OreKind.values()) {
-						if (k != OreKind.STONE && k.blocks().test(s)) {
-							ores.computeIfAbsent(k, kk -> new ArrayList<>()).add(m.toImmutable());
-							break;
-						}
+					OreKind k = OreKind.ore(s);
+					if (k != null) {
+						ores.computeIfAbsent(k, kk -> new ArrayList<>()).add(m.toImmutable());
 					}
 				}
 			}

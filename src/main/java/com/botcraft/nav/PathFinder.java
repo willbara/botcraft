@@ -46,7 +46,8 @@ public class PathFinder {
 	public static final double CENTER = 0.927;
 	public static final double DOOR_COST = 8.0;
 	/** Heuristic ticks per block: slightly above sprint cost, i.e. a little greedy. */
-	private static final double H_PER_BLOCK = 4.0;
+	private static final double H_PER_BLOCK = com.botcraft.util.Experiments.num("hPerBlock", 4.0);
+
 	private static final double[] FALL_TICKS = new double[64];
 
 	static {
@@ -198,6 +199,7 @@ public class PathFinder {
 				finish();
 				break;
 			}
+
 			expand(cur);
 		}
 		return status;
@@ -213,6 +215,20 @@ public class PathFinder {
 		}
 	}
 
+	/**
+	 * Stop searching and take the path to the best node so far, if it gets at least
+	 * {@code minProgress} blocks closer (Baritone's primary timeout).
+	 * @return true if the search is now PARTIAL
+	 */
+	public boolean settle(double minProgress) {
+		if (status != Status.SEARCHING || progress() < minProgress) {
+			return false;
+		}
+		result = build(best);
+		status = Status.PARTIAL;
+		return true;
+	}
+
 	/** How much closer the best node got to the goal (blocks), for deciding whether to escape. */
 	public double progress() {
 		return (startNode.h - best.h) / H_PER_BLOCK;
@@ -225,7 +241,7 @@ public class PathFinder {
 			if (terrain.isClimbable(n.pos) || terrain.isWater(n.pos)) {
 				floor = n.pos.getY();
 			}
-			steps.add(new PathStep(n.pos, n.type, floor, n.place, n.breaks));
+			steps.add(new PathStep(n.pos, n.type, floor, n.place, n.breaks, n.parent == null ? 0 : n.g - n.parent.g));
 		}
 		Collections.reverse(steps);
 		return steps;
