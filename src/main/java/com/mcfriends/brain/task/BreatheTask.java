@@ -99,7 +99,7 @@ public class BreatheTask extends Task {
 		Vec3d target = Vec3d.ofCenter(wp);
 		double dy = target.y - p.getEyeY();
 		c.actions().moveTo(new Vec3d(target.x, p.getY(), target.z));
-		c.actions().sprint(true); // sprint-swimming is much faster
+		c.actions().sprintSwim(true); // sprint-swimming is much faster
 		if (dy > -0.3) {
 			c.actions().holdJump();
 		} else if (dy < -0.8) {

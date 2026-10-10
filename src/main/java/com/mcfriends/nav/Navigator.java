@@ -442,7 +442,15 @@ public class Navigator {
 		// Walking: aim at the farthest of the next few steps reachable in a straight line.
 		actions.moveTo(lookahead(p, target));
 		int remaining = path.size() - index;
-		actions.sprint(sprint && remaining > 4 && step.type() != MoveType.BRIDGE);
+		// In water, sprinting means the swimming pose, which keeps the head under: only do that
+		// where the path itself goes under. Across the surface, swim upright so we can breathe.
+		boolean underwaterStep = p.getWorld().getFluidState(step.pos().up()).isIn(net.minecraft.registry.tag.FluidTags.WATER);
+		boolean run = sprint && remaining > 4 && step.type() != MoveType.BRIDGE;
+		if (underwaterStep) {
+			actions.sprintSwim(run);
+		} else {
+			actions.sprint(run);
+		}
 		if (p.isTouchingWater()) {
 			boolean lastStep = index == path.size() - 1;
 			if ((rise < -0.3 || (lastStep && step.type() == MoveType.SWIM && rise < -0.05)) && p.getAir() > 80) {
