@@ -1,4 +1,4 @@
-# MCFriends: long-term direction
+# Botcraft: long-term direction
 
 ## Goal
 A handful of companions run unattended on a private Fabric 1.20.1 server and play
