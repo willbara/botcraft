@@ -189,6 +189,11 @@ public class Life {
 		if (store != null) {
 			goals.add(store);
 		}
+		// Light up the base if it's dark (monsters spawn on dark ground).
+		Goal light = lightGoal(c, inv, now);
+		if (light != null) {
+			goals.add(light);
+		}
 		// 2. Food.
 		// Raw meat is food in a pinch, but it's worth cooking (a steak fills far more than raw beef).
 		int raw = Inventories.count(inv, s -> Animals.RAW_MEAT.contains(s.getItem()));
@@ -342,6 +347,38 @@ public class Life {
 		return null;
 	}
 
+	private static long darkCheckedAt = -10_000;
+	private static int darkSpotsAtBase;
+
+	/** The base has dark ground and we have (or can make) torches: light it up. */
+	@Nullable
+	private Goal lightGoal(Companion c, PlayerInventory inv, long now) {
+		var colony = com.mcfriends.colony.Colony.get();
+		var p = c.player();
+		if (!CompanionConfig.get().placeTorches || colony == null || !colony.hasBase() || !allowed("light_home", now)
+			|| !colony.near(p.getServerWorld(), p.getBlockPos(), 48)) {
+			return null;
+		}
+		if (now - darkCheckedAt > 20 * 30) { // shared by everyone, refreshed every 30 s
+			darkCheckedAt = now;
+			darkSpotsAtBase = com.mcfriends.brain.Lighting.darkSpots(colony.world(), colony.base(),
+				com.mcfriends.brain.task.LightHomeTask.RADIUS).size();
+		}
+		if (darkSpotsAtBase == 0) {
+			return null;
+		}
+		int torches = Inventories.count(inv, s -> s.isOf(Items.TORCH));
+		if (torches >= 4) {
+			return new Goal("light_home", List.of("light"), "it's dark around the base");
+		}
+		java.util.Map<net.minecraft.item.Item, Integer> have = new java.util.HashMap<>(com.mcfriends.brain.task.CraftTask.inventoryCounts(inv));
+		colony.stock().forEach((item, n) -> have.merge(item, n, Integer::sum));
+		if (com.mcfriends.knowledge.CraftPlanner.plan(c.server, have, Items.TORCH, 16).ready()) {
+			return new Goal("light_home", List.of("craft torch 16", "light"), "it's dark around the base, I'll make torches");
+		}
+		return null;
+	}
+
 	/** A mining job started at the base at night means walking out into the dark to a cave. */
 	private static boolean leavingBaseToMine(Companion c) {
 		var colony = com.mcfriends.colony.Colony.get();
@@ -384,6 +421,10 @@ public class Life {
 		}
 		if (com.mcfriends.colony.Kit.storeSlots(inv) > 0 && allowed("deposit", now)) {
 			return new Goal("deposit", List.of("deposit"), "might as well tidy up");
+		}
+		Goal light = lightGoal(c, inv, now);
+		if (light != null) {
+			return light;
 		}
 		java.util.Map<net.minecraft.item.Item, Integer> have = new java.util.HashMap<>(com.mcfriends.brain.task.CraftTask.inventoryCounts(inv));
 		colony.stock().forEach((item, n) -> have.merge(item, n, Integer::sum));

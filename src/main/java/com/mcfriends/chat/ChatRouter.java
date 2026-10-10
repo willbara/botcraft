@@ -179,6 +179,12 @@ public final class ChatRouter {
 						jobs.add("deposit");
 					}
 				}
+				case LIGHT -> {
+					if (com.mcfriends.action.Inventories.count(c.player().getInventory(), st -> st.isOf(net.minecraft.item.Items.TORCH)) < 8) {
+						jobs.add("craft torch 16");
+					}
+					jobs.add("light");
+				}
 				case DANCE -> {
 					// A little fun: dance now, then carry on with whatever we were doing.
 					c.jobs().interruptWith(List.of("dance"));

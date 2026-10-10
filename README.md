@@ -6,7 +6,7 @@ AI companions for Minecraft **1.20.1 (Fabric)** that join the server as real pla
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.
 - **One optional network call.** Looking up the skin of a registered Minecraft account goes to Mojang, the same way player heads do. Turn it off with `allowSkinLookup`.
 
-This document describes version **0.8.0**.
+This document describes version **0.8.1**.
 
 ---
 
@@ -112,6 +112,7 @@ A companion only responds when you **say its name** ("Bob, follow me") or addres
 | this is home / set home here | Remember this place as home. Your home is also the shared base. |
 | this is our chest / use this chest | The chest you're looking at (or standing next to) becomes a base chest. |
 | this chest is for ores / food goes in this chest / put the wood here / this is the tool chest | The same, with a purpose: ores and metals, wood, food, tools and gear, building blocks, or everything else. |
+| light up the base / place some torches / it's dark around here | Make torches if needed, then put torches on every pitch-dark patch of ground within 12 blocks of the base. |
 | dance / everyone dance / bust a move | About 12 seconds of dancing (spins, hops, crouch spam, punching the air), then back to whatever it was doing. Anyone can ask, and it doesn't end free mode. |
 | put your stuff away / empty your inventory / deposit | Store everything except the kit in the base chests. |
 | go home / come home | Go home. |
@@ -275,6 +276,12 @@ While mining:
 - **Base stations.** A crafting table or furnace put down at the base stays there for everyone, instead of being picked back up.
 - **Night chores.** An armed companion at the base at night (with no bed) stores its things, cooks raw meat, smelts raw iron and crafts iron gear from carried and stored materials. It doesn't leave the base for anything after dark.
 
+### Torches
+
+- **In caves and tunnels.** Underground with torches on hand, a companion puts one on the floor beside it whenever its spot gets dark (block light below 6), so the places it mines and explores end up lit every six or seven blocks. It waits until it isn't mid-swing or fighting.
+- **At the base.** Monsters spawn on pitch-dark ground. When the area within 12 blocks of the base (at about its level) has any, free mode lights it up: torches it carries, or torches it crafts from coal and sticks (taken from the chests if need be). It's also a night chore at the base, and an order ("light up the base").
+- `placeTorches` in the config turns all of this off.
+
 ### Watchdog
 
 Every task has its own time limit, but a task can keep itself busy without getting anywhere (re-planning to the same unreachable spot, retrying the same placement). If a companion is on a job and for 3 minutes it neither moves more than a few blocks, nor breaks anything, nor gains any items (eating doesn't count), the job is abandoned with "I got stuck" and the usual failure handling takes over. Sleeping, sheltering for the night and waiting on a friend are exempt.
@@ -385,7 +392,7 @@ Pillars, bridges and staircases built while travelling are left in the world. So
 - **Crafting** covers crafting-table and furnace recipes only: no smithing, brewing, enchanting, stonecutting, blast furnaces or smokers.
 - **No farming.** It was removed for now and will come back reworked.
 - **Storage is basic.** There's one base, chests aren't sorted beyond "like with like", and nothing is reserved: two companions can head for the same items, and the second gets whatever's left. Companions don't organise chests you fill yourself, and they never use chests away from the base.
-- **No torches in caves.** Companions don't light up caves (free mode crafts torches but doesn't place them).
+- **Lighting is basic.** Torches go on the floor (never on walls), only around the base and where a companion is underground. They aren't picked back up, and nobody lights paths between places.
 - **Hunting** never takes the last two animals of a species nearby (the last one when starving), so a lone cow is always left alone. There's no breeding yet, so a heavily hunted area runs out of animals. Animals beyond about 96 blocks, or more than 48 blocks up or down, aren't noticed until the companion gets closer. Fish, crops and other food sources aren't used.
 - **Mining** reads ore positions from the world, like an "x-ray" of the 24-block scan area. A player would have to dig to find buried ore.
 - **Tool upgrades** stop at iron.
@@ -431,6 +438,7 @@ Pillars, bridges and staircases built while travelling are left in the world. So
 | `initiative` | 0.5 | How readily idle companions set their own goals (0 = never). In free mode it gates the whole Life planner. |
 | `sleepWithOwner` | true | Go to bed when the owner sleeps. |
 | `commandPermissionLevel` | 2 | Permission level for `/companion`. |
+| `placeTorches` | true | Put torches down in dark caves and around a dark base. |
 | `verboseAiLogging` | false | Log AI decisions at INFO instead of DEBUG, so they show in `latest.log`. |
 
 ---
@@ -505,7 +513,7 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 59 GameTests. It resets its world on every run. The tests cover:
+- `./gradlew runGametest` runs a headless server with 61 GameTests. It resets its world on every run. The tests cover:
   - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
@@ -513,6 +521,7 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
   - chat, banter, sharing, spreading out, tool prep and picking up drops;
   - the base: storing all but the kit, chests with a purpose, placing a chest when needed, and crafting from base stock (never from other chests);
   - the planner (using stock, smelting what's carried, chaining from scratch, learning from failure), the target ladder, and dancing;
+  - torches in a dark cave and lighting up a dark base;
   - player slots.
 - `./gradlew runSoak -PsoakMinutes=30 -PsoakCompanions=6` runs an unattended soak test. It starts a dedicated server in `run/soak` with a fresh world (seed `-PsoakSeed`, default 12345, Normal difficulty), and spawns the companions in free mode at world spawn with no player online. When time is up it writes `run/soak/soak-report.md` and stops. The report covers:
   - deaths per companion-hour, with causes;

@@ -192,5 +192,10 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] After a companion fails or dies mining, `/companion why` lists it under "learned", and mining costs go up.
 - [ ] "everyone dance": they dance for about 12 seconds, then carry on. Free mode keeps going afterwards.
 
+### 22. Torches
+- [ ] Give a companion torches and send it mining in a cave: torches appear along its way, every six or seven blocks.
+- [ ] Set home somewhere dark at night (or in a roofed area). "everyone, light up the base": the dark ground around it gets torches. With coal and sticks in the chest and no torches on hand, it makes some first.
+- [ ] Free mode with a dark base and torches: they light it without being asked.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.
