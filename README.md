@@ -168,13 +168,14 @@ The parser also copes with:
   - dig through and dig down (natural terrain only);
   - pillar up and bridge gaps with throwaway blocks;
   - climb ladders and vines;
-  - parkour across 1–2 block gaps;
+  - parkour across 1–2 block gaps, but never over a drop deeper than 10 blocks (a missed jump there could kill), so cliff edges and ravines are walked round;
   - swim;
   - open doors and fence gates.
 - **Smooth walking.** On open ground it walks straight at the furthest reachable step instead of zig-zagging from node to node.
 - **Avoiding hazards.**
   - **Lava** and fire are strongly avoided.
   - **Water:** swimming costs extra, being fully underwater costs much more, and currents (rivers, waterfalls) cost more still. Paths go around water whenever a dry route exists.
+  - **Swimming upright:** in water a companion only sprint-swims (the swimming pose, head under) where the route itself goes under water. Across the surface it swims upright, so it can breathe.
   - **Breath:** a path may stay with the head under water for at most 14 blocks in a row, fewer when the companion is already short of air. Longer underwater stretches cost more the longer they get. It never routes through a flooded tunnel longer than a breath lasts.
 - **Getting unstuck.**
   - **Stuck while walking:** it wiggles, then re-plans around the spot that stopped it.

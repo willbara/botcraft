@@ -55,6 +55,8 @@ public class ActionController {
 	private Vec3d moveTarget;
 	private double moveSpeed = 1.0;
 	private boolean sprint;
+	/** This tick's sprint may be a swim under water (otherwise no sprinting in water). */
+	private boolean diveOk;
 	private boolean sneak;
 	private boolean jumpOnce;
 	private boolean holdJump;
@@ -109,6 +111,16 @@ public class ActionController {
 		this.sprint = sprint;
 	}
 
+	/**
+	 * Sprint even in water. Sprinting in water is the swimming pose, head under: right for a
+	 * route that goes under water, wrong anywhere else (it drowns you crossing a lake), so plain
+	 * {@link #sprint(boolean)} doesn't sprint in water.
+	 */
+	public void sprintSwim(boolean sprint) {
+		this.sprint = sprint;
+		this.diveOk = sprint;
+	}
+
 	public void sneak(boolean sneak) {
 		this.sneak = sneak;
 	}
@@ -133,6 +145,7 @@ public class ActionController {
 		lookPoint = null;
 		lookEntity = null;
 		sprint = false;
+		diveOk = false;
 		sneak = false;
 		holdJump = false;
 		jumpOnce = false;
@@ -172,6 +185,7 @@ public class ActionController {
 		holdJump = false;
 		jumpOnce = false;
 		sprint = false;
+		diveOk = false;
 	}
 
 	private void applyLook(CompanionPlayer p) {
@@ -242,7 +256,8 @@ public class ActionController {
 		}
 		p.forwardSpeed = forward;
 		p.sidewaysSpeed = sideways;
-		boolean canSprint = sprint && forward > 0.8F && !sneak && p.getHungerManager().getFoodLevel() > 6 && !p.isUsingItem();
+		boolean canSprint = sprint && forward > 0.8F && !sneak && p.getHungerManager().getFoodLevel() > 6 && !p.isUsingItem()
+			&& (diveOk || !p.isTouchingWater());
 		if (p.isSprinting() != canSprint) {
 			p.setSprinting(canSprint);
 		}

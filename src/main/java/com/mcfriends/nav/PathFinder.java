@@ -396,9 +396,12 @@ public class PathFinder {
 		if (!usable(first) || terrain.support(first.down()) || !terrain.clearBody(first) || terrain.isWater(first.down())) {
 			return; // not a gap
 		}
+		if (missDrop(first) > PARKOUR_MAX_MISS_DROP) {
+			return; // a missed jump here would be a bad fall (cliffs, ravines): go round
+		}
 		for (int dist = 2; dist <= 3; dist++) {
 			BlockPos gap = p.offset(d, dist - 1);
-			if (!terrain.clearBody(gap) || !terrain.passable(gap.up(2)) || terrain.support(gap.down())) {
+			if (!terrain.clearBody(gap) || !terrain.passable(gap.up(2)) || terrain.support(gap.down()) || missDrop(gap) > PARKOUR_MAX_MISS_DROP) {
 				return;
 			}
 			BlockPos land = p.offset(d, dist);
@@ -411,6 +414,26 @@ public class PathFinder {
 				return;
 			}
 		}
+	}
+
+	/**
+	 * Deepest gap worth jumping: a miss hurts (7 hearts at most) but isn't fatal. Over deeper
+	 * drops (cliff edges, ravines) we go round. Baritone keeps parkour off altogether by default.
+	 */
+	private static final int PARKOUR_MAX_MISS_DROP = 10;
+
+	/** How far a missed jump over this gap column would fall (water at the bottom is a soft landing). */
+	private int missDrop(BlockPos gap) {
+		for (int i = 1; i <= 24; i++) {
+			BlockPos b = gap.down(i);
+			if (terrain.isWater(b)) {
+				return 0;
+			}
+			if (terrain.support(b)) {
+				return i - 1;
+			}
+		}
+		return Integer.MAX_VALUE;
 	}
 
 	private void up(Node cur, BlockPos p, boolean inWater) {
