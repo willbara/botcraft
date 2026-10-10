@@ -6,7 +6,7 @@ AI companions for Minecraft **1.20.1 (Fabric)** that join the server as real pla
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.
 - **One optional network call.** Looking up the skin of a registered Minecraft account goes to Mojang, the same way player heads do. Turn it off with `allowSkinLookup`.
 
-This document describes version **0.7.2**.
+This document describes version **0.8.0**.
 
 ---
 
@@ -56,7 +56,8 @@ All commands need permission level 2 by default (`commandPermissionLevel`).
 | `/companion info <name>` | Debug view: personality, orders, job queue, current drive scores, memory. |
 | `/companion remove <name>` | Dismisses the companion and forgets it. Its playerdata file is kept. |
 | `/companion list` | Name, owner, position, health, food and current activity of every companion. |
-| `/companion colony` | The shared base: where it is, how many chests, and what's stored. |
+| `/companion colony` | The shared base: where it is, each chest and its purpose, and what's stored. |
+| `/companion why <name>` | Its reasoning: current activity and queue, its progression target, the chosen plan with its cost, the alternatives it considered, and what it has learned about each method. |
 | `/companion stop <name>` | Stays put and drops any job. |
 | `/companion task <name> <text>` | Anything you could say in chat, for example `get 10 logs then craft a stone pickaxe`. |
 
@@ -110,6 +111,8 @@ A companion only responds when you **say its name** ("Bob, follow me") or addres
 | go to steve / follow alex / steve, give alex your logs / bring alex 5 coal | The same orders, aimed at another companion or player. |
 | this is home / set home here | Remember this place as home. Your home is also the shared base. |
 | this is our chest / use this chest | The chest you're looking at (or standing next to) becomes a base chest. |
+| this chest is for ores / food goes in this chest / put the wood here / this is the tool chest | The same, with a purpose: ores and metals, wood, food, tools and gear, building blocks, or everything else. |
+| dance / everyone dance / bust a move | About 12 seconds of dancing (spins, hops, crouch spam, punching the air), then back to whatever it was doing. Anyone can ask, and it doesn't end free mode. |
 | put your stuff away / empty your inventory / deposit | Store everything except the kit in the base chests. |
 | go home / come home | Go home. |
 | go to sleep / go to bed | Find a free bed and sleep (only at night). |
@@ -257,6 +260,7 @@ While mining:
 
 - **One shared base.** Saying "this is home" sets the base for all companions. It's saved in `<world>/mcfriends/colony.json` along with the base chests.
 - **Only base chests.** Companions use only chests they placed at the base, or ones you mark ("this is our chest"). They never touch any other chest. Double chests and barrels work too.
+- **Chests with a purpose.** Say "this chest is for ores" (or wood, food, tools/gear, building blocks, everything else) while looking at a chest. Storing sends each item to the chest for its kind first, then to a general chest (one with no purpose), and only then anywhere with room. Fetching finds things by what's actually in the chests, whatever their purpose.
 - **What they keep (the kit).** The best tool of each kind, a weapon, worn armour, up to 16 food (cooked first), 32 building blocks and 16 torches. Plus a **working stock** of what progress keeps needing: up to 16 logs, 16 planks, 16 sticks, 16 coal, 32 iron ingots, 32 raw iron, 16 diamonds, a crafting table, a furnace and a bed. Only extras beyond that, spare tools and junk (dirt, gravel, saplings, clay…) go into the chests, so they don't store something and fetch it straight back. Like goes with like: a chest already holding an item is filled first.
 - **When they store things.**
   - **Free mode:** when back at the base with 6 or more stacks to store, or when nearly full (at the base, or while out: they come home to unload).
@@ -285,6 +289,29 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - Only spares are given, and tools only if the friend has two. Handed-over items can only be picked up by the recipient.
   - If nothing arrives, the companion gets the item itself.
 - **Social life.** Companions greet each other and banter when idle: weather, work, favourites, jokes, complaints. They also share where they found ores, which the listener remembers. They praise each other's kills, mourn deaths and come to each other's help.
+
+### Planning and progression
+
+- **Progression targets** are data, a ladder in `brain/plan/Targets.java`. Free mode first gets the basic wooden and stone tools, then works up the ladder:
+  1. iron pickaxe and iron sword;
+  2. iron chestplate, leggings, helmet and boots;
+  3. diamond pickaxe and diamond sword;
+  4. diamond armour.
+
+  Each step is "have this": met by carrying or wearing it (or something better).
+- **The planner** (`brain/plan/Planner.java`) works out every way to get what the next target needs, recursively:
+  - carrying it already, or taking it from the base chests;
+  - crafting it (planning its ingredients), or smelting it (planning the input and fuel);
+  - mining it (planning the right pickaxe first), hunting it, or chopping it.
+
+  Each option is priced in seconds from what the companion knows:
+  - distance to the base and to known ore, caves, trees or herds;
+  - how long each method has taken it before and how often it worked;
+  - deaths, and the danger of being outside at night.
+
+  The cheapest option becomes a list of ordinary jobs. For example, an iron pickaxe is "take 3 ingots and 2 sticks from the chest, craft" when the chest has them, "smelt the raw iron I carry, craft" when that's cheaper, and "mine iron, smelt it, chop a log for sticks, craft" from scratch. The tasks still check reality as they go: if a chest turns out empty, crafting re-plans.
+- **Learning.** Every finished job records how it went for its method ("mine iron", "hunt cow", "gather logs", "craft", "smelt"...): attempts, successes, items gained, time and deaths. They're saved in the companion's memory. A method that keeps failing or killing a companion gets expensive, and another way wins.
+- **Seeing why.** `/companion why <name>` shows the target, the chosen plan and its cost, the alternatives with theirs, and the learned stats.
 
 ### Free mode (autonomy)
 
@@ -370,7 +397,8 @@ Pillars, bridges and staircases built while travelling are left in the world. So
 
 ### Free mode
 
-- **Fixed goals.** The goal list is fixed. There's no long-term planning, base building, trading or exploring for structures.
+- **Progression stops at diamond gear.** The target ladder ends there: no enchanting, Nether or End yet. There's no base building, trading or exploring for structures.
+- **A simple planner.** It plans one target at a time for one companion (no group plans yet: that's the request board). Its time estimates start from rough guesses and improve with experience.
 - **Unarmed nights** mean digging in, not fighting.
 
 ### Understanding chat
@@ -424,12 +452,13 @@ com.mcfriends
 │               recovery), BreakPolicy, Goal
 ├─ perception/  Perception (threats, owner, time, inventory summary), Surroundings (rolling 8-block
 │               picture), BlockScanner, CaveFinder
-├─ colony/      Colony (the base, its chests, stock; colony.json), Kit (what a companion keeps)
+├─ colony/      Colony (the base, its chests and their purposes, stock; colony.json), Kit (what a companion keeps), Purpose
+├─ brain/plan/  Planner (hierarchical "get N of X" with costs), Targets (progression ladder), MethodStats (learned costs)
 ├─ brain/       Brain (utility selection + interrupt stack), Drives, Objective, Personality,
 │               JobQueue + Jobs (persisted job specs, prerequisites, optional prep), Life (free mode),
 │               Sharing, Claims (spreading out), Leftovers (own drops), Watchdog (stalled jobs)
 │  └─ task/     Follow, Stay, Idle, GoTo, GatherLogs, Mine, Craft, Smelt, Hunt, Place, Deliver,
-│               Await, Sleep, Shelter, Eat, Fight, Flee/Retreat, Breathe, Collect, Deposit, Withdraw, ToolPrep,
+│               Await, Sleep, Shelter, Eat, Fight, Flee/Retreat, Breathe, Collect, Deposit, Withdraw, Dance, ToolPrep,
 │               SearchTrips, Pickup, Spots
 ├─ knowledge/   OreKind, ItemNames, CraftPlanner, Smelting, Animals
 ├─ memory/      Memory (places, sightings, stats, people; per-companion JSON)
@@ -476,13 +505,14 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 52 GameTests. It resets its world on every run. The tests cover:
+- `./gradlew runGametest` runs a headless server with 59 GameTests. It resets its world on every run. The tests cover:
   - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
   - combat, free mode (including ignoring the owner, and the failsafe), shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;
   - chat, banter, sharing, spreading out, tool prep and picking up drops;
-  - the base: storing all but the kit, placing a chest when needed, and crafting from base stock (never from other chests);
+  - the base: storing all but the kit, chests with a purpose, placing a chest when needed, and crafting from base stock (never from other chests);
+  - the planner (using stock, smelting what's carried, chaining from scratch, learning from failure), the target ladder, and dancing;
   - player slots.
 - `./gradlew runSoak -PsoakMinutes=30 -PsoakCompanions=6` runs an unattended soak test. It starts a dedicated server in `run/soak` with a fresh world (seed `-PsoakSeed`, default 12345, Normal difficulty), and spawns the companions in free mode at world spawn with no player online. When time is up it writes `run/soak/soak-report.md` and stops. The report covers:
   - deaths per companion-hour, with causes;

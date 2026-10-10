@@ -1589,4 +1589,112 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtSorter");
 		});
 	}
+
+	static Companion plannerSubject(TestContext ctx, String name) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, name);
+		flatArena(ctx, 12);
+		ctx.assertTrue(m.spawn(name, "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 2.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName(name);
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		return c;
+	}
+
+	/** Planner: iron and sticks in the base chest beat mining for an iron pickaxe. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "planner_chests")
+	public void plannerUsesStock(TestContext ctx) {
+		Companion c = plannerSubject(ctx, "GtPlanA");
+		var colony = colony(ctx, new BlockPos(6, 1, 6));
+		ctx.setBlockState(9, 1, 6, Blocks.CHEST);
+		colony.addChest(ctx.getAbsolutePos(new BlockPos(9, 1, 6)));
+		var inv = com.mcfriends.colony.Colony.inventory(ctx.getWorld(), ctx.getAbsolutePos(new BlockPos(9, 1, 6)));
+		inv.setStack(0, new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_INGOT, 3));
+		inv.setStack(1, new net.minecraft.item.ItemStack(net.minecraft.item.Items.STICK, 2));
+		give(c, net.minecraft.item.Items.CRAFTING_TABLE, 1);
+		var d = com.mcfriends.brain.plan.Planner.acquire(c, net.minecraft.item.Items.IRON_PICKAXE, 1);
+		ctx.assertTrue(d.chosen().steps().contains("withdraw iron_ingot 3") && d.chosen().steps().stream().noneMatch(st -> st.startsWith("mine")),
+			"plan " + d.chosen() + " | " + d.considered());
+		colony.clear();
+		cleanup(CompanionManager.get(), "GtPlanA");
+		ctx.complete();
+	}
+
+	/** Planner: raw iron already carried (with fuel) gets smelted, not mined again. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "planner_smelt")
+	public void plannerSmeltsWhatItHas(TestContext ctx) {
+		Companion c = plannerSubject(ctx, "GtPlanB");
+		give(c, net.minecraft.item.Items.RAW_IRON, 3);
+		give(c, net.minecraft.item.Items.COAL, 2);
+		give(c, net.minecraft.item.Items.FURNACE, 1);
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		var d = com.mcfriends.brain.plan.Planner.acquire(c, net.minecraft.item.Items.IRON_INGOT, 3);
+		ctx.assertTrue(d.chosen().method().equals("smelt") && d.chosen().steps().equals(java.util.List.of("smelt iron_ingot 3")),
+			"plan " + d.chosen() + " | " + d.considered());
+		cleanup(CompanionManager.get(), "GtPlanB");
+		ctx.complete();
+	}
+
+	/** Planner: from nothing but a stone pickaxe, an iron pickaxe means mine, smelt, craft (with sticks from wood). */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "planner_chain")
+	public void plannerChainsFromScratch(TestContext ctx) {
+		Companion c = plannerSubject(ctx, "GtPlanC");
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		var d = com.mcfriends.brain.plan.Planner.acquire(c, net.minecraft.item.Items.IRON_PICKAXE, 1);
+		var steps = d.chosen().steps();
+		int mine = steps.indexOf("mine iron 3");
+		int smelt = steps.indexOf("smelt iron_ingot 3");
+		int craft = steps.indexOf("craft iron_pickaxe 1");
+		ctx.assertTrue(mine >= 0 && smelt > mine && craft > smelt, "steps " + steps);
+		ctx.assertTrue(steps.stream().anyMatch(st -> st.startsWith("gather logs")), "needs wood for sticks: " + steps);
+		cleanup(CompanionManager.get(), "GtPlanC");
+		ctx.complete();
+	}
+
+	/** Learned costs: a method that keeps failing and killing us gets more expensive. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "planner_learning")
+	public void plannerLearnsFromFailure(TestContext ctx) {
+		Companion c = plannerSubject(ctx, "GtPlanD");
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		double before = com.mcfriends.brain.plan.Planner.acquire(c, net.minecraft.item.Items.RAW_IRON, 3).chosen().cost();
+		for (int i = 0; i < 6; i++) {
+			com.mcfriends.brain.plan.MethodStats.record(c, "mine iron", false, 0, 20 * 120);
+		}
+		com.mcfriends.brain.plan.MethodStats.death(c, "mine iron");
+		double after = com.mcfriends.brain.plan.Planner.acquire(c, net.minecraft.item.Items.RAW_IRON, 3).chosen().cost();
+		ctx.assertTrue(after > before * 2, "cost " + before + " -> " + after);
+		cleanup(CompanionManager.get(), "GtPlanD");
+		ctx.complete();
+	}
+
+	/** Targets: the ladder is followed in order (iron pickaxe, then sword, then armour...). */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "targets")
+	public void targetsInOrder(TestContext ctx) {
+		Companion c = plannerSubject(ctx, "GtLadder");
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		give(c, net.minecraft.item.Items.STONE_SWORD, 1);
+		var t = com.mcfriends.brain.plan.Targets.next(c, x -> true);
+		ctx.assertTrue(t != null && t.item() == net.minecraft.item.Items.IRON_PICKAXE, "first " + t);
+		give(c, net.minecraft.item.Items.IRON_PICKAXE, 1);
+		t = com.mcfriends.brain.plan.Targets.next(c, x -> true);
+		ctx.assertTrue(t != null && t.item() == net.minecraft.item.Items.IRON_SWORD, "then " + t);
+		give(c, net.minecraft.item.Items.IRON_SWORD, 1);
+		give(c, net.minecraft.item.Items.IRON_CHESTPLATE, 1);
+		t = com.mcfriends.brain.plan.Targets.next(c, x -> true);
+		ctx.assertTrue(t != null && t.item() == net.minecraft.item.Items.IRON_LEGGINGS, "then " + t);
+		cleanup(CompanionManager.get(), "GtLadder");
+		ctx.complete();
+	}
+
+	/** "Dance!": it dances, then goes back to what it was doing. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 100, batchId = "dance")
+	public void dancesOnRequest(TestContext ctx) {
+		Companion c = plannerSubject(ctx, "GtDancer");
+		var parsed = com.mcfriends.chat.IntentParser.parse("GtDancer dance", java.util.List.of("GtDancer"));
+		ctx.assertTrue(com.mcfriends.chat.ChatRouter.respond(c, null, parsed.intents(), false) == null, "respond");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue("dance".equals(c.brain().jobName()), "not dancing: " + c.describeActivity());
+			cleanup(CompanionManager.get(), "GtDancer");
+		});
+	}
 }

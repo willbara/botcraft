@@ -294,4 +294,12 @@ class IntentParserTest {
 		assertEquals(Intent.Type.COME_HERE, type("everyone come here"));
 		assertFalse(type("everyone go here") == Intent.Type.CHEST_SET);
 	}
+
+	@Test
+	void dance() {
+		assertEquals(Intent.Type.DANCE, type("everyone dance"));
+		assertEquals(Intent.Type.DANCE, type("bob dance!"));
+		assertEquals(Intent.Type.DANCE, type("bob bust a move"));
+		assertEquals(Intent.Type.DANCE, type("everyone dance party"));
+	}
 }
