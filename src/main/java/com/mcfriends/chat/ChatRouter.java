@@ -157,10 +157,12 @@ public final class ChatRouter {
 					speech.reply("ack.home_set", sender, vars);
 				}
 				case CHEST_SET -> {
-					String problem = markChest(c, sender);
+					com.mcfriends.colony.Purpose purpose = intent.item().isEmpty() ? null : com.mcfriends.colony.Purpose.valueOf(intent.item());
+					String problem = markChest(c, sender, purpose);
 					if (once("chest_set")) {
 						if (problem == null) {
-							speech.reply("ack.chest_set", sender, vars);
+							vars.put("purpose", purpose == null ? "" : purpose.label);
+							speech.reply(purpose == null ? "ack.chest_set" : "ack.chest_purpose", sender, vars);
 						} else {
 							vars.put("reason", problem);
 							speech.reply("cant.do", sender, vars);
@@ -546,7 +548,8 @@ public final class ChatRouter {
 
 	/** The chest the owner is looking at (or standing right next to) joins the base. @return problem or null */
 	@org.jetbrains.annotations.Nullable
-	private static String markChest(Companion c, @org.jetbrains.annotations.Nullable ServerPlayerEntity sender) {
+	private static String markChest(Companion c, @org.jetbrains.annotations.Nullable ServerPlayerEntity sender,
+		@org.jetbrains.annotations.Nullable com.mcfriends.colony.Purpose purpose) {
 		var colony = com.mcfriends.colony.Colony.get();
 		if (colony == null || sender == null) {
 			return "I can't tell which chest you mean";
@@ -575,6 +578,9 @@ public final class ChatRouter {
 			return "that chest is too far from home";
 		}
 		colony.addChest(chest);
+		if (purpose != null) {
+			colony.setPurpose(chest, purpose);
+		}
 		return null;
 	}
 

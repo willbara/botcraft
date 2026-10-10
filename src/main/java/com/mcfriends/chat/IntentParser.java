@@ -41,8 +41,12 @@ public final class IntentParser {
 		"\\b((set|make|mark) (this|here)( as| to)?( (your|our|my|the))? home|this is (your |our |my |the )?home|remember this place|home is here)\\b");
 	private static final Pattern HOME_GO = Pattern.compile(
 		"\\b(go home|go back home|head home|head back home|return home|back home|get home|come home|come on home|go to (the |your )?home|walk home|run home|go to base|back to base)\\b");
+	private static final String KINDS = "(ores?|minerals?|metals?|ingots?|wood|logs?|planks|food|meat|tools?|weapons?|armou?r|gear|blocks?|stone|cobble(stone)?|building|junk|misc|everything else|storage)";
 	private static final Pattern CHEST_SET = Pattern.compile(
-		"\\b(this is (our|the|a) (storage )?chest|that'?s (our|the) chest|use this chest|use that chest|this chest is (ours|yours|for (you|us|storage))|(put|keep|store) (stuff|things|it|everything|your stuff|your things) in (this|that) chest|mark this chest|storage chest)\\b");
+		"\\b(this chest is (for|ours|yours|for (you|us|storage))|this is (our|the|a) (" + KINDS + " )?chest|that'?s (our|the) chest|use (this|that) chest( for)?"
+			+ "|(put|keep|store) (the |all the |your )?" + KINDS + " (in|into) (this|that) chest|(put|keep|store) (the |all the |your )?" + KINDS + " here"
+			+ "|" + KINDS + " go(es)? (here|in (this|that) chest)|(put|keep|store) (stuff|things|it|everything|your stuff|your things) in (this|that) chest"
+			+ "|mark this chest|storage chest)\\b");
 	private static final Pattern DEPOSIT = Pattern.compile(
 		"\\b((put|store|stash) (your|the|all your|away your) (stuff|things|items|loot|junk)( away| in the chests?)?|put (your|the) (stuff|things|items) away|deposit( (your|everything|it all|your stuff))?|empty your (inventory|pockets|bags?)|unload( your stuff)?|stash (it|everything))\\b");
 	private static final Pattern STOCK = Pattern.compile(
@@ -440,7 +444,9 @@ public final class IntentParser {
 			return Intent.of(Intent.Type.FREE);
 		}
 		if (CHEST_SET.matcher(text).find()) {
-			return Intent.of(Intent.Type.CHEST_SET);
+			// "this chest is for ores", "food goes in this chest": the purpose rides along as the item.
+			com.mcfriends.colony.Purpose purpose = com.mcfriends.colony.Purpose.fromWords(text.replaceAll("\\bchests?\\b", ""));
+			return new Intent(Intent.Type.CHEST_SET, purpose == null ? "" : purpose.name(), -1);
 		}
 		if (STOCK.matcher(text).find()) {
 			return Intent.of(Intent.Type.STOCK);

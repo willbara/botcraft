@@ -1559,4 +1559,34 @@ public class CompanionGameTests implements FabricGameTest {
 		cleanup(m, "GtStuck");
 		ctx.complete();
 	}
+
+	/** Chests with a purpose: ores go to the ore chest, everything else to the general chest. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "deposit_purpose")
+	public void storesByChestPurpose(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtSorter");
+		flatArena(ctx, 12);
+		var colony = colony(ctx, new BlockPos(6, 1, 6));
+		BlockPos oreChest = new BlockPos(9, 1, 3);
+		BlockPos general = new BlockPos(9, 1, 9);
+		ctx.setBlockState(oreChest, Blocks.CHEST);
+		ctx.setBlockState(general, Blocks.CHEST);
+		colony.addChest(ctx.getAbsolutePos(oreChest));
+		colony.addChest(ctx.getAbsolutePos(general));
+		colony.setPurpose(ctx.getAbsolutePos(oreChest), com.mcfriends.colony.Purpose.ORES);
+		ctx.assertTrue(m.spawn("GtSorter", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 9.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtSorter");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.RAW_GOLD, 9);
+		give(c, net.minecraft.item.Items.GRAVEL, 12);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "put your stuff away", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(countIn(ctx, oreChest, net.minecraft.item.Items.RAW_GOLD) == 9, "gold not in the ore chest; " + c.describeActivity());
+			ctx.assertTrue(countIn(ctx, general, net.minecraft.item.Items.GRAVEL) == 12, "gravel not in the general chest");
+			ctx.assertTrue(countIn(ctx, oreChest, net.minecraft.item.Items.GRAVEL) == 0, "gravel went in the ore chest");
+			colony.clear();
+			cleanup(m, "GtSorter");
+		});
+	}
 }
