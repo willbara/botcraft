@@ -117,9 +117,11 @@ public final class ChatRouter {
 	static BlockPos scatterSpot(Companion c, @Nullable ServerPlayerEntity sender) {
 		CompanionPlayer p = c.player();
 		java.util.Random random = new java.util.Random();
+		// One shared starting bearing per order (the same second gives the same one), so the
+		// golden-angle steps below fan everyone out instead of each starting somewhere random.
 		double base = sender != null && sender.squaredDistanceTo(p) > 1
 			? Math.atan2(p.getZ() - sender.getZ(), p.getX() - sender.getX())
-			: random.nextDouble() * Math.PI * 2;
+			: (c.server.getTicks() / 20) * 0.618034 * Math.PI * 2;
 		int index = 0;
 		CompanionManager m = CompanionManager.get();
 		if (m != null) {

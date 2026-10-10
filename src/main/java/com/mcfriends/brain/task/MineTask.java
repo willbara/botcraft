@@ -340,6 +340,24 @@ public class MineTask extends Task {
 		return false;
 	}
 
+	/**
+	 * Breaking it would let liquid in (Baritone's rule): liquid directly above, or a source block
+	 * beside it (sources flow sideways). Mining those floods the tunnel, or means mining while
+	 * submerged.
+	 */
+	private static boolean floods(ServerWorld world, BlockPos pos) {
+		if (!world.getFluidState(pos.up()).isEmpty()) {
+			return true;
+		}
+		for (Direction d : Direction.Type.HORIZONTAL) {
+			var f = world.getFluidState(pos.offset(d));
+			if (!f.isEmpty() && f.isStill()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** Next to water or lava: mining it means swimming, or letting the fluid in. */
 	private static boolean wet(ServerWorld world, BlockPos pos) {
 		for (Direction d : Direction.values()) {
@@ -366,7 +384,14 @@ public class MineTask extends Task {
 	private Status chooseAmong(CompanionPlayer p, List<BlockPos> candidates) {
 		BlockPos from = p.getBlockPos();
 		// Leave veins someone else is already working alone (unless that's all there is).
-		List<BlockPos> sorted = new ArrayList<>(com.mcfriends.brain.Claims.spreadOut(c, candidates, b -> b, 6));
+		ServerWorld world = p.getServerWorld();
+		List<BlockPos> safe = candidates.stream().filter(b -> !floods(world, b)).toList();
+		if (safe.isEmpty()) {
+			blacklist.addAll(candidates);
+			setPhase(Phase.EXPLORE); // all of it under water: look elsewhere
+			return Status.RUNNING;
+		}
+		List<BlockPos> sorted = new ArrayList<>(com.mcfriends.brain.Claims.spreadOut(c, safe, b -> b, 6));
 		// Ore by water (behind a waterfall, at the bottom of a flooded cave) only when there's no dry ore.
 		ServerWorld w = p.getServerWorld();
 		List<BlockPos> dry = sorted.stream().filter(b -> !wet(w, b)).toList();
@@ -637,7 +662,8 @@ public class MineTask extends Task {
 			out.add(cur);
 			// Veins connect diagonally too (that's how they look in the wall).
 			for (BlockPos n : BlockPos.iterate(cur.add(-1, -1, -1), cur.add(1, 1, 1))) {
-				if (seen.add(n.toImmutable()) && kind.blocks().test(world.getBlockState(n)) && !blacklist.contains(n) && !nextToLava(world, n)) {
+				if (seen.add(n.toImmutable()) && kind.blocks().test(world.getBlockState(n)) && !blacklist.contains(n) && !nextToLava(world, n)
+					&& !floods(world, n)) {
 					queue.add(n.toImmutable());
 				}
 			}

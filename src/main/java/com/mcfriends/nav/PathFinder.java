@@ -91,6 +91,8 @@ public class PathFinder {
 		BlockPos place;
 		List<BlockPos> breaks = List.of();
 		int placed;
+		/** Steps in a row with the head under water (0 = can breathe here). */
+		int under;
 		boolean closed;
 
 		Node(BlockPos pos, double g, double h) {
@@ -126,6 +128,23 @@ public class PathFinder {
 		nodes.put(this.start.asLong(), startNode);
 		open.add(startNode);
 		best = startNode;
+	}
+
+	/**
+	 * Most steps a path may stay with the head under water, on a full air bar: about half of what
+	 * a breath lasts swimming, so there's slack for slow swimming, a wrong turn or a fight.
+	 */
+	public static final int MAX_UNDER = 14;
+
+	/**
+	 * How much air we start with (0-300 as {@code PlayerEntity#getAir}). Under water with a half
+	 * empty air bar, a path may only stay under for what's left of it.
+	 */
+	public PathFinder startAir(int air, boolean submerged) {
+		if (submerged) {
+			startNode.under = MAX_UNDER - (int) Math.floor(MAX_UNDER * Math.max(0, Math.min(300, air)) / 300.0);
+		}
+		return this;
 	}
 
 	public static double fallTicks(int blocks) {
@@ -463,6 +482,15 @@ public class PathFinder {
 		if (avoid.contains(key)) {
 			return;
 		}
+		// Breath: a run of steps with the head under water must end before the air runs out, and the
+		// longer the run, the more it costs (so a dry way round wins when there is one).
+		int under = terrain.isWater(pos.up()) ? from.under + 1 : 0;
+		if (under > MAX_UNDER) {
+			return;
+		}
+		if (under > 0) {
+			cost += 0.5 * under;
+		}
 		double g = from.g + cost;
 		Node n = nodes.get(key);
 		if (n == null) {
@@ -479,6 +507,7 @@ public class PathFinder {
 		n.place = place;
 		n.breaks = breaks;
 		n.placed = from.placed + (place != null ? 1 : 0);
+		n.under = under;
 		open.add(n); // duplicates are skipped later via the closed flag
 	}
 }

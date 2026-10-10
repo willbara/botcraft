@@ -2056,4 +2056,80 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtSwinger");
 		});
 	}
+
+	/**
+	 * Two dry rooms joined only by a flooded tunnel (1 wide, 2 high, roofed): A* goes through a
+	 * short one, but never through one longer than a breath lasts.
+	 */
+	static void floodedTunnel(TestContext ctx, int length) {
+		int end = 3 + length;
+		for (int x = -1; x <= end + 4; x++) {
+			for (int z = -1; z <= 1; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				boolean room = x <= 2 || x > end;
+				boolean endWall = x == -1 || x == end + 4;
+				for (int y = 1; y <= 3; y++) {
+					boolean inside = z == 0 && !endWall && (room || y <= 2);
+					ctx.setBlockState(x, y, z, !inside ? Blocks.STONE : room ? Blocks.AIR : Blocks.WATER);
+				}
+			}
+		}
+	}
+
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "nav_breath")
+	public void pathsNeverOutlastABreath(TestContext ctx) {
+		Terrain terrain = new Terrain(ctx.getWorld());
+		floodedTunnel(ctx, 6);
+		PathFinder shortOne = new PathFinder(terrain, ctx.getAbsolutePos(new BlockPos(1, 1, 0)), Goal.near(ctx.getAbsolutePos(new BlockPos(11, 1, 0)), 0.5),
+			PathFinder.Options.basic(20000, 64), new LongOpenHashSet());
+		TickBudget.begin(1000);
+		ctx.assertTrue(shortOne.step(100000) == PathFinder.Status.FOUND, "no way through a 6-block flooded tunnel");
+		floodedTunnel(ctx, 24);
+		terrain = new Terrain(ctx.getWorld());
+		PathFinder longOne = new PathFinder(terrain, ctx.getAbsolutePos(new BlockPos(1, 1, 0)), Goal.near(ctx.getAbsolutePos(new BlockPos(29, 1, 0)), 0.5),
+			PathFinder.Options.basic(20000, 64), new LongOpenHashSet());
+		TickBudget.begin(1000);
+		ctx.assertTrue(longOne.step(100000) != PathFinder.Status.FOUND, "pathed through a 24-block flooded tunnel");
+		ctx.complete();
+	}
+
+	/** Out of air in a flooded chamber whose only way out is sideways, then up: it swims that way out. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 400, batchId = "breathe_route")
+	public void swimsTheWayOutToAir(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtDiver");
+		for (int x = -1; x <= 8; x++) {
+			for (int z = -1; z <= 5; z++) {
+				for (int y = 0; y <= 9; y++) {
+					ctx.setBlockState(x, y, z, Blocks.STONE);
+				}
+			}
+		}
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 1; z <= 3; z++) {
+				for (int y = 1; y <= 4; y++) {
+					ctx.setBlockState(x, y, z, Blocks.WATER); // the chamber, roofed over
+				}
+			}
+		}
+		for (int x = 4; x <= 6; x++) {
+			ctx.setBlockState(x, 1, 2, Blocks.WATER); // the tunnel east
+			ctx.setBlockState(x, 2, 2, Blocks.WATER);
+		}
+		for (int y = 3; y <= 6; y++) {
+			ctx.setBlockState(6, y, 2, Blocks.WATER); // the shaft up
+		}
+		ctx.setBlockState(6, 7, 2, Blocks.AIR);
+		ctx.setBlockState(6, 8, 2, Blocks.AIR);
+		ctx.setBlockState(6, 9, 2, Blocks.AIR);
+		ctx.assertTrue(m.spawn("GtDiver", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 2.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtDiver");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().setAir(120);
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(c.player().isAlive() && !c.player().isSubmergedInWater() && c.player().getAir() > 200,
+				"still under at " + c.player().getBlockPos() + ", air " + c.player().getAir() + "; " + c.describeActivity());
+			cleanup(m, "GtDiver");
+		});
+	}
 }
