@@ -372,7 +372,7 @@ public class Life {
 		int toStore = com.mcfriends.colony.Kit.storeSlots(inv);
 		int empty = com.mcfriends.colony.Kit.emptySlots(inv);
 		boolean atBase = colony.near(p.getServerWorld(), p.getBlockPos(), com.mcfriends.colony.Colony.BASE_RADIUS);
-		if (atBase && (toStore >= 4 || (toStore > 0 && empty < 8))) {
+		if (atBase && (toStore >= 6 || (toStore > 0 && empty < 6))) {
 			return new Goal("deposit", List.of("deposit"), "I'll put my things away");
 		}
 		if (!atBase && empty <= 3 && toStore >= 4 && colony.near(p.getServerWorld(), p.getBlockPos(), 256)) {

@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /**
  * What a companion keeps on it, and what goes into the base chests. Like a player heading out:
@@ -28,6 +29,22 @@ public final class Kit {
 	public static final int FOOD = 16;
 	public static final int BLOCKS = 32;
 	public static final int TORCHES = 16;
+
+	/** Materials kept on hand (up to these amounts) because progress keeps needing them. */
+	private static final Map<Predicate<ItemStack>, Integer> WORKING = new LinkedHashMap<>();
+
+	static {
+		WORKING.put(s -> s.isIn(net.minecraft.registry.tag.ItemTags.LOGS), 16);
+		WORKING.put(s -> s.isIn(net.minecraft.registry.tag.ItemTags.PLANKS), 16);
+		WORKING.put(s -> s.isOf(Items.STICK), 16);
+		WORKING.put(s -> s.isOf(Items.COAL) || s.isOf(Items.CHARCOAL), 16);
+		WORKING.put(s -> s.isOf(Items.IRON_INGOT), 32);
+		WORKING.put(s -> s.isOf(Items.RAW_IRON), 32);
+		WORKING.put(s -> s.isOf(Items.DIAMOND), 16);
+		WORKING.put(s -> s.isOf(Items.CRAFTING_TABLE), 1);
+		WORKING.put(s -> s.isOf(Items.FURNACE), 1);
+		WORKING.put(s -> s.isOf(Items.WHITE_BED) || s.isIn(net.minecraft.registry.tag.ItemTags.BEDS), 1);
+	}
 
 	private Kit() {
 	}
@@ -79,10 +96,25 @@ public final class Kit {
 		}
 		keepUpTo(inv, blocks, BLOCKS, out);
 		keepUpTo(inv, torches, TORCHES, out);
+		// The working stock for making progress: what the next crafts and smelts need. Only what
+		// goes beyond it is stored, so a companion doesn't put things away and fetch them right back.
+		java.util.Set<Integer> working = new java.util.HashSet<>();
+		for (Map.Entry<Predicate<ItemStack>, Integer> w : WORKING.entrySet()) {
+			List<Integer> slots = new ArrayList<>();
+			for (int i = 0; i < inv.main.size(); i++) {
+				ItemStack s = inv.getStack(i);
+				if (!s.isEmpty() && toolKind(s) == null && !food.contains(i) && w.getKey().test(s)) {
+					slots.add(i);
+				}
+			}
+			working.addAll(slots);
+			keepUpTo(inv, slots, w.getValue(), out);
+		}
 		// Everything else gets stored.
 		for (int i = 0; i < inv.main.size(); i++) {
 			ItemStack s = inv.getStack(i);
-			if (s.isEmpty() || out.containsKey(i) || toolKind(s) != null || food.contains(i) || blocks.contains(i) || torches.contains(i)) {
+			if (s.isEmpty() || out.containsKey(i) || toolKind(s) != null || food.contains(i) || blocks.contains(i) || torches.contains(i)
+				|| working.contains(i)) {
 				continue;
 			}
 			out.put(i, s.getCount());

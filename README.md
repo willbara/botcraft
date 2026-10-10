@@ -6,7 +6,7 @@ AI companions for Minecraft **1.20.1 (Fabric)** that join the server as real pla
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.
 - **One optional network call.** Looking up the skin of a registered Minecraft account goes to Mojang, the same way player heads do. Turn it off with `allowSkinLookup`.
 
-This document describes version **0.7.0**.
+This document describes version **0.7.1**.
 
 ---
 
@@ -251,15 +251,15 @@ While mining:
 - **Unsafe saves.** A companion saved somewhere deadly (under water, in lava, inside a block) is moved to the nearest safe spot when the world loads.
 - **Not getting lost.**
   - **Nobody to follow:** in follow mode with you offline, spectating or in another dimension, a companion that's finished or whose job failed heads home if it's more than 24 blocks away.
-  - **Can't find a way back to you:** if it keeps failing to reach you (for example deep in a cave), it teleports to you. It also does this whenever it's more than `teleportToOwnerDistance` away.
+  - **Can't find a way back to you:** following you from far away, it walks if it can. It teleports only if the path fails, or it's still more than `teleportToOwnerDistance` away after 30 seconds of walking, and at most once a minute. It's never called back while on a job, however far the job takes it.
 
 ### The base and shared storage
 
 - **One shared base.** Saying "this is home" sets the base for all companions. It's saved in `<world>/mcfriends/colony.json` along with the base chests.
 - **Only base chests.** Companions use only chests they placed at the base, or ones you mark ("this is our chest"). They never touch any other chest. Double chests and barrels work too.
-- **What they keep (the kit).** The best tool of each kind, a weapon, worn armour, up to 16 food (cooked first), 32 building blocks and 16 torches. Spare tools, logs, ores, ingots, coal and odds and ends go into the chests. Like goes with like: a chest already holding an item is filled first.
+- **What they keep (the kit).** The best tool of each kind, a weapon, worn armour, up to 16 food (cooked first), 32 building blocks and 16 torches. Plus a **working stock** of what progress keeps needing: up to 16 logs, 16 planks, 16 sticks, 16 coal, 32 iron ingots, 32 raw iron, 16 diamonds, a crafting table, a furnace and a bed. Only extras beyond that, spare tools and junk (dirt, gravel, saplings, clay…) go into the chests, so they don't store something and fetch it straight back. Like goes with like: a chest already holding an item is filled first.
 - **When they store things.**
-  - **Free mode:** when back at the base with several stacks to store, or when nearly full while out (they come home to unload).
+  - **Free mode:** when back at the base with 6 or more stacks to store, or when nearly full (at the base, or while out: they come home to unload).
   - **Night chore:** while at the base.
   - **On command:** "put your stuff away".
   - **New chests:** when all chests are full, a companion crafts a chest from carried wood and places it at the base (spaced apart, so no accidental double chests).
@@ -385,7 +385,7 @@ Pillars, bridges and staircases built while travelling are left in the world. So
 | `griefing` | **false** | When off, navigation only breaks natural leaves and only natural trees are chopped. Containers and block entities are never broken either way. |
 | `allowBridging` | true | May place dirt or cobblestone to cross gaps. |
 | `followDistance` | 3.5 | Comfortable distance from the owner. |
-| `teleportToOwnerDistance` | 48 | Teleport to the owner when farther than this, in another dimension, or unable to path back. 0 disables. |
+| `teleportToOwnerDistance` | 48 | When following and farther than this, walk first and teleport only if walking fails or takes over 30 s (at most once a minute). Also used to follow you into another dimension. Never applies during a job. 0 disables. |
 | `treeSearchRadius` | 32 | Blocks. |
 | `respawnDelayTicks` | 100 | Delay before a dead companion rejoins. |
 | `forceSurvival` | true | Companions join in survival mode. |

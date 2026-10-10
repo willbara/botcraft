@@ -1417,18 +1417,24 @@ public class CompanionGameTests implements FabricGameTest {
 		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
 		give(c, net.minecraft.item.Items.WOODEN_PICKAXE, 1);
 		give(c, net.minecraft.item.Items.COBBLESTONE, 64);
-		give(c, net.minecraft.item.Items.OAK_LOG, 10);
-		give(c, net.minecraft.item.Items.IRON_INGOT, 5);
+		give(c, net.minecraft.item.Items.OAK_LOG, 30);
+		give(c, net.minecraft.item.Items.IRON_INGOT, 40);
+		give(c, net.minecraft.item.Items.DIRT, 20);
+		give(c, net.minecraft.item.Items.GRAVEL, 7);
 		give(c, net.minecraft.item.Items.COOKED_BEEF, 20);
 		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "put your stuff away", null) == null, "order");
 		ctx.addInstantFinalTask(() -> {
 			BlockPos chest = new BlockPos(9, 1, 6);
-			ctx.assertTrue(countIn(ctx, chest, net.minecraft.item.Items.OAK_LOG) == 10 && countIn(ctx, chest, net.minecraft.item.Items.IRON_INGOT) == 5,
-				"logs/iron not stored; " + c.describeActivity());
+			ctx.assertTrue(countIn(ctx, chest, net.minecraft.item.Items.GRAVEL) == 7, "junk not stored; " + c.describeActivity());
+			// Working stock stays on hand (16 logs, 32 iron); only the extra goes in.
+			ctx.assertTrue(count(c, net.minecraft.item.Items.OAK_LOG) == 16 && countIn(ctx, chest, net.minecraft.item.Items.OAK_LOG) == 14,
+				"logs: kept " + count(c, net.minecraft.item.Items.OAK_LOG));
+			ctx.assertTrue(count(c, net.minecraft.item.Items.IRON_INGOT) == 32 && countIn(ctx, chest, net.minecraft.item.Items.IRON_INGOT) == 8,
+				"iron: kept " + count(c, net.minecraft.item.Items.IRON_INGOT));
 			ctx.assertTrue(countIn(ctx, chest, net.minecraft.item.Items.WOODEN_PICKAXE) == 1, "spare pickaxe not stored");
 			ctx.assertTrue(count(c, net.minecraft.item.Items.STONE_PICKAXE) == 1, "kept its best pickaxe");
-			ctx.assertTrue(count(c, net.minecraft.item.Items.COBBLESTONE) == com.mcfriends.colony.Kit.BLOCKS
-				&& countIn(ctx, chest, net.minecraft.item.Items.COBBLESTONE) == 64 - com.mcfriends.colony.Kit.BLOCKS, "kept 32 blocks");
+			int blocks = count(c, net.minecraft.item.Items.COBBLESTONE) + count(c, net.minecraft.item.Items.DIRT);
+			ctx.assertTrue(blocks == com.mcfriends.colony.Kit.BLOCKS, "kept " + blocks + " building blocks");
 			ctx.assertTrue(count(c, net.minecraft.item.Items.COOKED_BEEF) == com.mcfriends.colony.Kit.FOOD, "kept 16 food");
 			colony.clear();
 			cleanup(m, "GtStorer");
@@ -1447,11 +1453,11 @@ public class CompanionGameTests implements FabricGameTest {
 		com.mcfriends.chat.CommandTasks.stay(c);
 		c.player().getInventory().clear();
 		give(c, net.minecraft.item.Items.CHEST, 1);
-		give(c, net.minecraft.item.Items.RAW_IRON, 12);
+		give(c, net.minecraft.item.Items.CLAY_BALL, 12);
 		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "put your stuff away", null) == null, "order");
 		ctx.addInstantFinalTask(() -> {
 			ctx.assertTrue(colony.chests().size() == 1, "chests " + colony.chests() + "; " + c.describeActivity());
-			ctx.assertTrue(colony.count(st -> st.isOf(net.minecraft.item.Items.RAW_IRON)) == 12, "stock " + colony.stock());
+			ctx.assertTrue(colony.count(st -> st.isOf(net.minecraft.item.Items.CLAY_BALL)) == 12, "stock " + colony.stock());
 			colony.clear();
 			cleanup(m, "GtCarpenter");
 		});
