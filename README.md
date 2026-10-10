@@ -6,7 +6,7 @@ AI companions for Minecraft **1.20.1 (Fabric)** that join the server as real pla
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.
 - **One optional network call.** Looking up the skin of a registered Minecraft account goes to Mojang, the same way player heads do. Turn it off with `allowSkinLookup`.
 
-This document describes version **0.5.4**.
+This document describes version **0.5.5**.
 
 ---
 

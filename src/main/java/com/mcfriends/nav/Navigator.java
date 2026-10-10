@@ -513,6 +513,9 @@ public class Navigator {
 		if (s.type() == MoveType.PILLAR || s.type() == MoveType.CLIMB) {
 			return dx * dx + dz * dz < 0.5 * 0.5 && dy > -0.2 && dy < 0.9 && (p.isOnGround() || p.isClimbing());
 		}
+		if (last && (s.type() == MoveType.FALL || s.type() == MoveType.DOWNWARD) && !p.isOnGround() && !p.isTouchingWater() && !p.isClimbing()) {
+			return false; // still dropping: the path isn't done until we land
+		}
 		if (s.type() == MoveType.SWIM && last) {
 			// The end of a path under water: floating feet sit well above the node, so only count it
 			// once we've sunk into it (matching how feet() judges arrival).

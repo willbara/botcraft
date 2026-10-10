@@ -36,7 +36,7 @@ public final class IntentParser {
 
 	private static final Pattern CANCEL = Pattern.compile("\\b(never ?mind|cancel( that| it)?|forget (it|that|about it)|scratch that|abort|drop it|drop everything|stop everything)\\b");
 	private static final Pattern FREE = Pattern.compile(
-		"\\b(do (your|ur) own thing|go play|you'?re free|live (your|ur) life|be free|go explore|explore|do whatever|have fun|you can go|dismissed|at ease|free roam|play minecraft|go survive)\\b");
+		"\\b(do (your|ur) own thing|go play|you'?re free|live (your|ur) life|be free|go explore|explore|do whatever|have fun|(go )?do something|find something to do|keep (yourself |yourselves )?busy|you can go|dismissed|at ease|free roam|play minecraft|go survive)\\b");
 	private static final Pattern HOME_SET = Pattern.compile(
 		"\\b((set|make|mark) (this|here)( as| to)?( (your|our|my|the))? home|this is (your |our |my |the )?home|remember this place|home is here)\\b");
 	private static final Pattern HOME_GO = Pattern.compile(
@@ -73,7 +73,7 @@ public final class IntentParser {
 	private static final Pattern FOLLOW = Pattern.compile("\\b(follow|come with|come along|with me|let'?s go|tag along|keep up|stick with me)\\b");
 	private static final Pattern COME = Pattern.compile("\\bcome\\b");
 	private static final Pattern STATUS = Pattern.compile(
-		"\\b(status|what are you doing|what'?re you doing|what (are )?(you|u) doing|whatcha doing|wyd|what'?s up|how are you|how r u|you ok|are you ok|you good|health|are you hungry|you hungry|report|how'?s it going|what are you up to|whatcha up to|what are you working on|what'?re you working on|what'?s your (task|job|plan)|what is your (task|job|plan)|what'?s the plan|what is the plan|what'?s going on|you busy|are you busy|doing\\?)");
+		"\\b(status|what are you doing|what'?re you doing|what (are )?(you|u) doing|whatcha doing|wyd|what'?s up|how are you|how r u|you ok|are you ok|you good|health|are you hungry|you hungry|report|how'?s it going|what are you up to|whatcha up to|what are you working on|what'?re you working on|what'?s (you|u) doing|how'?s (you|u) doing|how (are|is) (you|u) doing|how (you|u) doing|what'?s your (task|job|plan)|what is your (task|job|plan)|what'?s the plan|what is the plan|what'?s going on|you busy|are you busy|doing\\?)");
 	private static final Pattern JOKE = Pattern.compile("\\b(tell (me |us )?(a |another )?joke|make me laugh|something funny|know any jokes)\\b");
 	private static final Pattern WHO = Pattern.compile("\\b(who are you|what'?s your name|what is your name|introduce yourself|who r u)\\b");
 	private static final Pattern TIME = Pattern.compile("\\b(what time is it|what'?s the time|is it (day|night)|what day is it)\\b");
@@ -173,7 +173,8 @@ public final class IntentParser {
 		if (addressed.isEmpty() && ALL_WORDS.matcher(rest).find()) {
 			addressed.add(ALL);
 			direct = true;
-			rest = ALL_WORDS.matcher(rest).replaceAll(" ");
+			// "everyone ok?" / "how's everyone doing": speaking to all of them is speaking to "you".
+			rest = ALL_WORDS.matcher(rest).replaceAll(" you ");
 		}
 		rest = rest.replaceAll("\\s+", " ").trim();
 		boolean append = false;
