@@ -159,5 +159,12 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] Let a companion die (in water if you like). It comes back at its bed or home, on dry ground, with no red "dying" animation.
 - [ ] Phrasings: "bob what's your task", "bob what you doing", "bob I need some iron" (he brings it), "bob we're out of food" (he hunts and cooks), "bob wood", "bob iron pickaxe please", "bob grab 10 logs", "bob after you get logs make a crafting table".
 
+### 17. Hunting and crafting fixes
+- [ ] Clear a companion's inventory and say "bob, hunt 2 cows" near a herd. He makes a wooden sword first and fights with it.
+- [ ] Put a herd of 4+ cows 50–90 blocks from a companion in open view. "hunt 2 cows" sends him straight toward them ("spotted animals over at …").
+- [ ] Shrink the world border to 100–200 blocks. Search trips turn back at the border instead of pushing into it.
+- [ ] A companion with 1 log and 2 planks, no table nearby: "craft a wooden pickaxe". He gathers enough wood once instead of going round in circles.
+- [ ] Ore set into a cave wall at an angle is mined without "can't get at … in this vein".
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.

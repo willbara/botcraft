@@ -92,6 +92,7 @@ public final class CompanionManager {
 			try {
 				c.setPlayer(FakePlayers.connect(server, data, null, null, 0.0F));
 				reviveIfDead(c, false);
+				rescueIfStuck(c);
 				c.onSpawned("restored");
 			} catch (RuntimeException e) {
 				MCFriends.LOG.error("Failed to restore companion {}", data.name, e);
@@ -356,6 +357,33 @@ public final class CompanionManager {
 
 	private void respawn(Companion c) {
 		c.respawnAtTick = -1;
+		Arrival arrival = respawnPoint(c);
+		ServerWorld world = arrival.world();
+		Vec3d pos = arrival.pos();
+		try {
+			c.setPlayer(FakePlayers.connect(server, c.data, world, pos, 0.0F));
+			reviveIfDead(c, true);
+			c.onSpawned("respawned");
+		} catch (RuntimeException e) {
+			MCFriends.LOG.error("Failed to respawn companion {}", c.name(), e);
+		}
+	}
+
+	@Nullable
+	private ServerWorld worldFor(String dim) {
+		for (ServerWorld w : server.getWorlds()) {
+			if (w.getRegistryKey().getValue().toString().equals(dim)) {
+				return w;
+			}
+		}
+		return null;
+	}
+
+	private record Arrival(ServerWorld world, Vec3d pos) {
+	}
+
+	/** Where a companion comes back: bed, home, a safely standing owner, or world spawn. */
+	private Arrival respawnPoint(Companion c) {
 		ServerWorld world = server.getOverworld();
 		BlockPos at = null;
 		// Like a player: our bed, else home, else with the owner (only if they're somewhere safe:
@@ -385,24 +413,33 @@ public final class CompanionManager {
 			BlockPos safe = SafeSpot.near(world, spawn, 8);
 			at = safe != null ? safe : spawn;
 		}
-		Vec3d pos = Vec3d.ofBottomCenter(at);
-		try {
-			c.setPlayer(FakePlayers.connect(server, c.data, world, pos, 0.0F));
-			reviveIfDead(c, true);
-			c.onSpawned("respawned");
-		} catch (RuntimeException e) {
-			MCFriends.LOG.error("Failed to respawn companion {}", c.name(), e);
-		}
+		return new Arrival(world, Vec3d.ofBottomCenter(at));
 	}
 
-	@Nullable
-	private ServerWorld worldFor(String dim) {
-		for (ServerWorld w : server.getWorlds()) {
-			if (w.getRegistryKey().getValue().toString().equals(dim)) {
-				return w;
-			}
+	/**
+	 * Saved somewhere deadly (under water, in lava, inside a block): a player logging in there
+	 * would just die, so move to the nearest safe spot (or a respawn point) as it joins.
+	 */
+	private void rescueIfStuck(Companion c) {
+		CompanionPlayer p = c.player();
+		if (p == null) {
+			return;
 		}
-		return null;
+		ServerWorld world = p.getServerWorld();
+		BlockPos feet = p.getBlockPos();
+		boolean stuck = p.isSubmergedInWater() || p.isInLava() || !world.getBlockState(feet.up()).getCollisionShape(world, feet.up()).isEmpty();
+		if (!stuck) {
+			return;
+		}
+		BlockPos safe = SafeSpot.near(world, feet, 12);
+		if (safe != null) {
+			p.teleport(world, safe.getX() + 0.5, safe.getY(), safe.getZ() + 0.5, p.getYaw(), p.getPitch());
+		} else {
+			var at = respawnPoint(c);
+			p.teleport(at.world(), at.pos().x, at.pos().y, at.pos().z, p.getYaw(), p.getPitch());
+		}
+		p.setAir(p.getMaxAir());
+		MCFriends.LOG.info("Companion {} was saved somewhere unsafe ({}), moved to {}", c.name(), feet.toShortString(), p.getBlockPos().toShortString());
 	}
 
 	/** Make a dead companion "alive" just before it leaves, so its saved playerdata is too. */

@@ -85,6 +85,19 @@ final class SearchTrips {
 				dir = dir.rotateYClockwise();
 			}
 			BlockPos ahead = here.offset(dir, tripLength);
+			// Stay inside the world border: turn (or go less far) rather than walk into it.
+			var border = world.getWorldBorder();
+			for (int turn = 0; turn < 4 && !border.contains(ahead); turn++) {
+				int len = tripLength;
+				while (len > 8 && !border.contains(here.offset(dir, len))) {
+					len -= 8;
+				}
+				ahead = here.offset(dir, len);
+				if (!border.contains(ahead) || len <= 8) {
+					dir = dir.rotateYClockwise();
+					ahead = here.offset(dir, tripLength);
+				}
+			}
 			int y = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, ahead.getX(), ahead.getZ());
 			goal = new BlockPos(ahead.getX(), y, ahead.getZ());
 			AiLog.log(c.name(), "{}: none in sight, searching {} (trip {}/{})", what, dir, trips, maxTrips);
