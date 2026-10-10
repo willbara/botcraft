@@ -49,6 +49,55 @@ public final class Kit {
 	private Kit() {
 	}
 
+	/**
+	 * Like {@link #toStore(PlayerInventory)}, but at least {@code n} of {@code extra} goes in too,
+	 * even out of the kit: a batch fetched for the base is handed over, not kept as working stock.
+	 */
+	public static Map<Integer, Integer> toStore(PlayerInventory inv, @org.jetbrains.annotations.Nullable Predicate<ItemStack> extra, int n) {
+		Map<Integer, Integer> out = toStore(inv);
+		if (extra == null || n <= 0) {
+			return out;
+		}
+		int already = 0;
+		for (Map.Entry<Integer, Integer> e : out.entrySet()) {
+			if (extra.test(inv.getStack(e.getKey()))) {
+				already += e.getValue();
+			}
+		}
+		for (int i = 0; i < inv.main.size() && already < n; i++) {
+			ItemStack s = inv.getStack(i);
+			if (s.isEmpty() || toolKind(s) != null || !extra.test(s)) {
+				continue;
+			}
+			int stored = out.getOrDefault(i, 0);
+			int more = Math.min(s.getCount() - stored, n - already);
+			if (more > 0) {
+				out.put(i, stored + more);
+				already += more;
+			}
+		}
+		return out;
+	}
+
+	/** How many of this a companion keeps on itself (kit or working stock); 0 if it's all stored. */
+	public static int keeps(ItemStack s) {
+		if (s.getItem().getFoodComponent() != null) {
+			return FOOD;
+		}
+		if (s.isOf(Items.TORCH)) {
+			return TORCHES;
+		}
+		if (Inventories.isThrowaway(s)) {
+			return BLOCKS;
+		}
+		for (Map.Entry<Predicate<ItemStack>, Integer> w : WORKING.entrySet()) {
+			if (w.getKey().test(s)) {
+				return w.getValue();
+			}
+		}
+		return 0;
+	}
+
 	/** Slot -> how many of that stack to store. */
 	public static Map<Integer, Integer> toStore(PlayerInventory inv) {
 		Map<Integer, Integer> out = new LinkedHashMap<>();

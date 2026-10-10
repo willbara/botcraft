@@ -56,8 +56,9 @@ All commands need permission level 2 by default (`commandPermissionLevel`).
 | `/companion info <name>` | Debug view: personality, orders, job queue, current drive scores, memory. |
 | `/companion remove <name>` | Dismisses the companion and forgets it. Its playerdata file is kept. |
 | `/companion list` | Name, owner, position, health, food and current activity of every companion. |
-| `/companion colony` | The shared base: where it is, each chest and its purpose, and what's stored. |
-| `/companion why <name>` | Its reasoning: current activity and queue, its progression target, the chosen plan with its cost, the alternatives it considered, and what it has learned about each method. |
+| `/companion colony` | The shared base: where it is, each chest and its purpose, what's stored, the stock targets (have/want), and the request board: each request, who took it and the top bids with their score breakdown. |
+| `/companion colony want <item> <count>` | How many of something the base should keep (`0` stops collecting it). Works for the defaults (`food`, `coal`, `logs`, `iron_ingot`, `torch`, `cobblestone`) and any other item. |
+| `/companion why <name>` | Its reasoning: current activity and queue, the board request it's working on (with its bid), its progression target, the chosen plan with its cost, the alternatives it considered, and what it has learned about each method. |
 | `/companion stop <name>` | Stays put and drops any job. |
 | `/companion task <name> <text>` | Anything you could say in chat, for example `get 10 logs then craft a stone pickaxe`. |
 
@@ -116,6 +117,8 @@ A companion only responds when you **say its name** ("Bob, follow me") or addres
 | run away / scatter / spread out / split up | Free mode, but first each one walks 40-64 blocks off in its own direction (away from you, fanned out so a crowd splits evenly), then lives on its own from there. Handy for testing free mode. They still share the base, so they may drift back to it. |
 | dance / everyone dance / bust a move | About 12 seconds of dancing (spins, hops, crouch spam, punching the air), then back to whatever it was doing. Anyone can ask, and it doesn't end free mode. |
 | put your stuff away / empty your inventory / deposit | Store everything except the kit in the base chests. |
+| the base needs 64 coal / keep 20 glass in the chests / the colony needs more food | How much the base should keep ("more" means two batches more). Free-roaming companions fill the gap through the request board. One companion answers. |
+| we have enough cobblestone / stop collecting torches | Stop collecting that for the base. |
 | go home / come home | Go home. |
 | go to sleep / go to bed | Find a free bed and sleep (only at night). With no free bed around but one in its pockets, it puts that one down first. |
 | do your own thing / go explore / you're free | Free mode: live and progress on its own around home. Any other order ends it. |
@@ -290,7 +293,28 @@ Every task has its own time limit, but a task can keep itself busy without getti
 ### Working together
 
 - **Spreading out.** Each companion claims the tree, ore, cave or animal it's working on. When choosing, spots near someone else's claim, or near any player or companion standing there, are avoided while there's another choice.
-- **Sharing.** When a job needs something worth a trip (coal, ores or ingots, gems, wool, a pickaxe, food), a companion asks the nearest *idle or free-roaming* friend who can spare it ("Hey Ann, could you spare 3 coal?"). The friend brings it over and goes back to what it was doing.
+- **Base stock and the request board.** The base keeps a stockpile, with these defaults:
+  - 32 cooked food;
+  - 32 coal;
+  - 64 logs;
+  - 16 iron ingots;
+  - 32 torches;
+  - 64 cobblestone.
+
+  Change these, or add any other item, with "the base needs 64 coal", "keep 20 glass in the chests", "we have enough cobblestone" or `/companion colony want`.
+
+  When the chests are short, a request for one batch goes on the board (16 logs, 8 coal, 6 food...). A free-roaming companion with nothing pressing (night, storage, food, basic tools and a bed come first) takes the most important request it's the **best bidder** for, gets the batch whichever way the planner finds cheapest, and stores it, even out of its own working stock. It says what it's doing: "I'll get 8 coal for the base, it's quickest for me."
+
+  A bid adds up a few terms, in the same unit (two minutes = one point):
+  - **time:** how long the planner thinks it would take that companion, with what it has learned;
+  - **to base:** how far it is from the base;
+  - **busy:** a penalty for being in the middle of something of its own;
+  - **turns:** how many requests it has done lately;
+  - **failed:** whether it failed at this one recently;
+  - **helpful:** a bonus for a helpful personality.
+
+  A companion carrying spare (beyond its kit) simply drops it off. Each companion holds one request at a time and alternates them with its own progression. A request whose holder dies, gets orders, or stops working on it goes back on the board. `/companion colony` shows it all.
+- **Sharing.** When a job needs something worth a trip (coal, ores or ingots, gems, wool, a pickaxe, food), a companion asks the *idle or free-roaming* friend with the best bid ("Hey Ann, could you spare 3 coal?"): closest, with the most to spare, and not busy with something of its own. The friend brings it over and goes back to what it was doing. These requests show on the board too.
   - Cheap things (cobblestone, logs, dirt, planks, sticks) it always gets itself.
   - At most one request every 3 minutes, and the same item at most every 10 minutes.
   - A helper helps one companion at a time, then gets a 2-minute breather, and is never pulled off one of your orders.
@@ -328,6 +352,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
 - **Night:** sleep in a bed: a free one near home, else its own bed from its pockets (put down at home), else one it crafts on the spot from 3 wool of one colour (carried or in the base chests) and planks. Only with none of that does an armed companion guard home and an unarmed one dig in (three blocks down, roofed) until morning. Errands still running at dusk (hunting, chopping, exploring) are dropped so it heads in instead of being caught outside.
 - **Food:** cook raw meat, ask a friend, or hunt, and keep a reserve of about 6 food when animals are known nearby.
 - **Progression:** wooden and stone tools, then a bed of its own at home (hunting sheep for the wool if need be; companions don't share beds, so everyone can sleep), then smelting carried raw iron, an iron pickaxe, an iron sword and iron armour piece by piece.
+- **The base's needs:** requests from the board (see [Working together](#working-together)), taking turns with its own progression.
 - **Whatever suits where it is:** chopping with an axe in a forest; mining coal, iron, then diamonds (with an iron pickaxe) in a nearby cave; turning spare coal into torches.
 - **Otherwise:** it revisits a remembered cave or wanders.
 
@@ -526,14 +551,14 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 67 GameTests. It resets its world on every run. The tests cover:
+- `./gradlew runGametest` runs a headless server with 69 GameTests. It resets its world on every run. The tests cover:
   - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
   - combat, free mode (including ignoring the owner, and the failsafe), shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;
   - chat, banter, sharing, spreading out, tool prep and picking up drops;
   - the base: storing all but the kit, chests with a purpose, placing a chest when needed, and crafting from base stock (never from other chests);
-  - the planner (using stock, smelting what's carried, chaining from scratch, learning from failure), the target ladder, dancing, scattering on "run away", and beds (putting a carried bed down, crafting one at night in free mode, the night skip with a companion still awake);
+  - the planner (using stock, smelting what's carried, chaining from scratch, learning from failure), the target ladder, the request board (bidding, failure memory, stocking the base end to end), dancing, scattering on "run away", and beds (putting a carried bed down, crafting one at night in free mode, the night skip with a companion still awake);
   - torches in a dark cave and lighting up a dark base;
   - the popbob easter egg (attacking, being fought back, griefing but never chests, ignoring orders);
   - player slots.

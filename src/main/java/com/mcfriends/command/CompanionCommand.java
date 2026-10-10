@@ -74,7 +74,13 @@ public final class CompanionCommand {
 			.then(CommandManager.literal("list")
 				.executes(CompanionCommand::list))
 			.then(CommandManager.literal("colony")
-				.executes(CompanionCommand::colony))
+				.executes(CompanionCommand::colony)
+				.then(CommandManager.literal("want")
+					.then(CommandManager.argument("item", StringArgumentType.word())
+						.suggests((ctx, b) -> CommandSource.suggestMatching(com.mcfriends.colony.StockTargets.DEFAULTS.stream()
+							.map(com.mcfriends.colony.StockTargets.StockTarget::key), b))
+						.then(CommandManager.argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 100000))
+							.executes(CompanionCommand::colonyWant)))))
 			.then(CommandManager.literal("why")
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
@@ -204,6 +210,12 @@ public final class CompanionCommand {
 				}
 			}
 		}
+		var request = com.mcfriends.brain.Board.holding(c.name());
+		if (request != null) {
+			var mine = request.bids.stream().filter(b -> b.who().equals(c.name())).findFirst();
+			src.sendFeedback(() -> Text.literal("  board: #" + request.id + " " + request.describe() + " (" + request.note + ")"
+				+ mine.map(b -> ", bid " + b.explain()).orElse("")).formatted(Formatting.WHITE), false);
+		}
 		var learned = com.mcfriends.brain.plan.MethodStats.summary(c);
 		if (!learned.isEmpty()) {
 			src.sendFeedback(() -> Text.literal("  learned:").formatted(Formatting.GRAY), false);
@@ -239,6 +251,47 @@ public final class CompanionCommand {
 		if (stock.size() > 20) {
 			ctx.getSource().sendFeedback(() -> Text.literal("  ... and " + (stock.size() - 20) + " more").formatted(Formatting.GRAY), false);
 		}
+		// What the base should keep, and the board: who's getting what, and why them.
+		ctx.getSource().sendFeedback(() -> Text.literal("Stock targets (/companion colony want <item> <count>):").formatted(Formatting.AQUA), false);
+		for (var t : com.mcfriends.colony.StockTargets.active(colony)) {
+			int want = t.want(colony);
+			int have = colony.count(t.counts());
+			String line = "  " + t.label() + ": " + have + "/" + want + (want == 0 ? " (not collected)" : have >= want ? " ok" : " short " + (want - have));
+			ctx.getSource().sendFeedback(() -> Text.literal(line).formatted(have >= want ? Formatting.GRAY : Formatting.YELLOW), false);
+		}
+		var requests = com.mcfriends.brain.Board.requests();
+		ctx.getSource().sendFeedback(() -> Text.literal(requests.isEmpty() ? "Request board: empty" : "Request board:").formatted(Formatting.AQUA), false);
+		for (var r : requests.subList(0, Math.min(12, requests.size()))) {
+			String who = r.takenBy != null ? " -> " + r.takenBy : "";
+			String line = "  #" + r.id + " " + r.describe() + " [" + r.state.name().toLowerCase() + who + "]" + (r.note.isEmpty() ? "" : " " + r.note);
+			ctx.getSource().sendFeedback(() -> Text.literal(line).formatted(r.state == com.mcfriends.brain.Board.State.TAKEN ? Formatting.WHITE
+				: r.state == com.mcfriends.brain.Board.State.OPEN ? Formatting.YELLOW : Formatting.DARK_GRAY), false);
+			if (r.state == com.mcfriends.brain.Board.State.TAKEN) {
+				for (var b : r.bids.subList(0, Math.min(3, r.bids.size()))) {
+					String bid = "      " + b.who() + " " + b.explain() + (b.method().isEmpty() ? "" : " by " + b.method());
+					ctx.getSource().sendFeedback(() -> Text.literal(bid).formatted(Formatting.DARK_GRAY), false);
+				}
+			}
+		}
+		return 1;
+	}
+
+	/** /companion colony want <item> <count>: what the base should keep (0 = stop collecting it). */
+	private static int colonyWant(CommandContext<ServerCommandSource> ctx) {
+		var colony = com.mcfriends.colony.Colony.get();
+		if (colony == null || !colony.hasBase()) {
+			ctx.getSource().sendError(Text.literal("No base yet. Stand somewhere and say \"everyone, this is home\"."));
+			return 0;
+		}
+		String item = StringArgumentType.getString(ctx, "item");
+		int n = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "count");
+		var t = com.mcfriends.colony.StockTargets.forPhrase(item.replace('_', ' '));
+		if (t == null) {
+			ctx.getSource().sendError(Text.literal("Unknown item: " + item));
+			return 0;
+		}
+		colony.setWant(t.key(), n);
+		ctx.getSource().sendFeedback(() -> Text.literal("The base will keep " + n + " " + t.label() + (n == 0 ? " (no longer collected)" : "")), true);
 		return 1;
 	}
 

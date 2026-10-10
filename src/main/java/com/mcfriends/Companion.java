@@ -464,6 +464,9 @@ public class Companion {
 			return;
 		}
 		if (task.spec() == null || task.silent()) {
+			if (task.spec() != null && status == Status.SUCCESS && jobs.pending().isEmpty()) {
+				life.succeeded(now); // a quiet success still finishes a life goal (or board request)
+			}
 			return;
 		}
 		if (task.spec() != null && !task.silent()) {
@@ -490,7 +493,7 @@ public class Companion {
 			return;
 		}
 		if (jobs.pending().isEmpty()) {
-			life.succeeded();
+			life.succeeded(now);
 		}
 		String result = resultPhrase(task);
 		if (!jobs.pending().isEmpty()) {

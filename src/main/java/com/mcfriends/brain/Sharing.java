@@ -48,7 +48,8 @@ public final class Sharing {
 	}
 
 	/**
-	 * Ask the nearest friend who can spare {@code count} of something.
+	 * Ask the friend best placed to spare {@code count} of something: closest, with the most to
+	 * spare, not busy with something of their own. The bids are kept on the {@link Board}.
 	 *
 	 * @param key   a delivery key understood by Jobs.deliverable (logs, coal, food, an item id...)
 	 * @return the friend who'll bring it, or null if nobody can
@@ -66,7 +67,7 @@ public final class Sharing {
 		}
 		Predicate<ItemStack> what = Jobs.deliverable(key);
 		Companion best = null;
-		double bestD = Double.MAX_VALUE;
+		List<Board.Bid> bids = new java.util.ArrayList<>();
 		for (Companion o : m.all()) {
 			CompanionPlayer op = o.player();
 			if (o == asker || op == null || !o.isOnline() || op.isDead() || op.isSleeping() || op.getWorld() != ap.getWorld() || Popbob.is(o)) {
@@ -83,16 +84,27 @@ public final class Sharing {
 				continue;
 			}
 			double d = op.distanceTo(ap);
-			if (d > RANGE || spare(o, what, tool) < Math.min(count, tool ? 1 : count)) {
+			int spare = spare(o, what, tool);
+			if (d > RANGE || spare < Math.min(count, tool ? 1 : count)) {
 				continue;
 			}
-			if (d < bestD) {
-				bestD = d;
-				best = o;
+			Map<String, Double> terms = new java.util.LinkedHashMap<>();
+			terms.put("distance", -d / 24.0);
+			terms.put("spare", 0.5 * Math.min(1.0, spare / (double) Math.max(1, count * 2)));
+			if (!o.jobs().isIdle()) {
+				terms.put("busy", -0.5);
 			}
+			terms.put("helpful", 0.2 * o.data.helpfulness);
+			double score = terms.values().stream().mapToDouble(Double::doubleValue).sum();
+			bids.add(new Board.Bid(o.name(), score, terms, "give", d / 4.0, List.of()));
 		}
 		nextAsk.put(asker.name(), now + ASK_COOLDOWN);
 		nextAsk.put(asker.name() + "|" + key, now + SAME_ITEM_COOLDOWN);
+		bids.sort(java.util.Comparator.comparingDouble((Board.Bid b) -> -b.score()));
+		if (!bids.isEmpty()) {
+			best = m.byName(bids.get(0).who());
+		}
+		Board.delivery(asker.name(), key, label, count, bids, best == null ? null : best.name(), now);
 		if (best == null) {
 			return null;
 		}

@@ -81,6 +81,34 @@ public final class ChatRouter {
 		}
 	}
 
+	/** "The base needs 64 coal" / "we have enough cobblestone": change what the base keeps. */
+	@Nullable
+	private static String colonyWant(Companion c, @Nullable ServerPlayerEntity sender, Intent intent) {
+		var colony = com.mcfriends.colony.Colony.get();
+		Map<String, String> vars = new HashMap<>();
+		if (colony == null || !colony.hasBase()) {
+			c.speech().reply("colony.no_base", sender, vars);
+			return "no base yet";
+		}
+		var target = com.mcfriends.colony.StockTargets.forPhrase(intent.item());
+		if (target == null) {
+			vars.put("item", intent.item());
+			c.speech().reply("colony.unknown", sender, vars);
+			return "unknown item " + intent.item();
+		}
+		int n = intent.count();
+		if (n < 0) {
+			// "The base needs more coal": a couple of batches more than it has (or wants) now.
+			n = Math.max(target.want(colony), colony.count(target.counts())) + 2 * target.batch();
+		}
+		colony.setWant(target.key(), n);
+		AiLog.log(c.name(), "colony now keeps {} {}", n, target.key());
+		vars.put("item", target.label());
+		vars.put("count", Integer.toString(n));
+		c.speech().reply(n == 0 ? "colony.enough" : "colony.want", sender, vars);
+		return null;
+	}
+
 	/**
 	 * Where to head on "run away": 40-64 blocks off, away from whoever said it, each companion on
 	 * its own bearing (golden-angle steps by name order, so a crowd fans out evenly). Dry land if
@@ -245,6 +273,12 @@ public final class ChatRouter {
 					// A little fun: dance now, then carry on with whatever we were doing.
 					c.jobs().interruptWith(List.of("dance"));
 					speech.reply("ack.dance", sender, vars);
+				}
+				case COLONY_WANT -> {
+					// Information for everyone: say it once, whoever was addressed.
+					if (once("colony_want")) {
+						error = colonyWant(c, sender, intent);
+					}
 				}
 				case STOCK -> {
 					if (once("stock")) {

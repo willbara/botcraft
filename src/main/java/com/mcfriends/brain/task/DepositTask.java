@@ -30,9 +30,25 @@ public class DepositTask extends Task {
 	private int chestsTried;
 	private int placeTicks;
 	private boolean placing;
+	/** Where the new chest goes (worked out once; it's a big search on steep ground). */
+	@org.jetbrains.annotations.Nullable
+	private BlockPos newSpot;
+	/** A batch for the base: at least this many of these go in, kit or not. */
+	@org.jetbrains.annotations.Nullable
+	private final java.util.function.Predicate<ItemStack> batch;
+	private final int batchCount;
+	private final String batchLabel;
 
 	public DepositTask(Companion c) {
+		this(c, null, 0, "");
+	}
+
+	/** Store {@code n} of something for the base (plus the usual extras). */
+	public DepositTask(Companion c, @org.jetbrains.annotations.Nullable java.util.function.Predicate<ItemStack> batch, int n, String label) {
 		super(c);
+		this.batch = batch;
+		this.batchCount = n;
+		this.batchLabel = label;
 	}
 
 	@Override
@@ -42,7 +58,7 @@ public class DepositTask extends Task {
 
 	@Override
 	public String describe() {
-		return "putting things away in the chests";
+		return batch == null ? "putting things away in the chests" : "bringing " + batchCount + " " + batchLabel + " to the base";
 	}
 
 	@Override
@@ -58,7 +74,7 @@ public class DepositTask extends Task {
 			return fail("we don't have a base with chests");
 		}
 		PlayerInventory inv = p.getInventory();
-		Map<Integer, Integer> toStore = Kit.toStore(inv);
+		Map<Integer, Integer> toStore = Kit.toStore(inv, batch, batchCount);
 		if (toStore.isEmpty()) {
 			return done();
 		}
@@ -117,15 +133,26 @@ public class DepositTask extends Task {
 			}
 			return deferTo(List.of("craft chest 1"));
 		}
-		BlockPos spot = colony.newChestSpot();
-		if (spot == null) {
-			AiLog.log(c.name(), "deposit: no room for another chest at the base");
-			return done();
+		if (newSpot == null || !p.getWorld().getBlockState(newSpot).isReplaceable()) {
+			newSpot = colony.newChestSpot();
+			if (newSpot == null) {
+				AiLog.log(c.name(), "deposit: no room for another chest at the base");
+				return done();
+			}
+			c.nav().stop();
 		}
-		placeTicks++;
+		BlockPos spot = newSpot;
+		// The 30 s for putting it down start once we're there, not while walking back to the base.
+		boolean near = p.getBlockPos().getSquaredDistance(spot) < 10 * 10;
+		if (near) {
+			placeTicks++;
+		}
 		if (!c.actions().canReachBlock(spot)) {
-			if (placeTicks == 1 || c.nav().state() == Navigator.State.IDLE) {
-				c.nav().moveTo(Goal.reachVisible(p.getWorld(), spot, 3.5), false);
+			if (c.nav().state() == Navigator.State.IDLE) {
+				c.nav().moveTo(Goal.reachVisible(p.getWorld(), spot, 3.5), !near);
+			} else if (c.nav().state() == Navigator.State.FAILED && !near) {
+				AiLog.log(c.name(), "deposit: can't get back to the base to put a chest down");
+				return done();
 			}
 			return placeTicks > 20 * 30 ? done() : Status.RUNNING;
 		}
@@ -134,6 +161,7 @@ public class DepositTask extends Task {
 			colony.addChest(spot); // (registers the other half too if it joined a neighbour)
 			AiLog.log(c.name(), "deposit: put a new chest at {}", spot.toShortString());
 			placing = false;
+			newSpot = null;
 			chestsTried = 0;
 		} else if (placeTicks > 20 * 10) {
 			AiLog.log(c.name(), "deposit: couldn't place a chest at {} ({})", spot.toShortString(), c.actions().lastPlaceProblem());
