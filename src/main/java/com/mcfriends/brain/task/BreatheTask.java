@@ -4,22 +4,37 @@ import com.mcfriends.Companion;
 import com.mcfriends.brain.Status;
 import com.mcfriends.brain.Task;
 import com.mcfriends.entity.CompanionPlayer;
-import com.mcfriends.nav.Goal;
-import com.mcfriends.nav.Navigator;
 import com.mcfriends.util.AiLog;
+import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
- * Running out of air: drop everything and get to air. Heads for the nearest air at a water
- * surface (from {@link com.mcfriends.perception.Surroundings}), swimming up all the way; with no
- * air in sight it just swims straight up. Done once the head is out and the air bar is back.
+ * Running out of air: drop everything and get to air. Finds the nearest air the water actually
+ * leads to (a breadth-first search through the water, so never air behind a wall or above a
+ * solid ceiling) and swims that route itself, block by block: up, down, along. No pathfinding
+ * (that's what gets lost in flooded tunnels). With no air within reach it swims straight up.
+ * Done once the head is out and the air bar is back.
  */
 public class BreatheTask extends Task {
-	@Nullable
-	private BlockPos air;
+	/** How far (in swimming distance) to look for air. */
+	private static final int RANGE = 32;
+	private static final int MAX_SEARCH = 12000;
+
+	/** The way to the air: water blocks (where the head goes), ending in the air block. */
+	private List<BlockPos> route = List.of();
+	private int next;
 	private int outTicks;
+	private int stuckTicks;
+	private double lastDist = Double.MAX_VALUE;
 
 	public BreatheTask(Companion c) {
 		super(c);
@@ -42,17 +57,18 @@ public class BreatheTask extends Task {
 
 	@Override
 	protected void onStart(boolean resumed) {
+		c.nav().stop();
+		plan();
+	}
+
+	private void plan() {
 		CompanionPlayer p = c.player();
-		air = c.perception().surroundings().nearestAir(p.getBlockPos());
-		if (air == null) {
-			air = searchAir(p);
-		}
-		AiLog.log(c.name(), "out of air ({}), heading for {}", p.getAir(), air == null ? "the surface" : air.toShortString());
-		if (air != null) {
-			c.nav().moveTo(Goal.near(air, 1.0), true);
-		} else {
-			c.nav().stop();
-		}
+		route = routeToAir(p);
+		next = 0;
+		stuckTicks = 0;
+		lastDist = Double.MAX_VALUE;
+		AiLog.log(c.name(), "out of air ({}), {}", p.getAir(),
+			route.isEmpty() ? "no air in reach, straight up" : "swimming " + route.size() + " blocks to air at " + route.get(route.size() - 1).toShortString());
 	}
 
 	@Override
@@ -61,72 +77,90 @@ public class BreatheTask extends Task {
 		if (!p.isSubmergedInWater()) {
 			// Head out: hold position a moment while the air bar refills.
 			if (++outTicks > 20 && p.getAir() >= p.getMaxAir() - 20) {
-				c.nav().stop();
 				return Status.SUCCESS;
 			}
 			c.actions().holdJump(); // stay afloat
 			return Status.RUNNING;
 		}
 		outTicks = 0;
-		if (air != null && c.nav().state() != Navigator.State.FAILED) {
-			// The navigator swims the path; keep kicking upward whenever the way is up.
-			if (air.getY() >= p.getBlockPos().getY()) {
-				c.actions().holdJump();
-			}
-			if (!c.nav().isBusy()) {
-				c.nav().moveTo(Goal.near(air, 1.0), true);
+		if (route.isEmpty()) {
+			c.actions().holdJump();
+			if (ticks() % 40 == 0) {
+				plan();
 			}
 			return Status.RUNNING;
 		}
-		// No air spot known (or no path): straight up, steering toward the air if we know one.
-		if (air != null) {
-			c.actions().moveTo(Vec3d.ofBottomCenter(air));
+		// Steer the head along the route: the waypoint is where the head should be next.
+		BlockPos head = BlockPos.ofFloored(p.getEyePos());
+		while (next < route.size() - 1 && (head.equals(route.get(next)) || reached(p, route.get(next)))) {
+			next++;
 		}
-		c.actions().holdJump();
-		if (phaseTicks() % 40 == 0) {
-			air = c.perception().surroundings().nearestAir(p.getBlockPos());
-			if (air == null) {
-				air = searchAir(p);
-			}
-			if (air != null) {
-				c.nav().moveTo(Goal.near(air, 1.0), true);
-			}
+		BlockPos wp = route.get(next);
+		Vec3d target = Vec3d.ofCenter(wp);
+		double dy = target.y - p.getEyeY();
+		c.actions().moveTo(new Vec3d(target.x, p.getY(), target.z));
+		c.actions().sprint(true); // sprint-swimming is much faster
+		if (dy > -0.3) {
+			c.actions().holdJump();
+		} else if (dy < -0.8) {
+			p.swimDown();
+		}
+		// Not getting closer (a current, a corner): plan again from here.
+		double dist = p.getEyePos().squaredDistanceTo(target);
+		if (dist < lastDist - 0.01) {
+			lastDist = dist;
+			stuckTicks = 0;
+		} else if (++stuckTicks > 30) {
+			plan();
 		}
 		return Status.RUNNING;
 	}
 
+	private static boolean reached(CompanionPlayer p, BlockPos wp) {
+		Vec3d eye = p.getEyePos();
+		return Math.abs(eye.x - (wp.getX() + 0.5)) < 0.6 && Math.abs(eye.z - (wp.getZ() + 0.5)) < 0.6 && Math.abs(eye.y - (wp.getY() + 0.5)) < 0.9;
+	}
+
 	/**
-	 * Nothing in the nearby picture (just arrived, or a long flooded tunnel): follow the water
-	 * itself outward, up to about 24 blocks, to the nearest place with air.
+	 * Breadth-first from the head through water to the nearest air block, by swimming distance.
+	 * Upward moves are tried first, so of equally near ways out the one going up wins. Empty if
+	 * there's no air within {@link #RANGE}.
 	 */
-	@Nullable
-	private static BlockPos searchAir(CompanionPlayer p) {
+	static List<BlockPos> routeToAir(CompanionPlayer p) {
 		var world = p.getServerWorld();
 		BlockPos start = BlockPos.ofFloored(p.getEyePos());
-		java.util.ArrayDeque<BlockPos> queue = new java.util.ArrayDeque<>();
-		java.util.Set<BlockPos> seen = new java.util.HashSet<>();
+		ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+		Map<BlockPos, BlockPos> parent = new HashMap<>();
 		queue.add(start);
-		seen.add(start);
-		while (!queue.isEmpty() && seen.size() < 6000) {
+		parent.put(start, start);
+		Direction[] order = {Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.DOWN};
+		while (!queue.isEmpty() && parent.size() < MAX_SEARCH) {
 			BlockPos cur = queue.poll();
-			for (net.minecraft.util.math.Direction d : net.minecraft.util.math.Direction.values()) {
+			for (Direction d : order) {
 				BlockPos n = cur.offset(d);
-				if (n.getSquaredDistance(start) > 24 * 24 || !seen.add(n)) {
+				if (n.getSquaredDistance(start) > RANGE * RANGE || parent.containsKey(n)) {
 					continue;
 				}
 				var state = world.getBlockState(n);
 				if (state.isAir()) {
-					return n; // breadth-first: the nearest air by swimming distance
+					parent.put(n, cur);
+					return trace(parent, start, n);
 				}
-				if (state.getFluidState().isIn(net.minecraft.registry.tag.FluidTags.WATER) && state.getCollisionShape(world, n).isEmpty()) {
+				if (state.getFluidState().isIn(FluidTags.WATER) && state.getCollisionShape(world, n).isEmpty()) {
+					parent.put(n, cur);
 					queue.add(n);
 				}
 			}
 		}
-		return null;
+		return List.of();
 	}
 
-	private int phaseTicks() {
-		return ticks();
+	private static List<BlockPos> trace(Map<BlockPos, BlockPos> parent, BlockPos start, BlockPos end) {
+		List<BlockPos> out = new ArrayList<>();
+		for (BlockPos at = end; !at.equals(start); at = parent.get(at)) {
+			out.add(at);
+		}
+		java.util.Collections.reverse(out);
+		return out;
 	}
 }

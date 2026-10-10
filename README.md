@@ -175,12 +175,14 @@ The parser also copes with:
 - **Avoiding hazards.**
   - **Lava** and fire are strongly avoided.
   - **Water:** swimming costs extra, being fully underwater costs much more, and currents (rivers, waterfalls) cost more still. Paths go around water whenever a dry route exists.
+  - **Breath:** a path may stay with the head under water for at most 14 blocks in a row, fewer when the companion is already short of air. Longer underwater stretches cost more the longer they get. It never routes through a flooded tunnel longer than a breath lasts.
 - **Getting unstuck.**
   - **Stuck while walking:** it wiggles, then re-plans around the spot that stopped it.
   - **No normal path:** escape mode digs through natural terrain and pillars.
   - **Underground with the goal above:** it digs straight up like a player, breaking the block overhead, jumping and placing a block underneath. It stops before fluids, sand and gravel, and anything that isn't natural terrain.
   - **Short or failed searches:** a path that ends just short of the goal re-plans, and a search that fails almost at once is retried after a moment.
-- **Breathing.** When a companion's air drops below half, it stops everything and swims to the nearest air. It uses its picture of its surroundings first, then searches up to about 24 blocks through the water.
+- **Breathing.** When a companion's air drops below half, it stops everything and swims to the nearest air the water actually leads to: up to about 32 blocks of swimming, never air behind a wall or above a solid ceiling. It swims that route itself, block by block (sideways, down, up), without the pathfinder. With no air in reach it swims straight up.
+- **Giving up on wet jobs.** A job that sends a companion up for air three times is abandoned ("there's too much water here"), and counts as a failure of that method.
 
 ### Awareness
 
@@ -208,7 +210,7 @@ When asked for an ore, a companion looks in this order:
 While mining:
 - **Whole veins.** It mines every block of a vein, including blocks joined only at the corners, and steps over to reach the rest. It finishes the vein even past the requested count.
 - **Ore on the way.** Any of the target ore it passes within reach while walking, exploring or heading for a cave gets mined.
-- **Wet and dangerous ore.** Ore next to water (behind a waterfall, in a flooded cave) is chosen only when there's no dry ore. Ore next to lava is left alone.
+- **Wet and dangerous ore.** Ore that would let liquid in when mined (liquid directly above it, or a liquid source beside it, as in Baritone) is never mined, including when following a vein. Other ore next to water is chosen only when there's no dry ore. Ore next to lava is left alone.
 - **Time limit.** It keeps at it for up to 15 minutes, or 25 for deep ores.
 
 ### Crafting, smelting and tools
@@ -421,7 +423,7 @@ Pillars, bridges and staircases built while travelling are left in the world. So
 - **Search size.** One search covers about 96 blocks (`maxPathNodes`). Longer trips use partial paths and re-plans.
 - **Very large height differences** are slow. Escape mode and digging straight up get there, but climbing from deep caves to a mountain top can take minutes.
 - **Digging out needs the right tools and blocks.** It needs a pickaxe for stone and at least one throwaway block. A companion with an empty inventory deep underground can be stuck, just as a player would be, until the teleport-to-owner fallback applies.
-- **Sealed underwater caves.** If no air is reachable within about 24 blocks of swimming, a companion can still drown. Water is avoided when planning, but not forbidden.
+- **Sealed underwater caves.** If no air is reachable within about 32 blocks of swimming, a companion can still drown. Paths keep breathing room, but currents can push a companion off its route.
 - **No portals.** Companions don't use Nether or End portals on their own. They follow you between dimensions by teleporting.
 
 ### Tasks
@@ -551,8 +553,8 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 70 GameTests. It resets its world on every run. The tests cover:
-  - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
+- `./gradlew runGametest` runs a headless server with 72 GameTests. It resets its world on every run. The tests cover:
+  - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air (including swimming a sideways route out), and never pathing through a flooded tunnel longer than a breath;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
   - combat (including full-damage hits), free mode (including ignoring the owner, and the failsafe), shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;

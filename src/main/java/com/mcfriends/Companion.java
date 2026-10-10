@@ -316,7 +316,7 @@ public class Companion {
 		// Items last 5 minutes from the death; keep looking for them that long.
 		leftovers.expect(death.pos(), 10.0, Math.max(20 * 30, 20 * 60 * 5 - age));
 		BlockPos at = death.pos();
-		jobs.pushFront(List.of("goto " + at.getX() + " " + at.getY() + " " + at.getZ() + " my things"));
+		jobs.pushFront(List.of("goto " + at.getX() + " " + at.getY() + " " + at.getZ() + " back for my things"));
 		AiLog.log(name(), "going back for my things at {}", at.toShortString());
 		speech.event("event.recover", Map.of(), 0, 0.8F);
 	}
@@ -512,6 +512,12 @@ public class Companion {
 			// Tool prep didn't work out: get on with the actual job.
 			com.mcfriends.brain.task.ToolPrep.failed(this, task.spec());
 			jobs.skipOptional();
+			return;
+		}
+		if (status == Status.FAILED && (task.spec().startsWith("deliver ") || task.spec().startsWith("await ")) && !jobs.pending().isEmpty()) {
+			// A favour for a friend (or waiting on one) that didn't work out: that's no reason to
+			// drop what we were doing ourselves.
+			speech.event("event.task_failed", Map.of("reason", task.failReason(), "job", Jobs.describe(task.spec())), 0, 1.0F);
 			return;
 		}
 		if (status == Status.FAILED) {

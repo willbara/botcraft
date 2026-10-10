@@ -196,7 +196,7 @@ public class Navigator {
 		int blocks = Inventories.count(p.getInventory(), Inventories::isThrowaway);
 		boolean place = (allowPlace || escape) && blocks > 0;
 		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, 3);
-		finder = new PathFinder(terrain, start, goal, opts, avoid);
+		finder = new PathFinder(terrain, start, goal, opts, avoid).startAir(p.getAir(), p.isSubmergedInWater());
 		path = null;
 		state = State.SEARCHING;
 	}

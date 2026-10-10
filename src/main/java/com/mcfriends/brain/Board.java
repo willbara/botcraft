@@ -319,7 +319,7 @@ public final class Board {
 		// Back to the base first (a walk sized to the distance), then put it away.
 		Colony colony = Colony.get();
 		BlockPos base = colony == null ? null : colony.base();
-		String back = base == null ? null : "goto " + base.getX() + " " + base.getY() + " " + base.getZ() + " the base";
+		String back = base == null ? null : "goto " + base.getX() + " " + base.getY() + " " + base.getZ() + " to the base";
 		int carried = Inventories.count(o.player().getInventory(), t.counts());
 		int spare = carried - Kit.keeps(new ItemStack(t.item()));
 		Plan plan;
