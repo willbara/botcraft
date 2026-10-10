@@ -67,9 +67,11 @@ public class CompanionConfig {
 	public boolean forceSurvival = true;
 	/** Permission level required for /companion. */
 	public int commandPermissionLevel = 2;
-	/** Log AI decisions at INFO (instead of DEBUG) so they show up in latest.log without log config. */
 	/** Put torches down in dark caves and around a dark base. */
 	public boolean placeTorches = true;
+	/** Easter eggs (a companion named "popbob" is hostile and griefs). */
+	public boolean easterEggs = true;
+	/** Log AI decisions at INFO (instead of DEBUG) so they show up in latest.log without log config. */
 	public boolean verboseAiLogging = false;
 
 	public static CompanionConfig get() {

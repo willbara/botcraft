@@ -24,7 +24,11 @@ public final class Interrupts {
 				if (threats.isEmpty() && c.data.defendOwner) {
 					threats = c.perception().ownerThreats();
 				}
-				yield threats.isEmpty() ? null : new FightTask(c, threats.get(0));
+				if (threats.isEmpty()) {
+					var popbob = Popbob.near(c, 12);
+					yield popbob == null ? null : new FightTask(c, popbob);
+				}
+				yield new FightTask(c, threats.get(0));
 			}
 			case FLEE -> new FleeTask(c, false);
 			case RETREAT -> new FleeTask(c, true);

@@ -89,6 +89,11 @@ public final class ChatRouter {
 	@Nullable
 	public static String respond(Companion c, @Nullable ServerPlayerEntity sender, List<Intent> intents, boolean append) {
 		Speech speech = c.speech();
+		if (com.mcfriends.brain.Popbob.is(c)) {
+			// The easter egg doesn't take orders, or answer questions nicely.
+			speech.reply("popbob.ignore", sender, new java.util.HashMap<>(Map.of("player", sender == null ? "you" : sender.getGameProfile().getName())));
+			return null;
+		}
 		boolean isOwner = sender == null || c.data.owner == null || sender.getUuid().equals(c.data.owner);
 		List<String> jobs = new ArrayList<>();
 		String mode = null;

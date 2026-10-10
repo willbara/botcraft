@@ -5,7 +5,7 @@
 | Command | What it covers |
 |---|---|
 | `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
-| `./gradlew runGametest` | Headless server, 26 GameTests (below). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/mcfriends.json` to see AI traces. |
+| `./gradlew runGametest` | Headless server, 64 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/mcfriends.json` to see AI traces. |
 
 | GameTest | Milestone | Passes when |
 |---|---|---|
@@ -196,6 +196,12 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] Give a companion torches and send it mining in a cave: torches appear along its way, every six or seven blocks.
 - [ ] Set home somewhere dark at night (or in a roofed area). "everyone, light up the base": the dark ground around it gets torches. With coal and sticks in the chest and no torches on hand, it makes some first.
 - [ ] Free mode with a dark base and torches: they light it without being asked.
+
+### 23. Popbob
+- [ ] `/companion spawn popbob` near you and another companion: it comes after both of you and taunts. The other companion fights it.
+- [ ] Walk away: it breaks planks, glass, doors and torches nearby, but never chests or furnaces.
+- [ ] "popbob, follow me": it refuses rudely and keeps doing what it was doing.
+- [ ] Set `easterEggs: false` and restart: popbob is an ordinary companion.
 
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.
