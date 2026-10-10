@@ -26,6 +26,7 @@ import com.mcfriends.entity.CompanionData;
 import com.mcfriends.entity.CompanionPlayer;
 import com.mcfriends.knowledge.ItemNames;
 import com.mcfriends.memory.Memory;
+import net.minecraft.util.math.BlockPos;
 import com.mcfriends.nav.Navigator;
 import com.mcfriends.perception.Perception;
 import com.mcfriends.util.AiLog;
@@ -65,6 +66,10 @@ public class Companion {
 	private final Memory memory;
 	private final Life life = new Life();
 	private final com.mcfriends.brain.Leftovers leftovers = new com.mcfriends.brain.Leftovers(this);
+	private final com.mcfriends.brain.Watchdog watchdog = new com.mcfriends.brain.Watchdog();
+	/** Recent deaths (where, when): don't keep walking back into the same danger. */
+	private final java.util.ArrayDeque<long[]> recentDeaths = new java.util.ArrayDeque<>();
+	private boolean lastDeathUnrecoverable;
 	private final EventWatcher events = new EventWatcher();
 	private final Random random = new Random();
 
@@ -168,6 +173,9 @@ public class Companion {
 		if (serverTick % 100 == 0) {
 			headBackIfLost("idle");
 		}
+		if (serverTick % 40 == 0 && watchdog.check(this, serverTick)) {
+			onStalled();
+		}
 		jobs.tick();
 		life.tick(this, serverTick);
 		brain.tick(serverTick);
@@ -246,16 +254,83 @@ public class Companion {
 					com.mcfriends.chat.Social.onSpawn(this, m.all());
 				}
 			}
-			case "respawned", "summoned" -> speech.event("event.back", Map.of(), 0, 0.7F);
+			case "respawned" -> {
+				speech.event("event.back", Map.of(), 0, 0.7F);
+				planRecovery();
+			}
+			case "summoned" -> speech.event("event.back", Map.of(), 0, 0.7F);
 			default -> {
 			}
 		}
+	}
+
+	/**
+	 * After dying: go back for what we dropped, like a player would, if it's still there (items
+	 * last 5 minutes) and it's sensible: not burned in lava, not at the bottom of the water we
+	 * drowned in, not somewhere that has already killed us twice.
+	 */
+	private void planRecovery() {
+		Memory.Place death = memory.place("last_death");
+		if (death == null || player == null || !dimension().equals(death.dim)
+			|| player.getWorld().getGameRules().getBoolean(net.minecraft.world.GameRules.KEEP_INVENTORY)) {
+			return;
+		}
+		long age = player.getWorld().getTime() - death.time;
+		if (age > 20 * 60 * 4 || lastDeathUnrecoverable) {
+			AiLog.log(name(), "not going back for my things ({})", lastDeathUnrecoverable ? "nothing to recover there" : "too long ago");
+			return;
+		}
+		int nearby = 0;
+		for (long[] d : recentDeaths) {
+			if (BlockPos.fromLong(d[0]).getSquaredDistance(death.pos()) < 16 * 16 && now - d[1] < 20 * 60 * 10) {
+				nearby++;
+			}
+		}
+		if (nearby >= 2) {
+			AiLog.log(name(), "not going back for my things: that place has killed me {} times", nearby);
+			return;
+		}
+		leftovers.expect(death.pos(), 6.0);
+		BlockPos at = death.pos();
+		jobs.pushFront(List.of("goto " + at.getX() + " " + at.getY() + " " + at.getZ() + " my things"));
+		AiLog.log(name(), "going back for my things at {}", at.toShortString());
+		speech.event("event.recover", Map.of(), 0, 0.8F);
+	}
+
+	/** The job made no progress for minutes: give up on it like any failure. */
+	private void onStalled() {
+		String job = brain.jobName();
+		String what = brain.job() != null ? brain.job().describe() : job;
+		AiLog.log(name(), "watchdog: no progress on {} for {} min, giving up on it", what, com.mcfriends.brain.Watchdog.STALL_TICKS / 1200);
+		memory.count("stalls", 1);
+		com.mcfriends.ops.SoakStats.stall(name(), job);
+		nav.stop();
+		brain.setJob(null);
+		jobs.abandonRest();
+		life.failed(now);
+		speech.event("event.task_failed", Map.of("reason", "I got stuck", "job", what), 0, 1.0F);
+		headBackIfLost("stalled");
 	}
 
 	void onDeath() {
 		AiLog.log(name(), "died");
 		nav.stop();
 		memory.count("deaths", 1);
+		// A goal that got us killed is put aside for a while, like one that failed.
+		life.failed(now);
+		var source = player == null ? null : player.getRecentDamageSource();
+		String cause = source == null ? "unknown" : source.getName();
+		lastDeathUnrecoverable = source != null && (source.isIn(net.minecraft.registry.tag.DamageTypeTags.IS_FIRE)
+			|| source.isOf(net.minecraft.entity.damage.DamageTypes.LAVA) || source.isOf(net.minecraft.entity.damage.DamageTypes.DROWN)
+			|| source.isOf(net.minecraft.entity.damage.DamageTypes.OUT_OF_WORLD));
+		com.mcfriends.ops.SoakStats.death(name(), player == null || source == null ? cause : source.getDeathMessage(player).getString());
+		if (player != null) {
+			BlockPos at = player.getBlockPos();
+			recentDeaths.addLast(new long[]{at.asLong(), now});
+			while (recentDeaths.size() > 5) {
+				recentDeaths.removeFirst();
+			}
+		}
 		CompanionManager m = CompanionManager.get();
 		if (m != null) {
 			com.mcfriends.chat.Social.onDeath(this, m.all());
@@ -291,6 +366,7 @@ public class Companion {
 
 	/** Brain callback when an interrupt (fight, flee, eat...) starts. */
 	public void onInterruptStarted(Objective objective, Task task) {
+		com.mcfriends.ops.SoakStats.interrupt(objective.name());
 		if (objective == Objective.FIGHT && task instanceof FightTask) {
 			net.minecraft.entity.mob.MobEntity t = perception.nearestThreat();
 			if (t != null && t.getTarget() instanceof CompanionPlayer friend && friend != player) {
@@ -315,6 +391,9 @@ public class Companion {
 		}
 		if (task.spec() == null || task.silent()) {
 			return;
+		}
+		if (task.spec() != null && !task.silent()) {
+			com.mcfriends.ops.SoakStats.job(name(), task.name(), status == Status.SUCCESS, status == Status.FAILED ? task.failReason() : "");
 		}
 		if (status == Status.FAILED && Jobs.optional(task.spec())) {
 			// Tool prep didn't work out: get on with the actual job.

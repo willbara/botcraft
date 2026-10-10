@@ -61,6 +61,8 @@ public class GatherLogsTask extends Task {
 	private final Map<BlockPos, Integer> blacklist = new HashMap<>();
 	private int treeFailures;
 	private int emptyScans;
+	/** Attempts to step into the trunk of the current tree (then we pillar instead). */
+	private int climbTries;
 	private final SearchTrips search = new SearchTrips("gather", 48, 5);
 	@Nullable
 	private ItemEntity collecting;
@@ -249,6 +251,7 @@ public class GatherLogsTask extends Task {
 			if (end != null && treeGoal != null) {
 				int i = treeGoal.which(end);
 				treeBase = treeChoices.get(Math.max(0, i));
+				climbTries = 0;
 				locked = true;
 				CLAIMED.put(treeBase, c.name());
 				com.mcfriends.brain.Claims.claim(c, treeBase);
@@ -293,7 +296,7 @@ public class GatherLogsTask extends Task {
 			}
 		}
 		if (next == null) {
-			if (pillar.isEmpty() && !Navigator.feet(p).equals(treeBase) && canStandIn(world, treeBase)) {
+			if (pillar.isEmpty() && !Navigator.feet(p).equals(treeBase) && canStandIn(world, treeBase) && climbTries++ < 2) {
 				// The bottom of the trunk is gone: step into it, the logs above are right overhead.
 				c.nav().moveTo(Goal.near(treeBase, 0.3), false);
 				setPhase(Phase.CLIMB);
@@ -335,9 +338,14 @@ public class GatherLogsTask extends Task {
 
 	private Status climb(CompanionPlayer p) {
 		Navigator.State s = c.nav().state();
-		if (s == Navigator.State.ARRIVED || Navigator.feet(p).equals(treeBase)) {
+		if (Navigator.feet(p).equals(treeBase)) {
 			c.nav().stop();
 			setPhase(Phase.CHOP);
+		} else if (s == Navigator.State.ARRIVED) {
+			// "Arrived" next to or on top of the stump rather than in it: pillar up instead
+			// (going back to chopping would just send us here again).
+			c.nav().stop();
+			setPhase(climbTries >= 2 ? Phase.PILLAR : Phase.CHOP);
 		} else if (s == Navigator.State.FAILED || phaseTicks > 100) {
 			c.nav().stop();
 			setPhase(Phase.PILLAR); // can't get into the trunk: build up from here instead

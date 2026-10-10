@@ -6,7 +6,7 @@ AI companions for Minecraft **1.20.1 (Fabric)** that join the server as real pla
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.
 - **One optional network call.** Looking up the skin of a registered Minecraft account goes to Mojang, the same way player heads do. Turn it off with `allowSkinLookup`.
 
-This document describes version **0.5.5**.
+This document describes version **0.6.0**.
 
 ---
 
@@ -236,10 +236,15 @@ While mining:
 ### Death, rejoining and getting lost
 
 - **Respawning.** A companion that dies comes back after `respawnDelayTicks`. It returns at its bed, else home, else next to you if you're standing somewhere safe, else world spawn, always on dry, solid ground. It never reappears looking dead.
+- **Getting its things back.** After respawning it goes back for what it dropped (items last 5 minutes), unless it died in lava, fire, the void or by drowning, or that spot has already killed it twice in 10 minutes. A death also counts as a failed goal, so free mode puts that goal aside for a while.
 - **Unsafe saves.** A companion saved somewhere deadly (under water, in lava, inside a block) is moved to the nearest safe spot when the world loads.
 - **Not getting lost.**
   - **Nobody to follow:** in follow mode with you offline, spectating or in another dimension, a companion that's finished or whose job failed heads home if it's more than 24 blocks away.
   - **Can't find a way back to you:** if it keeps failing to reach you (for example deep in a cave), it teleports to you. It also does this whenever it's more than `teleportToOwnerDistance` away.
+
+### Watchdog
+
+Every task has its own time limit, but a task can keep itself busy without getting anywhere (re-planning to the same unreachable spot, retrying the same placement). If a companion is on a job and for 3 minutes it neither moves more than a few blocks, nor breaks anything, nor changes what it carries, the job is abandoned with "I got stuck" and the usual failure handling takes over. Sleeping, sheltering for the night and waiting on a friend are exempt.
 
 ### Working together
 
@@ -288,7 +293,7 @@ It goes to bed when you do, so the night can be skipped.
 - **Chat messages are system messages** formatted as `<Name> text`, because a fake player can't sign chat.
 - **Spawn protection** on dedicated servers stops non-op companions from breaking blocks near spawn.
 - **`/kick`.** A kicked companion stays registered and comes back on restart or with `/companion spawn`.
-- **Chunk loading.** Each companion keeps the chunks around itself loaded, like a player. Many companions spread far apart load correspondingly more of the world.
+- **Chunk loading.** Each companion keeps the chunks around itself loaded, like a player, so they keep working with nobody online on a dedicated server (soak runs check this). Many companions spread far apart load correspondingly more of the world. A singleplayer world pauses when you leave it, so unattended play needs a dedicated server.
 - **Skins.** A registered-account skin needs network access once per name. Without it, the companion falls back to a default skin.
 
 ### Griefing safety (`griefing: false`)
@@ -383,7 +388,7 @@ com.mcfriends
 │               picture), BlockScanner, CaveFinder
 ├─ brain/       Brain (utility selection + interrupt stack), Drives, Objective, Personality,
 │               JobQueue + Jobs (persisted job specs, prerequisites, optional prep), Life (free mode),
-│               Sharing, Claims (spreading out), Leftovers (own drops)
+│               Sharing, Claims (spreading out), Leftovers (own drops), Watchdog (stalled jobs)
 │  └─ task/     Follow, Stay, Idle, GoTo, GatherLogs, Mine, Craft, Smelt, Hunt, Place, Deliver,
 │               Await, Sleep, Shelter, Eat, Fight, Flee/Retreat, Breathe, Collect, ToolPrep,
 │               SearchTrips, Pickup, Spots
@@ -392,6 +397,7 @@ com.mcfriends
 ├─ chat/        IntentParser (clauses, intents, typos), ChatRouter (intents -> jobs/replies),
 │               SmallTalk, Templates (+ dialogue.json), Voice, Speech, EventWatcher, Social, CommandTasks
 ├─ command/     /companion
+├─ ops/         Soak (unattended soak runs), SoakStats (counters for the report)
 ├─ mixin/       PlayerManagerMixin (companions don't count toward the player limit)
 └─ gametest/    headless GameTests
 ```
@@ -430,13 +436,18 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 42 GameTests. It resets its world on every run. The tests cover:
+- `./gradlew runGametest` runs a headless server with 44 GameTests. It resets its world on every run. The tests cover:
   - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching);
-  - combat, free mode, shelter, safe respawns and heading home when lost;
+  - combat, free mode, shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;
   - chat, banter, sharing, spreading out, tool prep and picking up drops;
   - player slots.
+- `./gradlew runSoak -PsoakMinutes=30 -PsoakCompanions=6` runs an unattended soak test. It starts a dedicated server in `run/soak` with a fresh world (seed `-PsoakSeed`, default 12345, Normal difficulty), and spawns the companions in free mode at world spawn with no player online. When time is up it writes `run/soak/soak-report.md` and stops. The report covers:
+  - deaths per companion-hour, with causes;
+  - stalls, finished and failed jobs (with reasons), and interrupts;
+  - what each companion gathered, how far it walked, and the best pickaxe, sword and armour it reached;
+  - AI time per tick, and how many chunks stayed loaded.
 - `./gradlew runServer` starts a dev dedicated server in `run/server`. Type commands into the console.
 - To see AI decisions, set `verboseAiLogging: true` and grep `latest.log` for `[<name>]`.
 

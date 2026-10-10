@@ -60,6 +60,7 @@ public final class CompanionManager {
 	static void onServerStarted(MinecraftServer server) {
 		instance = new CompanionManager(server);
 		instance.loadAndSpawnAll();
+		com.mcfriends.ops.Soak.maybeStart(server);
 	}
 
 	static void onServerStopping(MinecraftServer server) {
@@ -308,6 +309,7 @@ public final class CompanionManager {
 		if (!order.isEmpty()) {
 			java.util.Collections.rotate(order, (int) (tickCount % order.size()));
 		}
+		long started = System.nanoTime();
 		for (Companion c : order) {
 			try {
 				tickCompanion(c);
@@ -315,6 +317,8 @@ public final class CompanionManager {
 				MCFriends.LOG.error("Error ticking companion {}", c.name(), e);
 			}
 		}
+		com.mcfriends.ops.SoakStats.tickTime(System.nanoTime() - started, CompanionConfig.get().tickBudgetMs);
+		com.mcfriends.ops.Soak.tick(server);
 		com.mcfriends.chat.Social.tick(companions.values(), tickCount);
 		if (tickCount % AUTOSAVE_TICKS == 0) {
 			save();

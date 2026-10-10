@@ -166,5 +166,10 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] A companion with 1 log and 2 planks, no table nearby: "craft a wooden pickaxe". He gathers enough wood once instead of going round in circles.
 - [ ] Ore set into a cave wall at an angle is mined without "can't get at … in this vein".
 
+### 18. Unattended running
+- [ ] `./gradlew runSoak -PsoakMinutes=30 -PsoakCompanions=6` finishes on its own and writes `run/soak/soak-report.md`. Compare deaths per companion-hour, stalls and failed jobs between versions.
+- [ ] Let a companion die with items on it (not in lava or water). After respawning it says it's going back for its stuff and collects it.
+- [ ] Watch for "watchdog: no progress on …" in the log. Each one is a bug worth a look.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.

@@ -34,7 +34,7 @@ public final class Leftovers {
 	public static final double RANGE = 16;
 	private static final int MAX_SPOTS = 64;
 
-	private record Spot(BlockPos pos, long at) {
+	private record Spot(BlockPos pos, long at, double spread) {
 	}
 
 	private final Companion c;
@@ -42,6 +42,7 @@ public final class Leftovers {
 	/** Items we tried and failed to reach, and until when we leave them alone. */
 	private final Map<UUID, Long> givenUp = new HashMap<>();
 	private int collected;
+	private long lastExpectAt;
 	private int missed;
 
 	public Leftovers(Companion c) {
@@ -50,9 +51,15 @@ public final class Leftovers {
 
 	/** Something of ours may drop around here (a block broke, an animal died). */
 	public void expect(BlockPos pos) {
+		expect(pos, SPREAD);
+	}
+
+	/** Like {@link #expect(BlockPos)}, for drops that scatter further (everything we had, when we died). */
+	public void expect(BlockPos pos, double spread) {
 		BlockPos p = pos.toImmutable();
+		lastExpectAt = c.server.getTicks();
 		spots.removeIf(s -> s.pos.equals(p));
-		spots.addLast(new Spot(p, c.now()));
+		spots.addLast(new Spot(p, c.server.getTicks(), spread));
 		while (spots.size() > MAX_SPOTS) {
 			spots.removeFirst();
 		}
@@ -87,7 +94,7 @@ public final class Leftovers {
 			double dx = e.getX() - (s.pos.getX() + 0.5);
 			double dz = e.getZ() - (s.pos.getZ() + 0.5);
 			double dy = s.pos.getY() + 0.5 - e.getY();
-			if (dx * dx + dz * dz <= SPREAD * SPREAD && dy >= -SPREAD && dy <= FALL) {
+			if (dx * dx + dz * dz <= s.spread * s.spread && dy >= -s.spread && dy <= FALL) {
 				return true;
 			}
 		}
@@ -96,12 +103,17 @@ public final class Leftovers {
 
 	/** Couldn't get to it: leave it for a while. */
 	public void giveUp(ItemEntity e) {
-		givenUp.put(e.getUuid(), c.now() + TTL);
+		givenUp.put(e.getUuid(), c.server.getTicks() + TTL);
 		missed++;
 	}
 
 	public void pickedUp(int stacks) {
 		collected += stacks;
+	}
+
+	/** When our work last broke a block or killed something (a sign of progress). */
+	public long lastExpectAt() {
+		return lastExpectAt;
 	}
 
 	public int collected() {
@@ -113,7 +125,7 @@ public final class Leftovers {
 	}
 
 	private void prune() {
-		long now = c.now();
+		long now = c.server.getTicks();
 		for (Iterator<Spot> it = spots.iterator(); it.hasNext(); ) {
 			if (now - it.next().at > TTL) {
 				it.remove();

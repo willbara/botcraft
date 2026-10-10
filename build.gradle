@@ -22,6 +22,14 @@ loom {
 		client {
 			runDir = 'run/client'
 		}
+		// Unattended soak run (./gradlew runSoak -PsoakMinutes=30 -PsoakCompanions=6): companions in
+		// free mode, no players, fresh fixed-seed world; writes run/soak/soak-report.md and stops.
+		soak {
+			server()
+			name 'Soak'
+			vmArg "-Dmcfriends.soak=${project.findProperty('soakMinutes') ?: 20}:${project.findProperty('soakCompanions') ?: 6}"
+			runDir = 'run/soak'
+		}
 		// Headless GameTest server (./gradlew runGametest). Uses the 1.20.1-era
 		// fabric-gametest-api-v1 system property; exits with non-zero on failure.
 		gametest {
@@ -80,6 +88,22 @@ jar {
 // Let the dev server read console commands (./gradlew runServer, then type commands).
 tasks.matching { it.name == 'runServer' }.configureEach {
 	standardInput = System.in
+}
+
+// Soak runs start from a fresh world with a fixed seed so runs are comparable.
+tasks.matching { it.name == 'runSoak' }.configureEach {
+	doFirst {
+		def dir = file('run/soak')
+		delete new File(dir, 'world')
+		delete new File(dir, 'soak-report.md')
+		dir.mkdirs()
+		new File(dir, 'eula.txt').text = 'eula=true\n'
+		new File(dir, 'server.properties').text = [
+			"level-seed=${project.findProperty('soakSeed') ?: '12345'}",
+			'online-mode=false', 'difficulty=normal', 'spawn-protection=0', 'max-players=4',
+			'view-distance=8', 'simulation-distance=8', 'enable-command-block=false'
+		].join('\n') + '\n'
+	}
 }
 
 // Fresh world for every GameTest run so companions from earlier runs aren't restored.
