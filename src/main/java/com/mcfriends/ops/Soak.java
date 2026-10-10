@@ -215,6 +215,7 @@ public final class Soak {
 		section(sb, "Deaths by cause", SoakStats.deathCauses);
 		section(sb, "Failed jobs (task: reason)", SoakStats.failReasons);
 		section(sb, "Stalls", SoakStats.stalls);
+		section(sb, "Failsafe rescues (free mode, sent home)", SoakStats.rescues);
 		section(sb, "Finished jobs", SoakStats.jobsDone);
 		section(sb, "Interrupts", SoakStats.interrupts);
 		return sb.toString();

@@ -18,6 +18,7 @@ public final class SoakStats {
 	static final Map<String, Integer> jobsFailed = new TreeMap<>();
 	static final Map<String, Integer> failReasons = new TreeMap<>();
 	static final Map<String, Integer> stalls = new TreeMap<>();
+	static final Map<String, Integer> rescues = new TreeMap<>();
 	static final Map<String, Integer> interrupts = new TreeMap<>();
 	static final Map<String, Double> distance = new LinkedHashMap<>();
 
@@ -56,6 +57,12 @@ public final class SoakStats {
 	public static void stall(String who, String job) {
 		if (active) {
 			stalls.merge(who + " (" + job + ")", 1, Integer::sum);
+		}
+	}
+
+	public static void rescue(String who, String why) {
+		if (active) {
+			rescues.merge(who + " (" + why + ")", 1, Integer::sum);
 		}
 	}
 
