@@ -1132,13 +1132,13 @@ public class CompanionGameTests implements FabricGameTest {
 		});
 	}
 
-	/** Animals out of close range but in plain view (~55 blocks): it heads straight for them. */
+	/** Animals out of close range but in plain view (~40 blocks): it heads straight for them. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "hunt_far")
 	public void huntsHerdInTheDistance(TestContext ctx) {
 		CompanionManager m = manager(ctx);
 		cleanup(m, "GtScout");
-		// (The test world only loads a few chunks around each test, so keep it within ~60 blocks.)
-		for (int x = -4; x <= 60; x++) {
+		// (The test world only loads a few chunks around each test, so keep it within ~48 blocks.)
+		for (int x = -4; x <= 48; x++) {
 			for (int z = -4; z <= 8; z++) {
 				ctx.setBlockState(x, 0, z, Blocks.GRASS_BLOCK);
 				for (int y = 1; y <= 20; y++) { // tall: other tests' arenas may stand in the way
@@ -1146,8 +1146,20 @@ public class CompanionGameTests implements FabricGameTest {
 				}
 			}
 		}
+		// Walls east and along the sides, so the cows can't wander out of the loaded test area.
+		for (int x = 36; x <= 47; x++) {
+			for (int y = 1; y <= 2; y++) {
+				ctx.setBlockState(x, y, -4, Blocks.STONE_BRICKS);
+				ctx.setBlockState(x, y, 8, Blocks.STONE_BRICKS);
+			}
+		}
+		for (int z = -4; z <= 8; z++) {
+			for (int y = 1; y <= 2; y++) {
+				ctx.setBlockState(47, y, z, Blocks.STONE_BRICKS);
+			}
+		}
 		for (int i = 0; i < 4; i++) {
-			ctx.spawnEntity(net.minecraft.entity.EntityType.COW, new BlockPos(55 + i, 1, 2 + (i % 2))).setPersistent();
+			ctx.spawnEntity(net.minecraft.entity.EntityType.COW, new BlockPos(41 + i, 1, 2 + (i % 2))).setPersistent();
 		}
 		ctx.assertTrue(m.spawn("GtScout", "zuri", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 2.5)), -90.0F) == null, "spawn");
 		Companion c = m.byName("GtScout");
@@ -1252,6 +1264,100 @@ public class CompanionGameTests implements FabricGameTest {
 					.stream().map(e -> e.getStack() + "@" + e.getBlockPos().toShortString() + " owner " + e.getOwner()).toList()
 				+ "; ours " + c.leftovers().lying() + " expected " + c.leftovers().anyExpected());
 			cleanup(m, "GtLazarus");
+		});
+	}
+
+	/** Grass field for animal tests: x,z from -2..size, open sky. */
+	static void field(TestContext ctx, int size) {
+		for (int x = -2; x <= size; x++) {
+			for (int z = -2; z <= 8; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.GRASS_BLOCK);
+				for (int y = 1; y <= 6; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+	}
+
+	/** Passing by animals is enough to remember where they are. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 300, batchId = "herd_watch")
+	public void remembersHerdsItSees(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtWatcher");
+		field(ctx, 40);
+		for (int i = 0; i < 4; i++) {
+			ctx.spawnEntity(net.minecraft.entity.EntityType.COW, new BlockPos(32 + (i % 2), 1, 2 + i)).setPersistent();
+		}
+		ctx.assertTrue(m.spawn("GtWatcher", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtWatcher");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		BlockPos cows = ctx.getAbsolutePos(new BlockPos(32, 1, 3));
+		ctx.addInstantFinalTask(() -> {
+			var seen = c.memory().sightings("herd", cows, c.dimension(), 12);
+			ctx.assertTrue(!seen.isEmpty(), "no herd remembered near " + cows + "; all: " + c.memory().sightings.stream()
+				.map(x -> x.kind + "@" + x.pos().toShortString()).toList() + "; cows at " + ctx.getWorld().getEntitiesByClass(
+				net.minecraft.entity.passive.CowEntity.class, c.player().getBoundingBox().expand(64), e -> true).stream().map(e -> e.getBlockPos().toShortString()).toList());
+			cleanup(m, "GtWatcher");
+		});
+	}
+
+	/** Starving with nothing to eat, it will take one of a pair (but not when fed). */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "hunt_desperate")
+	public void starvingTakesOneOfAPair(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtStarving");
+		flatArena(ctx, 12);
+		var a = (net.minecraft.entity.passive.CowEntity) ctx.spawnEntity(net.minecraft.entity.EntityType.COW, new BlockPos(8, 1, 5));
+		var b = (net.minecraft.entity.passive.CowEntity) ctx.spawnEntity(net.minecraft.entity.EntityType.COW, new BlockPos(9, 1, 7));
+		a.setPersistent();
+		b.setPersistent();
+		ctx.assertTrue(!com.mcfriends.knowledge.Animals.huntable(a, java.util.List.of(a, b), false), "a fed companion leaves a pair alone");
+		ctx.assertTrue(com.mcfriends.knowledge.Animals.huntable(a, java.util.List.of(a, b), true), "a starving one may take one");
+		ctx.assertTrue(!com.mcfriends.knowledge.Animals.huntable(a, java.util.List.of(a), true), "never the very last one");
+		ctx.assertTrue(m.spawn("GtStarving", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 6.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtStarving");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_SWORD, 1);
+		c.player().getHungerManager().setFoodLevel(4);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "hunt 1 cow", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(!a.isAlive() || !b.isAlive(), "neither cow taken; " + c.describeActivity());
+			ctx.assertTrue(a.isAlive() || b.isAlive(), "took both");
+			cleanup(m, "GtStarving");
+		});
+	}
+
+	/** Free mode keeps food in reserve: fed but with nothing to eat, it hunts and cooks. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 2400, batchId = "stock_food")
+	public void freeModeStocksFood(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtPantry");
+		flatArena(ctx, 12);
+		for (int i = 0; i < 5; i++) {
+			ctx.spawnEntity(net.minecraft.entity.EntityType.COW, new BlockPos(8 + (i % 2), 1, 2 + i * 2)).setPersistent();
+		}
+		ctx.assertTrue(m.spawn("GtPantry", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 6.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtPantry");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.data.owner = null;
+		c.data.mode = "free";
+		c.data.initiative = 1.0F;
+		c.memory().setPlace("home", ctx.getAbsolutePos(new BlockPos(3, 1, 6)), c.dimension(), ctx.getWorld().getTime());
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_SWORD, 1);
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		give(c, net.minecraft.item.Items.STONE_AXE, 1);
+		give(c, net.minecraft.item.Items.OAK_LOG, 6);
+		give(c, net.minecraft.item.Items.FURNACE, 1);
+		give(c, net.minecraft.item.Items.COAL, 4);
+		ctx.getWorld().setTimeOfDay(1000);
+		ctx.addInstantFinalTask(() -> {
+			int cooked = count(c, net.minecraft.item.Items.COOKED_BEEF);
+			ctx.assertTrue(cooked >= 2, "cooked " + cooked + "; raw " + count(c, net.minecraft.item.Items.BEEF) + "; " + c.describeActivity()
+				+ "; queued " + c.jobs().pending());
+			c.data.initiative = null;
+			cleanup(m, "GtPantry");
 		});
 	}
 }

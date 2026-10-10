@@ -6,7 +6,7 @@ AI companions for Minecraft **1.20.1 (Fabric)** that join the server as real pla
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.
 - **One optional network call.** Looking up the skin of a registered Minecraft account goes to Mojang, the same way player heads do. Turn it off with `allowSkinLookup`.
 
-This document describes version **0.6.0**.
+This document describes version **0.6.1**.
 
 ---
 
@@ -215,9 +215,16 @@ While mining:
 
 ### Hunting and food
 
-- **Fair game only:** adult, unnamed, unleashed animals that aren't penned in, and never the last two of a species nearby.
-- **Searching.** It looks within 32 blocks, then for herds up to 96 blocks away, then at remembered herd spots. Only then does it walk off in a direction, up to 5 trips. Search trips stay inside the world border.
-- **Food.** Raw meat is cooked. A hungry companion eats its best food, asks a friend, or hunts.
+- **Fair game only:** adult, unnamed, unleashed animals that aren't penned in, and never the last two of a species nearby. A starving companion (hunger 3 drumsticks or less) with nothing to eat may take one of a pair, but never the last one.
+- **Noticing animals.** While doing anything else, a companion notices groups of three or more food animals within 48 blocks and remembers where the herd is (the middle of the densest bunch). Remembered spots it can see that turn out empty are forgotten. Up to 12 herds are remembered.
+- **Chasing.** Up close it runs straight at the animal, but never off a ledge; it paths around instead.
+- **Searching.** It looks within 32 blocks, then for herds up to 96 blocks away (48 up or down), then at remembered herd spots. Only then does it walk off in a direction, up to 5 trips. Search trips stay inside the world border.
+- **Weapons.** It never hunts bare-handed: with nothing better than a fist, it makes a wooden sword first.
+- **Keeping food:**
+  - **Free mode** keeps a reserve: with fewer than 6 food items it hunts and cooks when it knows where animals are, before getting hungry.
+  - **Follow mode** cooks raw meat it carries, or hunts nearby, when it gets hungry with nothing to eat.
+  - **Cooking:** raw meat counts as food in a pinch, but it gets cooked, since a steak fills far more than raw beef.
+- **Eating.** A hungry companion eats its best food, asks a friend, or hunts.
 
 ### Picking up after itself
 
@@ -244,7 +251,7 @@ While mining:
 
 ### Watchdog
 
-Every task has its own time limit, but a task can keep itself busy without getting anywhere (re-planning to the same unreachable spot, retrying the same placement). If a companion is on a job and for 3 minutes it neither moves more than a few blocks, nor breaks anything, nor changes what it carries, the job is abandoned with "I got stuck" and the usual failure handling takes over. Sleeping, sheltering for the night and waiting on a friend are exempt.
+Every task has its own time limit, but a task can keep itself busy without getting anywhere (re-planning to the same unreachable spot, retrying the same placement). If a companion is on a job and for 3 minutes it neither moves more than a few blocks, nor breaks anything, nor gains any items (eating doesn't count), the job is abandoned with "I got stuck" and the usual failure handling takes over. Sleeping, sheltering for the night and waiting on a friend are exempt.
 
 ### Working together
 
@@ -261,8 +268,8 @@ Every task has its own time limit, but a task can keep itself busy without getti
 
 "Do your own thing" turns on a player-like routine around home:
 
-- **Night:** sleep in a bed. Without one, an armed companion guards home and an unarmed one digs in (three blocks down, roofed) until morning.
-- **Food:** cook raw meat, ask a friend, or hunt.
+- **Night:** sleep in a bed. Without one, an armed companion guards home and an unarmed one digs in (three blocks down, roofed) until morning. Errands still running at dusk (hunting, chopping, exploring) are dropped so it heads in instead of being caught outside.
+- **Food:** cook raw meat, ask a friend, or hunt, and keep a reserve of about 6 food when animals are known nearby.
 - **Progression:** wooden and stone tools, then smelting carried raw iron, an iron pickaxe, an iron sword, iron armour piece by piece, then a bed.
 - **Whatever suits where it is:** chopping with an axe in a forest; mining coal, iron, then diamonds (with an iron pickaxe) in a nearby cave; turning spare coal into torches.
 - **Otherwise:** it revisits a remembered cave or wanders.
@@ -321,7 +328,7 @@ Pillars, bridges and staircases built while travelling are left in the world. So
 - **No farming.** It was removed for now and will come back reworked.
 - **No chests.** Companions don't store or fetch items in chests, so their inventories fill up.
 - **No torches in caves.** Companions don't light up caves (free mode crafts torches but doesn't place them).
-- **Hunting** never takes the last two animals of a species nearby, so a lone cow or a single pair is left alone. Animals beyond about 96 blocks, or more than 48 blocks up or down, aren't noticed until the companion gets closer.
+- **Hunting** never takes the last two animals of a species nearby (the last one when starving), so a lone cow is always left alone. There's no breeding yet, so a heavily hunted area runs out of animals. Animals beyond about 96 blocks, or more than 48 blocks up or down, aren't noticed until the companion gets closer. Fish, crops and other food sources aren't used.
 - **Mining** reads ore positions from the world, like an "x-ray" of the 24-block scan area. A player would have to dig to find buried ore.
 - **Tool upgrades** stop at iron.
 
@@ -436,17 +443,17 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 44 GameTests. It resets its world on every run. The tests cover:
+- `./gradlew runGametest` runs a headless server with 47 GameTests. It resets its world on every run. The tests cover:
   - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
-  - smelting, and hunting (near, far, sword first, searching);
+  - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
   - combat, free mode, shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;
   - chat, banter, sharing, spreading out, tool prep and picking up drops;
   - player slots.
 - `./gradlew runSoak -PsoakMinutes=30 -PsoakCompanions=6` runs an unattended soak test. It starts a dedicated server in `run/soak` with a fresh world (seed `-PsoakSeed`, default 12345, Normal difficulty), and spawns the companions in free mode at world spawn with no player online. When time is up it writes `run/soak/soak-report.md` and stops. The report covers:
   - deaths per companion-hour, with causes;
   - stalls, finished and failed jobs (with reasons), and interrupts;
-  - what each companion gathered, how far it walked, and the best pickaxe, sword and armour it reached;
+  - what each companion gathered and hunted, how far it walked, its hunger at the end, and the best pickaxe, sword and armour it reached;
   - AI time per tick, and how many chunks stayed loaded.
 - `./gradlew runServer` starts a dev dedicated server in `run/server`. Type commands into the console.
 - To see AI decisions, set `verboseAiLogging: true` and grep `latest.log` for `[<name>]`.

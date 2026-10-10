@@ -169,8 +169,8 @@ public final class Soak {
 		sb.append(String.format("| Loaded chunks at the end | %d |%n%n", server.getOverworld().getChunkManager().getLoadedChunkCount()));
 
 		sb.append("## Companions\n\n");
-		sb.append("| Name | Deaths | Walked | Logs | Coal | Iron | Diamonds | Smelted | Pickaxe | Sword | Armour | Food |\n");
-		sb.append("|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+		sb.append("| Name | Deaths | Walked | Logs | Coal | Iron | Diamonds | Smelted | Hunted | Pickaxe | Sword | Armour | Food | Hunger |\n");
+		sb.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
 		CompanionManager m = CompanionManager.get();
 		for (String name : names) {
 			Companion c = m == null ? null : m.byName(name);
@@ -184,12 +184,19 @@ public final class Soak {
 			}
 			CompanionPlayer p = c.player();
 			PlayerInventory inv = p == null ? null : p.getInventory();
-			sb.append(String.format("| %s | %d | %.0f | %d | %d | %d | %d | %d | %s | %s | %s | %d |%n", name,
+			int hunted = 0;
+			for (var e : c.memory().stats.entrySet()) {
+				if (e.getKey().startsWith("hunted_")) {
+					hunted += e.getValue() - start.getOrDefault(e.getKey(), 0);
+				}
+			}
+			sb.append(String.format("| %s | %d | %.0f | %d | %d | %d | %d | %d | %d | %s | %s | %s | %d | %s |%n", name,
 				SoakStats.deaths.getOrDefault(name, 0), SoakStats.distance.getOrDefault(name, 0.0),
-				gained.get("logs_chopped"), gained.get("mined_coal"), gained.get("mined_iron"), gained.get("mined_diamond"), gained.get("smelted"),
+				gained.get("logs_chopped"), gained.get("mined_coal"), gained.get("mined_iron"), gained.get("mined_diamond"), gained.get("smelted"), hunted,
 				inv == null ? "-" : best(inv, Items.WOODEN_PICKAXE, Items.STONE_PICKAXE, Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE),
 				inv == null ? "-" : best(inv, Items.WOODEN_SWORD, Items.STONE_SWORD, Items.IRON_SWORD, Items.DIAMOND_SWORD),
-				p == null ? "-" : armour(p), inv == null ? 0 : Inventories.foodCount(inv)));
+				p == null ? "-" : armour(p), inv == null ? 0 : Inventories.foodCount(inv),
+				p == null ? "-" : p.getHungerManager().getFoodLevel() + "/20"));
 		}
 		sb.append('\n');
 		section(sb, "Deaths by cause", SoakStats.deathCauses);

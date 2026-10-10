@@ -53,11 +53,19 @@ public final class Animals {
 	 * of the last two of its kind around (leave a breeding pair).
 	 */
 	public static boolean huntable(AnimalEntity a, List<? extends AnimalEntity> sameKindNearby) {
+		return huntable(a, sameKindNearby, false);
+	}
+
+	/**
+	 * @param desperate starving with nothing to eat: a player would take one of a pair too, so
+	 *                  only the very last one of its kind nearby is spared
+	 */
+	public static boolean huntable(AnimalEntity a, List<? extends AnimalEntity> sameKindNearby, boolean desperate) {
 		if (!a.isAlive() || a.isBaby() || a.hasCustomName() || a.isLeashed()) {
 			return false;
 		}
 		long adults = sameKindNearby.stream().filter(o -> o.getType() == a.getType() && !o.isBaby() && o.isAlive()).count();
-		return adults > 2 && !penned(a.getWorld(), a.getBlockPos());
+		return adults > (desperate ? 1 : 2) && !penned(a.getWorld(), a.getBlockPos());
 	}
 
 	private static boolean penned(World world, BlockPos pos) {

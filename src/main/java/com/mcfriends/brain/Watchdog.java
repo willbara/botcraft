@@ -40,12 +40,16 @@ public final class Watchdog {
 		boolean working = c.brain().hasJob() && !STILL_JOBS.contains(c.brain().jobName());
 		boolean moved = anchor == null || pos.getSquaredDistance(anchor) > 3 * 3;
 		boolean broke = c.leftovers().lastExpectAt() > lastBreakSeen;
-		if (!working || moved || items != lastItems || broke) {
+		// Gaining things is progress; eating or placing blocks while going nowhere isn't.
+		if (!working || moved || items > lastItems || broke) {
 			anchor = pos;
 			lastItems = items;
 			lastBreakSeen = c.leftovers().lastExpectAt();
 			progressAt = now;
 			return false;
+		}
+		if (items < lastItems) {
+			lastItems = items; // remember the lower count, so gaining it back later counts
 		}
 		if (now - progressAt > STALL_TICKS) {
 			progressAt = now; // give whatever comes next a fresh start

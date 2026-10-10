@@ -50,6 +50,63 @@ public class Perception {
 		this.now = serverTick;
 		if (companion.player() != null) {
 			surroundings.tick(companion.player());
+			if ((serverTick + Math.floorMod(companion.name().hashCode(), 100)) % 100 == 0) {
+				watchHerds();
+			}
+		}
+	}
+
+	private static final int MAX_HERDS = 12;
+
+	/**
+	 * Notice animals while doing other things, like a player does: groups of three or more food
+	 * animals within 48 blocks are remembered (one spot per area), and remembered spots in view
+	 * with nothing there any more are forgotten. Hunting goes straight to these.
+	 */
+	private void watchHerds() {
+		var p = companion.player();
+		var world = p.getServerWorld();
+		var memory = companion.memory();
+		String dim = companion.dimension();
+		List<net.minecraft.entity.passive.AnimalEntity> animals = world.getEntitiesByClass(net.minecraft.entity.passive.AnimalEntity.class,
+			p.getBoundingBox().expand(48, 16, 48), a -> com.mcfriends.knowledge.Animals.FOOD_ANIMALS.contains(a.getType())
+				&& !a.isBaby() && !a.hasCustomName() && a.isAlive());
+		java.util.Map<net.minecraft.entity.EntityType<?>, List<net.minecraft.entity.passive.AnimalEntity>> byKind = new java.util.HashMap<>();
+		for (var a : animals) {
+			byKind.computeIfAbsent(a.getType(), k -> new java.util.ArrayList<>()).add(a);
+		}
+		long time = world.getTime();
+		for (var group : byKind.values()) {
+			if (group.size() < 3) {
+				continue;
+			}
+			// The middle of the densest bunch, not whichever stray we happened to list first.
+			net.minecraft.entity.passive.AnimalEntity center = null;
+			int bestNear = 0;
+			for (var a : group) {
+				int near = (int) group.stream().filter(o -> o.squaredDistanceTo(a) < 12 * 12).count();
+				if (near > bestNear) {
+					bestNear = near;
+					center = a;
+				}
+			}
+			if (center == null || bestNear < 3) {
+				continue;
+			}
+			net.minecraft.util.math.BlockPos at = center.getBlockPos();
+			var known = memory.sightings("herd", at, dim, 24);
+			if (!known.isEmpty()) {
+				memory.sight("herd", known.get(0).pos(), dim, time); // still there
+			} else if (memory.sightings("herd", p.getBlockPos(), dim, 10_000).size() < MAX_HERDS) {
+				memory.sight("herd", at, dim, time);
+			}
+		}
+		// Remembered herds we can see the spot of, with no animals near it now: gone.
+		for (var seen : memory.sightings("herd", p.getBlockPos(), dim, 32)) {
+			boolean any = animals.stream().anyMatch(a -> a.getBlockPos().getSquaredDistance(seen.pos()) < 24 * 24);
+			if (!any) {
+				memory.forgetSighting("herd", seen.pos());
+			}
 		}
 	}
 
