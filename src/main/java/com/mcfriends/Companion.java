@@ -382,6 +382,22 @@ public class Companion {
 		return 0;
 	}
 
+	/** Drop the current job (and what was queued after it) as failed, like a task that failed itself. */
+	private void giveUpJob(String reason) {
+		Task job = brain.job();
+		String what = job != null ? job.describe() : brain.jobName();
+		AiLog.log(name(), "giving up on {}: {}", what, reason);
+		if (job != null && job.spec() != null) {
+			com.mcfriends.ops.SoakStats.job(name(), job.name(), false, reason);
+			com.mcfriends.brain.plan.MethodStats.record(this, com.mcfriends.brain.plan.MethodStats.key(job.spec()), false, 0, job.ticks());
+		}
+		nav.stop();
+		brain.setJob(null);
+		jobs.abandonRest();
+		life.failed(now);
+		speech.event("event.task_failed", Map.of("reason", reason, "job", what), 0, 1.0F);
+	}
+
 	void onDeath() {
 		AiLog.log(name(), "died");
 		nav.stop();
@@ -438,9 +454,27 @@ public class Companion {
 		speech.event("event.kill", Map.of("mob", mobName(victim)), 15 * 20, 0.35F);
 	}
 
+	/** The job that keeps sending us up for air, and how many times it has. */
+	@org.jetbrains.annotations.Nullable
+	private Task breathJob;
+	private int breathCount;
+
 	/** Brain callback when an interrupt (fight, flee, eat...) starts. */
 	public void onInterruptStarted(Objective objective, Task task) {
 		com.mcfriends.ops.SoakStats.interrupt(objective.name());
+		if (objective == Objective.BREATHE && brain.job() != null) {
+			// Up for air, back down, up for air...: whatever the job is after is underwater.
+			if (brain.job() == breathJob) {
+				breathCount++;
+			} else {
+				breathJob = brain.job();
+				breathCount = 1;
+			}
+			if (breathCount >= 3) {
+				breathJob = null;
+				giveUpJob("there's too much water here");
+			}
+		}
 		if (objective == Objective.FIGHT && task instanceof FightTask) {
 			net.minecraft.entity.mob.MobEntity t = perception.nearestThreat();
 			if (t != null && t.getTarget() instanceof CompanionPlayer friend && friend != player) {

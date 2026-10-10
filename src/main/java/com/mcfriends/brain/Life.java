@@ -460,6 +460,9 @@ public class Life {
 		if (colony == null || !colony.hasBase() || colony.world() != p.getServerWorld() || !allowed("deposit", now)) {
 			return null;
 		}
+		if (!chestPossible(c, inv)) {
+			return null; // no chest and no wood for one: chopping comes first (another goal)
+		}
 		int toStore = com.mcfriends.colony.Kit.storeSlots(inv);
 		int empty = com.mcfriends.colony.Kit.emptySlots(inv);
 		boolean atBase = colony.near(p.getServerWorld(), p.getBlockPos(), com.mcfriends.colony.Colony.BASE_RADIUS);
@@ -483,7 +486,7 @@ public class Life {
 		if (colony == null || !colony.hasBase() || !colony.near(p.getServerWorld(), p.getBlockPos(), com.mcfriends.colony.Colony.BASE_RADIUS)) {
 			return null;
 		}
-		if (com.mcfriends.colony.Kit.storeSlots(inv) > 0 && allowed("deposit", now)) {
+		if (com.mcfriends.colony.Kit.storeSlots(inv) > 0 && allowed("deposit", now) && chestPossible(c, inv)) {
 			return new Goal("deposit", List.of("deposit"), "might as well tidy up");
 		}
 		Goal light = lightGoal(c, inv, now);
@@ -659,6 +662,16 @@ public class Life {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Storing can work without a trip outside: the base has a chest, or we (or the chests) have
+	 * one, or the wood for one (8 planks). Otherwise "put things away" means "go chop a tree",
+	 * which at night gets called off straight away, over and over.
+	 */
+	private static boolean chestPossible(Companion c, PlayerInventory inv) {
+		com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+		return colony != null && colony.chestCount() > 0 || has(inv, s -> s.isOf(Items.CHEST)) || planksAvailable(c, inv) >= 8;
 	}
 
 	/** Planks we could have for crafting: carried or stored, logs counting as four. */
