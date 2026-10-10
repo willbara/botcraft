@@ -85,7 +85,10 @@ public final class Drives {
 		CompanionPlayer p = c.player();
 		float hp = p.getHealth() / p.getMaxHealth();
 		float threshold = 0.4F - b.personality().bravery() * 0.15F;
-		if (hp < threshold && !c.perception().threats().isEmpty()) {
+		// Only for a threat inside the distance a retreat counts as done at; otherwise a mob
+		// hovering just past it starts a retreat that ends at once, over and over.
+		MobEntity near = c.perception().nearestThreat();
+		if (hp < threshold && near != null && near.distanceTo(p) < com.mcfriends.brain.task.FleeTask.SAFE_DISTANCE - 1) {
 			out.propose(Objective.RETREAT, 0.93F, String.format("health %.0f%%", hp * 100));
 		}
 	}

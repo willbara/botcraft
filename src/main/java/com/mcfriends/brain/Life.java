@@ -123,7 +123,9 @@ public class Life {
 			return;
 		}
 		CompanionPlayer p = c.player();
-		if (p.getHungerManager().getFoodLevel() >= 12 || Inventories.foodCount(p.getInventory()) > 0
+		// Hungry, or hurt and unable to heal (natural healing needs a nearly full hunger bar).
+		boolean cantHeal = p.getHealth() < p.getMaxHealth() * 0.6F && p.getHungerManager().getFoodLevel() < 18;
+		if ((p.getHungerManager().getFoodLevel() >= 12 && !cantHeal) || Inventories.foodCount(p.getInventory()) > 0
 			|| !c.perception().threats().isEmpty()) {
 			return;
 		}
@@ -188,7 +190,8 @@ public class Life {
 		if (raw > 0 && (food < 6 || p.getHungerManager().getFoodLevel() < 16)) {
 			goals.add(new Goal("cook", List.of("smelt food " + Math.min(raw, 16)), "I've got raw meat to cook"));
 		}
-		if (p.getHungerManager().getFoodLevel() < 16 && food == 0 && raw == 0) {
+		boolean hurt = p.getHealth() < p.getMaxHealth() * 0.6F && p.getHungerManager().getFoodLevel() < 18;
+		if ((p.getHungerManager().getFoodLevel() < 16 || hurt) && food == 0 && raw == 0) {
 			goals.add(new Goal("hunt", List.of("hunt meat 4", "smelt food 4"), "I'm getting hungry"));
 		}
 		// 3. Tool progression, then iron gear.

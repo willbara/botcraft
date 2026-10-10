@@ -34,7 +34,7 @@ public final class Leftovers {
 	public static final double RANGE = 16;
 	private static final int MAX_SPOTS = 64;
 
-	private record Spot(BlockPos pos, long at, double spread) {
+	private record Spot(BlockPos pos, long at, double spread, long ttl) {
 	}
 
 	private final Companion c;
@@ -51,15 +51,18 @@ public final class Leftovers {
 
 	/** Something of ours may drop around here (a block broke, an animal died). */
 	public void expect(BlockPos pos) {
-		expect(pos, SPREAD);
+		expect(pos, SPREAD, TTL);
 	}
 
-	/** Like {@link #expect(BlockPos)}, for drops that scatter further (everything we had, when we died). */
-	public void expect(BlockPos pos, double spread) {
+	/**
+	 * Like {@link #expect(BlockPos)}, for drops that scatter further and that are worth
+	 * coming back for until they despawn (everything we had, when we died).
+	 */
+	public void expect(BlockPos pos, double spread, long ttl) {
 		BlockPos p = pos.toImmutable();
 		lastExpectAt = c.server.getTicks();
 		spots.removeIf(s -> s.pos.equals(p));
-		spots.addLast(new Spot(p, c.server.getTicks(), spread));
+		spots.addLast(new Spot(p, c.server.getTicks(), spread, ttl));
 		while (spots.size() > MAX_SPOTS) {
 			spots.removeFirst();
 		}
@@ -127,7 +130,8 @@ public final class Leftovers {
 	private void prune() {
 		long now = c.server.getTicks();
 		for (Iterator<Spot> it = spots.iterator(); it.hasNext(); ) {
-			if (now - it.next().at > TTL) {
+			Spot spot = it.next();
+			if (now - spot.at > spot.ttl) {
 				it.remove();
 			}
 		}
