@@ -393,11 +393,18 @@ public final class Colony {
 	 */
 	@Nullable
 	public BlockPos newChestSpot() {
+		return newChestSpot(java.util.Set.of());
+	}
+
+	/** Like {@link #newChestSpot()}, skipping spots that didn't work. */
+	@Nullable
+	public BlockPos newChestSpot(java.util.Set<BlockPos> exclude) {
 		ServerWorld w = world();
 		BlockPos b = base();
 		if (w == null || b == null) {
 			return null;
 		}
+		this.exclude = exclude;
 		// First choice: a spot of its own. On cramped ground (a hilltop), next to another chest
 		// is fine too: two singles just become a double chest.
 		BlockPos spot = chestSpot(w, b, false, 8, 3);
@@ -407,13 +414,20 @@ public final class Colony {
 		return spot != null ? spot : chestSpot(w, b, true, 12, 8);
 	}
 
+	private java.util.Set<BlockPos> exclude = java.util.Set.of();
+
 	@Nullable
 	private BlockPos chestSpot(ServerWorld w, BlockPos b, boolean mayTouch, int across, int updown) {
 		BlockPos best = null;
 		double bestD = Double.MAX_VALUE;
 		for (BlockPos p : BlockPos.iterate(b.add(-across, -updown, -across), b.add(across, updown, across))) {
 			if (p.getSquaredDistance(b) < 4 || !w.getBlockState(p).isReplaceable() || !w.getBlockState(p.up()).isReplaceable()
-				|| !w.getFluidState(p).isEmpty() || !w.getBlockState(p.down()).isSideSolidFullSquare(w, p.down(), Direction.UP)) {
+				|| !w.getFluidState(p).isEmpty() || !w.getBlockState(p.down()).isSideSolidFullSquare(w, p.down(), Direction.UP)
+				|| exclude.contains(p)) {
+				continue;
+			}
+			// Someone standing there (companions gather at the base) would block the chest.
+			if (!w.getEntitiesByClass(net.minecraft.entity.LivingEntity.class, new net.minecraft.util.math.Box(p), e -> e.isAlive()).isEmpty()) {
 				continue;
 			}
 			boolean touches = false;
