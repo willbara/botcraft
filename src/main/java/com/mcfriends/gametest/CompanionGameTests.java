@@ -1839,35 +1839,96 @@ public class CompanionGameTests implements FabricGameTest {
 		ctx.complete();
 	}
 
-	/** "Everyone run away": free mode, and they head off in different directions. */
-	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "scatter")
+	/** "Everyone run away": free mode, and each heads off 40-64 blocks, in different directions. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "scatter")
 	public void scattersOnRunAway(TestContext ctx) {
 		CompanionManager m = manager(ctx);
 		cleanup(m, "GtScatterA", "GtScatterB");
 		stoneArena(ctx, 6);
 		ctx.assertTrue(m.spawn("GtScatterA", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 3.5)), 0.0F) == null, "spawn a");
 		ctx.assertTrue(m.spawn("GtScatterB", "noor", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(4.5, 1, 3.5)), 0.0F) == null, "spawn b");
-		Companion a = m.byName("GtScatterA");
-		Companion b = m.byName("GtScatterB");
-		// Room to go: knock the arena walls down and lay a wide floor.
-		for (int x = -40; x <= 46; x++) {
-			for (int z = -40; z <= 46; z++) {
-				ctx.setBlockState(x, 0, z, Blocks.STONE);
-				for (int y = 1; y <= 3; y++) {
-					ctx.setBlockState(x, y, z, Blocks.AIR);
-				}
-			}
-		}
 		var names = java.util.List.of("GtScatterA", "GtScatterB");
-		for (Companion c : java.util.List.of(a, b)) {
+		java.util.List<BlockPos> targets = new java.util.ArrayList<>();
+		for (String n : names) {
+			Companion c = m.byName(n);
 			var parsed = com.mcfriends.chat.IntentParser.parse("everyone run away", names);
 			ctx.assertTrue(com.mcfriends.chat.ChatRouter.respond(c, null, parsed.intents(), false) == null, "respond");
 			ctx.assertTrue("free".equals(c.data.mode), "not free: " + c.data.mode);
+			String job = c.jobs().pending().isEmpty() ? "" : c.jobs().pending().get(0);
+			ctx.assertTrue(job.startsWith("goto "), "no trip queued: " + c.jobs().pending());
+			String[] w = job.split(" ");
+			BlockPos to = new BlockPos(Integer.parseInt(w[1]), Integer.parseInt(w[2]), Integer.parseInt(w[3]));
+			double d = Math.sqrt(to.getSquaredDistance(c.player().getBlockPos()));
+			ctx.assertTrue(d > 35 && d < 70, n + " heading " + (int) d + " blocks off");
+			targets.add(to);
 		}
+		double apart = Math.sqrt(targets.get(0).getSquaredDistance(targets.get(1)));
+		ctx.assertTrue(apart > 40, "headed only " + (int) apart + " apart");
+		cleanup(m, "GtScatterA", "GtScatterB");
+		ctx.complete();
+	}
+
+	/**
+	 * "Sleep" with a bed in its pockets and none around: it puts the bed down and sleeps, and the
+	 * night is skipped even though another companion is still up.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "sleep_own_bed")
+	public void placesItsBedAndSkipsTheNight(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtSleeper", "GtNightOwl");
+		stoneArena(ctx, 8);
+		ctx.assertTrue(m.spawn("GtSleeper", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 4.5)), 0.0F) == null, "spawn");
+		ctx.assertTrue(m.spawn("GtNightOwl", "noor", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(7.5, 1, 7.5)), 0.0F) == null, "spawn owl");
+		Companion c = m.byName("GtSleeper");
+		Companion owl = m.byName("GtNightOwl");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		com.mcfriends.chat.CommandTasks.stay(owl);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.RED_BED, 1);
+		var rules = ctx.getWorld().getGameRules();
+		boolean cycle = rules.getBoolean(net.minecraft.world.GameRules.DO_DAYLIGHT_CYCLE);
+		rules.get(net.minecraft.world.GameRules.DO_DAYLIGHT_CYCLE).set(true, ctx.getWorld().getServer());
+		ctx.getWorld().setTimeOfDay(18000);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "sleep", null) == null, "order");
+		boolean[] slept = new boolean[1];
 		ctx.addInstantFinalTask(() -> {
-			double apart = a.player().distanceTo(b.player());
-			ctx.assertTrue(apart > 30, "only " + (int) apart + " apart; " + a.describeActivity() + " / " + b.describeActivity());
-			cleanup(m, "GtScatterA", "GtScatterB");
+			slept[0] |= c.player().isSleeping();
+			ctx.assertTrue(slept[0], "never slept: " + c.describeActivity() + "; bed carried " + count(c, net.minecraft.item.Items.RED_BED));
+			ctx.assertTrue(ctx.getWorld().isDay() && !owl.player().isSleeping(), "night not skipped (time " + ctx.getWorld().getTimeOfDay() % 24000 + ")");
+			rules.get(net.minecraft.world.GameRules.DO_DAYLIGHT_CYCLE).set(cycle, ctx.getWorld().getServer());
+			ctx.getWorld().setTimeOfDay(1000);
+			cleanup(m, "GtSleeper", "GtNightOwl");
+		});
+	}
+
+	/** Free mode at night with wool and planks but no bed: it makes one and goes to sleep. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1200, batchId = "free_makes_bed")
+	public void freeModeMakesABedAtNight(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtBedMaker");
+		stoneArena(ctx, 10);
+		ctx.assertTrue(m.spawn("GtBedMaker", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(4.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtBedMaker");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_SWORD, 1);
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		give(c, net.minecraft.item.Items.WHITE_WOOL, 3);
+		give(c, net.minecraft.item.Items.OAK_PLANKS, 8);
+		c.data.owner = null;
+		c.data.mode = "free";
+		c.data.initiative = 1.0F;
+		c.memory().forgetPlace("bed");
+		c.memory().setPlace("home", ctx.getAbsolutePos(new BlockPos(5, 1, 5)), c.dimension(), ctx.getWorld().getTime());
+		ctx.getWorld().setTimeOfDay(18000);
+		boolean[] slept = new boolean[1];
+		ctx.addInstantFinalTask(() -> {
+			slept[0] |= c.player().isSleeping();
+			ctx.assertTrue(slept[0], "never slept: " + c.describeActivity() + "; queued " + c.jobs().pending()
+				+ "; beds " + count(c, net.minecraft.item.Items.WHITE_BED) + ", wool " + count(c, net.minecraft.item.Items.WHITE_WOOL));
+			c.data.initiative = null;
+			ctx.getWorld().setTimeOfDay(1000);
+			cleanup(m, "GtBedMaker");
 		});
 	}
 }

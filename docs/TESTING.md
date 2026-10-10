@@ -5,7 +5,7 @@
 | Command | What it covers |
 |---|---|
 | `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
-| `./gradlew runGametest` | Headless server, 65 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/mcfriends.json` to see AI traces. |
+| `./gradlew runGametest` | Headless server, 67 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/mcfriends.json` to see AI traces. |
 
 | GameTest | Milestone | Passes when |
 |---|---|---|
@@ -205,6 +205,11 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 
 ### 24. Scatter
 - [ ] "everyone run away": each says goodbye and walks off in a different direction, roughly 40-64 blocks, then gets on with free mode.
+
+### 25. Beds and the night
+- [ ] Free mode, give each companion 3 white wool (or a bed): at dusk they craft or put down a bed near home and sleep in it.
+- [ ] Free mode in daytime with stone tools and no bed: they hunt sheep for wool and set a bed down at home, one each.
+- [ ] Sleep in your own bed while some companions are still awake (guarding, no bed): the night is skipped anyway.
 
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.
