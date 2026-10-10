@@ -117,7 +117,7 @@ A companion only responds when you **say its name** ("Bob, follow me") or addres
 | dance / everyone dance / bust a move | About 12 seconds of dancing (spins, hops, crouch spam, punching the air), then back to whatever it was doing. Anyone can ask, and it doesn't end free mode. |
 | put your stuff away / empty your inventory / deposit | Store everything except the kit in the base chests. |
 | go home / come home | Go home. |
-| go to sleep / go to bed | Find a free bed and sleep (only at night). |
+| go to sleep / go to bed | Find a free bed and sleep (only at night). With no free bed around but one in its pockets, it puts that one down first. |
 | do your own thing / go explore / you're free | Free mode: live and progress on its own around home. Any other order ends it. |
 
 Item names are resolved against the game's own item list:
@@ -325,9 +325,9 @@ Every task has its own time limit, but a task can keep itself busy without getti
 
 "Do your own thing" turns on a player-like routine around home:
 
-- **Night:** sleep in a bed. Without one, an armed companion guards home and an unarmed one digs in (three blocks down, roofed) until morning. Errands still running at dusk (hunting, chopping, exploring) are dropped so it heads in instead of being caught outside.
+- **Night:** sleep in a bed: a free one near home, else its own bed from its pockets (put down at home), else one it crafts on the spot from 3 wool of one colour (carried or in the base chests) and planks. Only with none of that does an armed companion guard home and an unarmed one dig in (three blocks down, roofed) until morning. Errands still running at dusk (hunting, chopping, exploring) are dropped so it heads in instead of being caught outside.
 - **Food:** cook raw meat, ask a friend, or hunt, and keep a reserve of about 6 food when animals are known nearby.
-- **Progression:** wooden and stone tools, then smelting carried raw iron, an iron pickaxe, an iron sword, iron armour piece by piece, then a bed.
+- **Progression:** wooden and stone tools, then a bed of its own at home (hunting sheep for the wool if need be; companions don't share beds, so everyone can sleep), then smelting carried raw iron, an iron pickaxe, an iron sword and iron armour piece by piece.
 - **Whatever suits where it is:** chopping with an axe in a forest; mining coal, iron, then diamonds (with an iron pickaxe) in a nearby cave; turning spare coal into torches.
 - **Otherwise:** it revisits a remembered cave or wanders.
 
@@ -344,7 +344,7 @@ The soak report lists every rescue. In follow mode it only does light tool upkee
 
 ### Sleep
 
-It goes to bed when you do, so the night can be skipped.
+It goes to bed when you do (and on its own at night in free mode), so the night can be skipped. It uses its own bed if it has one, any free bed nearby otherwise, and puts down a bed it's carrying if there's none free. Awake companions never hold up the night skip (see [Limitations](#players-and-the-server)).
 
 ### Speech
 
@@ -372,7 +372,7 @@ Spawn a companion named **popbob** (any capitalisation) and it turns on everyone
 
 - **They count as players** (but don't use player slots):
   - They appear in the tab list, the player count and `usercache.json`, and they earn stats and advancements.
-  - The night only skips if every companion near you finds a free bed, or with a lower `playersSleepingPercentage`.
+  - For skipping the night, only companions **in bed** count: awake ones (standing guard, no bed) are left out, like spectators. So the night skips once you (and every other real player) are asleep, whatever the companions are doing. With no real players online, it skips once all the companions are in bed.
 - **Leave/join messages.** Dying and changing skins both make a companion leave and rejoin, so chat shows a leave/join pair.
 - **Chat messages are system messages** formatted as `<Name> text`, because a fake player can't sign chat.
 - **Spawn protection** on dedicated servers stops non-op companions from breaking blocks near spawn.
@@ -526,14 +526,14 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 65 GameTests. It resets its world on every run. The tests cover:
+- `./gradlew runGametest` runs a headless server with 67 GameTests. It resets its world on every run. The tests cover:
   - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
   - combat, free mode (including ignoring the owner, and the failsafe), shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;
   - chat, banter, sharing, spreading out, tool prep and picking up drops;
   - the base: storing all but the kit, chests with a purpose, placing a chest when needed, and crafting from base stock (never from other chests);
-  - the planner (using stock, smelting what's carried, chaining from scratch, learning from failure), the target ladder, dancing, and scattering on "run away";
+  - the planner (using stock, smelting what's carried, chaining from scratch, learning from failure), the target ladder, dancing, scattering on "run away", and beds (putting a carried bed down, crafting one at night in free mode, the night skip with a companion still awake);
   - torches in a dark cave and lighting up a dark base;
   - the popbob easter egg (attacking, being fought back, griefing but never chests, ignoring orders);
   - player slots.

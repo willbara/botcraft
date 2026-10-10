@@ -21,6 +21,8 @@ public class PlaceTask extends Task {
 	private final BlockPos near;
 	private int attempts;
 	private boolean placed;
+	/** Spots that didn't work (a bed's other half had no room). */
+	private final java.util.Set<BlockPos> tried = new java.util.HashSet<>();
 
 	public PlaceTask(Companion c, Item item, BlockPos near) {
 		super(c);
@@ -58,14 +60,18 @@ public class PlaceTask extends Task {
 			return c.nav().state() == Navigator.State.FAILED ? fail("I can't get there") : Status.RUNNING;
 		}
 		c.nav().stop();
-		BlockPos spot = Spots.placeSpot(c);
+		BlockPos spot = Spots.placeSpot(c, tried);
 		if (spot == null || ++attempts > 40) {
 			return fail("there's no room for it here");
 		}
 		// Beds extend in the direction we face: face away from ourselves through the spot.
 		Direction facing = Direction.getFacing(spot.getX() - p.getX(), 0, spot.getZ() - p.getZ());
 		if (new net.minecraft.item.ItemStack(item).isIn(net.minecraft.registry.tag.ItemTags.BEDS)) {
-			if (!p.getWorld().getBlockState(spot.offset(facing)).isReplaceable()) {
+			BlockPos foot = spot.offset(facing);
+			if (!p.getWorld().getBlockState(foot).isReplaceable() || !p.getWorld().getFluidState(foot).isEmpty()
+				|| !p.getWorld().getBlockState(foot.down()).isSideSolidFullSquare(p.getWorld(), foot.down(), Direction.UP)
+				|| p.getBoundingBox().intersects(new net.minecraft.util.math.Box(foot))) {
+				tried.add(spot); // no room for the other half this way round
 				return Status.RUNNING;
 			}
 			c.actions().lookAt(net.minecraft.util.math.Vec3d.ofCenter(spot.offset(facing)));

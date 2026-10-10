@@ -13,6 +13,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.item.PickaxeItem;
 import net.minecraft.registry.tag.BlockTags;
+import net.minecraft.registry.tag.ItemTags;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
@@ -166,8 +167,19 @@ public class Life {
 
 		// 1. Night: bed, else home (armed) or a dug-in shelter.
 		if (c.perception().isNight()) {
-			if (bedNear(c, home) && allowed("sleep", now)) {
-				return new Goal("sleep", List.of("sleep"), "it's late");
+			if (allowed("sleep", now)) {
+				if (bedNear(c, home)) {
+					return new Goal("sleep", List.of("sleep"), "it's late");
+				}
+				// No bed down yet: put ours down, or make one if we've got the wool (sleeping skips
+				// the night; standing around in the dark doesn't).
+				if (has(inv, s -> s.isIn(ItemTags.BEDS))) {
+					return new Goal("sleep", List.of("sleep"), "I'll put my bed down and get some sleep");
+				}
+				String bed = bedFromWool(c, inv);
+				if (bed != null && planksAvailable(c, inv) >= 3) {
+					return new Goal("sleep", List.of("craft " + bed + " 1", "sleep"), "I've got the wool for a bed, time to sleep");
+				}
 			}
 			// No bed: armed companions can stand guard at home; everyone else digs in like a
 			// player's first night.
@@ -228,6 +240,19 @@ public class Life {
 		if (rawIron >= 3) {
 			goals.add(new Goal("smelt_iron", List.of("smelt iron_ingot " + rawIron), "I should smelt this iron"));
 		}
+		// 4. Settle in: a bed of our own at home, once we've got basic tools. Sleeping is how the
+		// night gets skipped, and everyone needs their own bed for that. (Wool from sheep.)
+		if (stonePick && !ownBed(c)) {
+			int carried = Inventories.find(inv, s -> s.isIn(ItemTags.BEDS));
+			if (carried >= 0) {
+				String id = com.mcfriends.knowledge.ItemNames.id(inv.getStack(carried).getItem());
+				goals.add(new Goal("place_bed", List.of("place " + id + " " + h), "let's put my bed down"));
+			} else {
+				String bed = bedFromWool(c, inv);
+				bed = bed != null ? bed : "white_bed";
+				goals.add(new Goal("bed", List.of("craft " + bed + " 1", "place " + bed + " " + h), "I'd like a bed of my own at home"));
+			}
+		}
 		// Progression: the next target on the ladder (iron tools, iron armour, diamonds...), got
 		// whichever way the planner finds cheapest right now.
 		// (Planned only when nothing more urgent is waiting: planning isn't free.)
@@ -236,12 +261,6 @@ public class Life {
 			if (target != null) {
 				goals.add(target);
 			}
-		}
-		// 4. Settle in: a bed at home.
-		if (ironPick && !bedNear(c, home) && !has(inv, s -> s.isIn(net.minecraft.registry.tag.ItemTags.BEDS))) {
-			goals.add(new Goal("bed", List.of("craft white_bed 1", "place white_bed " + h), "I'd like a bed at home"));
-		} else if (has(inv, s -> s.isIn(net.minecraft.registry.tag.ItemTags.BEDS)) && !bedNear(c, home)) {
-			goals.add(new Goal("place_bed", List.of("place white_bed " + h), "let's put my bed down"));
 		}
 		// 5. Whatever suits where we are (like a player would): wood in a forest, ore in a cave.
 		boolean underground = !p.getWorld().isSkyVisible(p.getBlockPos().up());
@@ -554,6 +573,57 @@ public class Life {
 		BlockPos here = c.player().getBlockPos();
 		c.memory().setPlace("home", here, c.dimension(), c.player().getWorld().getTime());
 		return here;
+	}
+
+	/**
+	 * We have a bed of our own: the one we remember is still there and no other companion
+	 * thinks it's theirs (two sharing one bed means one of them is up all night).
+	 */
+	static boolean ownBed(Companion c) {
+		Memory.Place bed = c.memory().place("bed");
+		if (bed == null || !c.player().getWorld().getBlockState(bed.pos()).isIn(BlockTags.BEDS)) {
+			return false;
+		}
+		com.mcfriends.CompanionManager m = com.mcfriends.CompanionManager.get();
+		if (m != null) {
+			for (Companion o : m.all()) {
+				Memory.Place theirs = o == c ? null : o.memory().place("bed");
+				if (theirs != null && theirs.pos().equals(bed.pos()) && o.name().compareToIgnoreCase(c.name()) < 0) {
+					return false; // shared: the one first by name keeps it, the other makes their own
+				}
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * A bed we could make from wool we carry or have at the base: three of one colour gives
+	 * that colour's bed (e.g. "white_bed"), else null.
+	 */
+	@Nullable
+	static String bedFromWool(Companion c, PlayerInventory inv) {
+		com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+		for (net.minecraft.util.DyeColor color : net.minecraft.util.DyeColor.values()) {
+			net.minecraft.item.Item wool = net.minecraft.registry.Registries.ITEM.get(new net.minecraft.util.Identifier(color.getName() + "_wool"));
+			int n = Inventories.count(inv, s -> s.isOf(wool));
+			if (n < 3 && colony != null && colony.hasBase()) {
+				n += colony.count(s -> s.isOf(wool));
+			}
+			if (n >= 3) {
+				return color.getName() + "_bed";
+			}
+		}
+		return null;
+	}
+
+	/** Planks we could have for crafting: carried or stored, logs counting as four. */
+	private static int planksAvailable(Companion c, PlayerInventory inv) {
+		int n = Inventories.count(inv, s -> s.isIn(ItemTags.PLANKS)) + 4 * Inventories.count(inv, Inventories::isLog);
+		com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+		if (n < 3 && colony != null && colony.hasBase()) {
+			n += colony.count(s -> s.isIn(ItemTags.PLANKS)) + 4 * colony.count(Inventories::isLog);
+		}
+		return n;
 	}
 
 	private static boolean bedNear(Companion c, BlockPos home) {
