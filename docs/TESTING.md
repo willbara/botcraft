@@ -1,11 +1,11 @@
-# Testing MCFriends
+# Testing Botcraft
 
 ## Automated
 
 | Command | What it covers |
 |---|---|
 | `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
-| `./gradlew runGametest` | Headless server, 74 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/mcfriends.json` to see AI traces. |
+| `./gradlew runGametest` | Headless server, 74 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/botcraft.json` to see AI traces. |
 
 | GameTest | Milestone | Passes when |
 |---|---|---|
@@ -38,7 +38,7 @@
 
 ## Manual checklist (Test profile, world "CompanionsTest", cheats ON)
 
-Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `logs/latest.log`.
+Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `logs/latest.log`.
 
 ### 1. Spawn / remove / persist
 - [ ] `/companion spawn Bob kai` makes Bob appear 2 blocks in front of you, facing you. He has the Kai skin and a name tag, he's in the tab list, and chat shows "Bob joined the game" and a hello.
@@ -103,7 +103,7 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] At night, get into bed with a spare bed nearby. Bob walks to it and sleeps, and the night skips. With no spare bed, he says he'll keep watch.
 - [ ] Leave Bob idle near you in daytime with no tools. Within a few minutes he announces he'll make himself a sword or pickaxe, and does it.
 - [ ] Log out and back in. Bob welcomes you back.
-- [ ] `/companion info Bob` lists remembered places, sightings and stats. The file is `<world>/mcfriends/memory/bob.json`.
+- [ ] `/companion info Bob` lists remembered places, sightings and stats. The file is `<world>/botcraft/memory/bob.json`.
 
 ### 9. Pathfinding v2
 - [ ] "Bob, mine 10 stone" in a hillside, then "Bob, follow me" from the surface. He digs or pillars his way out instead of getting stuck.
@@ -123,7 +123,7 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] Ask several companions the same thing ("tell me a joke", "what's your favourite food?", "do you like creepers?"). Answers differ between companions but stay consistent per companion, and lines don't repeat back to back.
 - [ ] Leave two idle companions near each other for a few minutes. They greet and banter, and sometimes one tells the other where it found ore.
 - [ ] Hurt a companion with a mob while another armed one is nearby. The second comes to help ("Hang on Bob, I'm coming!").
-- [ ] Put a `config/mcfriends-dialogue.json` with `{"greeting": ["Ahoy {player}!"]}` and restart. Companions greet with your line.
+- [ ] Put a `config/botcraft-dialogue.json` with `{"greeting": ["Ahoy {player}!"]}` and restart. Companions greet with your line.
 
 ### 13. Targets, sharing, robustness
 - [ ] "Bob, mine some iron" with no ore in sight. He looks for a cave first ("looking in a cave" in his status) instead of digging straight down.
@@ -220,4 +220,4 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] `/companion why <name>` on a companion working a request shows the request and its bid.
 
 ### Performance
-- [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.
+- [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

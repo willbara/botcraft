@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "id": "mcfriends",
+  "id": "botcraft",
   "version": "${version}",
-  "name": "MCFriends",
+  "name": "Botcraft",
   "description": "Offline, server-side AI companions that look and act like players.",
   "authors": ["will"],
   "environment": "*",
   "entrypoints": {
-    "main": ["com.mcfriends.MCFriends"],
-    "fabric-gametest": ["com.mcfriends.gametest.CompanionGameTests"]
+    "main": ["com.botcraft.Botcraft"],
+    "fabric-gametest": ["com.botcraft.gametest.CompanionGameTests"]
   },
-  "mixins": ["mcfriends.mixins.json"],
+  "mixins": ["botcraft.mixins.json"],
   "depends": {
     "fabricloader": ">=0.15.0",
     "minecraft": "~1.20.1",

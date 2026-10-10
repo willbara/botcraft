@@ -27,7 +27,7 @@ loom {
 		soak {
 			server()
 			name 'Soak'
-			vmArg "-Dmcfriends.soak=${project.findProperty('soakMinutes') ?: 20}:${project.findProperty('soakCompanions') ?: 6}"
+			vmArg "-Dbotcraft.soak=${project.findProperty('soakMinutes') ?: 20}:${project.findProperty('soakCompanions') ?: 6}"
 			runDir = 'run/soak'
 		}
 		// Headless GameTest server (./gradlew runGametest). Uses the 1.20.1-era
@@ -114,10 +114,11 @@ tasks.matching { it.name == 'runGametest' }.configureEach {
 }
 
 // Copies the remapped mod jar into <MC_DIR>/mods, removing older copies first.
-// MC_DIR comes from the MC_DIR env var, else the mc_dir Gradle property.
+// MC_DIR comes from the MC_DIR env var, else the mc_dir Gradle property (put it in
+// ~/.gradle/gradle.properties, or pass -Pmc_dir=..., so the path stays out of the repo).
 tasks.register('deployToTest') {
-	group = 'mcfriends'
-	description = 'Builds the mod and copies it into MC_DIR/mods (replacing older MCFriends/Companions jars).'
+	group = 'botcraft'
+	description = 'Builds the mod and copies it into MC_DIR/mods (replacing older Botcraft, MCFriends or Companions jars).'
 	dependsOn tasks.named('build')
 
 	def mcDirValue = System.getenv('MC_DIR') ?: project.findProperty('mc_dir')
@@ -135,7 +136,7 @@ tasks.register('deployToTest') {
 		def built = jarFile.get().asFile
 		modsDir.listFiles().findAll { f ->
 			def n = f.name.toLowerCase()
-			f.isFile() && n.endsWith('.jar') && (n.startsWith('mcfriends') || n.startsWith('companions'))
+			f.isFile() && n.endsWith('.jar') && (n.startsWith('botcraft') || n.startsWith('mcfriends') || n.startsWith('companions'))
 		}.each { old ->
 			logger.lifecycle("Removing old jar ${old.name}")
 			if (!old.delete()) throw new GradleException("Could not delete ${old}")
