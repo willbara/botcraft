@@ -59,7 +59,18 @@ public final class CraftPlanner {
 	}
 
 	public static Plan plan(MinecraftServer server, Map<Item, Integer> inventory, Item target, int count) {
+		return plan(server, inventory, target, count, false);
+	}
+
+	/**
+	 * @param withTable also budget for a crafting table (we have none to use): the table's planks
+	 *                  come out of the same pile, so "missing" covers both.
+	 */
+	public static Plan plan(MinecraftServer server, Map<Item, Integer> inventory, Item target, int count, boolean withTable) {
 		CraftPlanner p = new CraftPlanner(server, inventory);
+		if (withTable) {
+			p.need(net.minecraft.item.Items.CRAFTING_TABLE, 1, 0, false);
+		}
 		p.need(target, count, 0, true);
 		boolean table = false;
 		for (Craft c : p.crafts) {

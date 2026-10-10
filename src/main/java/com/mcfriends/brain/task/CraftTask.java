@@ -120,6 +120,11 @@ public class CraftTask extends Task {
 			return deferTo(List.of("smelt " + ItemNames.id(item) + " " + count)); // e.g. "make iron ingots"
 		}
 		plan = CraftPlanner.plan(c.server, inventoryCounts(p.getInventory()), item, count);
+		if (plan.needsTable() && plan.problem() == null && !hasTableItem(p) && findTable(p) == null) {
+			// We'll have to make a table first, out of the same planks: count it in now, or the
+			// table eats the materials and we go round in circles fetching one more log.
+			plan = CraftPlanner.plan(c.server, inventoryCounts(p.getInventory()), item, count, true);
+		}
 		AiLog.log(c.name(), "craft {} x{}: {} crafts, missing {}, problem {}", ItemNames.id(item), count, plan.crafts().size(), plan.missing(), plan.problem());
 		if (plan.problem() != null) {
 			return fail(plan.problem());

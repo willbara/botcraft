@@ -314,7 +314,22 @@ public class ActionController {
 		if (eye.squaredDistanceTo(center) > BLOCK_REACH * BLOCK_REACH) {
 			return false;
 		}
-		BlockHitResult hit = p.getWorld().raycast(new RaycastContext(eye, center, RaycastContext.ShapeType.COLLIDER,
+		if (sees(p, eye, center, pos)) {
+			return true;
+		}
+		// Like a player, seeing part of it is enough: try the middle of each face too (ore set
+		// into a wall often hides its centre behind the stone next to it).
+		for (Direction d : Direction.values()) {
+			Vec3d face = center.add(d.getOffsetX() * 0.49, d.getOffsetY() * 0.49, d.getOffsetZ() * 0.49);
+			if (eye.squaredDistanceTo(face) <= BLOCK_REACH * BLOCK_REACH && sees(p, eye, face, pos)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean sees(CompanionPlayer p, Vec3d eye, Vec3d point, BlockPos pos) {
+		BlockHitResult hit = p.getWorld().raycast(new RaycastContext(eye, point, RaycastContext.ShapeType.COLLIDER,
 			RaycastContext.FluidHandling.NONE, p));
 		return hit.getType() == HitResult.Type.MISS || hit.getBlockPos().equals(pos);
 	}

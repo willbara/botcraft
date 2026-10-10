@@ -1131,4 +1131,72 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtVein");
 		});
 	}
+
+	/** Animals out of close range but in plain view (~55 blocks): it heads straight for them. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "hunt_far")
+	public void huntsHerdInTheDistance(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtScout");
+		// (The test world only loads a few chunks around each test, so keep it within ~60 blocks.)
+		for (int x = -4; x <= 60; x++) {
+			for (int z = -4; z <= 8; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.GRASS_BLOCK);
+				for (int y = 1; y <= 20; y++) { // tall: other tests' arenas may stand in the way
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+		for (int i = 0; i < 4; i++) {
+			ctx.spawnEntity(net.minecraft.entity.EntityType.COW, new BlockPos(55 + i, 1, 2 + (i % 2))).setPersistent();
+		}
+		ctx.assertTrue(m.spawn("GtScout", "zuri", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 2.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtScout");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_SWORD, 1);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "hunt 1 cow", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.BEEF) >= 1 || count(c, net.minecraft.item.Items.LEATHER) >= 1,
+				"no cow; at " + c.player().getBlockPos() + " ahead " + ctx.getWorld().getBlockState(c.player().getBlockPos().east())
+					+ "/" + ctx.getWorld().getBlockState(c.player().getBlockPos().east().up()) + " below " + ctx.getWorld().getBlockState(c.player().getBlockPos().down())
+					+ " entities " + ctx.getWorld().getOtherEntities(c.player(), c.player().getBoundingBox().expand(1.5)) + "; " + c.describeActivity());
+			cleanup(m, "GtScout");
+		});
+	}
+
+	/** Bare-handed with a couple of logs: it makes a wooden sword before going after animals. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1200, batchId = "hunt_sword")
+	public void craftsSwordBeforeHunting(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtArmed");
+		flatArena(ctx, 12);
+		for (int i = 0; i < 4; i++) {
+			ctx.spawnEntity(net.minecraft.entity.EntityType.COW, new BlockPos(8 + (i % 2), 1, 4 + i * 2)).setPersistent();
+		}
+		ctx.assertTrue(m.spawn("GtArmed", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 6.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtArmed");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.OAK_LOG, 2);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "hunt 1 cow", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.WOODEN_SWORD) == 1, "no sword; " + c.describeActivity() + "; queued " + c.jobs().pending());
+			ctx.assertTrue(count(c, net.minecraft.item.Items.BEEF) >= 1 || count(c, net.minecraft.item.Items.LEATHER) >= 1, "no kill yet; " + c.describeActivity());
+			cleanup(m, "GtArmed");
+		});
+	}
+
+	/** Planning with no table around counts the table's planks too (no "one more log" loop). */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "table_budget")
+	public void craftPlanCountsTheTable(TestContext ctx) {
+		var server = ctx.getWorld().getServer();
+		java.util.Map<net.minecraft.item.Item, Integer> inv = new java.util.HashMap<>();
+		inv.put(net.minecraft.item.Items.OAK_LOG, 1);
+		inv.put(net.minecraft.item.Items.OAK_PLANKS, 2);
+		var alone = com.mcfriends.knowledge.CraftPlanner.plan(server, inv, net.minecraft.item.Items.WOODEN_PICKAXE, 1);
+		var withTable = com.mcfriends.knowledge.CraftPlanner.plan(server, inv, net.minecraft.item.Items.WOODEN_PICKAXE, 1, true);
+		ctx.assertTrue(alone.ready(), "enough for the pickaxe alone: " + alone.missing());
+		ctx.assertTrue(!withTable.ready() && !withTable.missing().isEmpty(), "but not with a table too: " + withTable.missing());
+		ctx.complete();
+	}
 }

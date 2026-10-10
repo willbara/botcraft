@@ -31,6 +31,8 @@ import java.util.List;
  */
 public class HuntTask extends Task {
 	private static final double RADIUS = 32;
+	/** How far off we can make out animals (about a normal render distance). */
+	private static final double FAR_RADIUS = 96;
 	/** How far each search trip goes, and how many trips before giving up. */
 	private static final int TRIP = 40;
 	private static final int MAX_TRIPS = 5;
@@ -96,6 +98,10 @@ public class HuntTask extends Task {
 		if (kills >= count) {
 			return Status.SUCCESS;
 		}
+		if (kills == 0 && target == null && Inventories.bestWeaponDamage(p.getInventory()) < 2.0) {
+			// Bare hands: a wooden sword is two planks and a stick, and far quicker than punching.
+			return deferTo(java.util.List.of("craft wooden_sword 1"));
+		}
 		if (target == null || !target.isAlive()) {
 			if (target != null && target.isDead()) {
 				kills++;
@@ -115,13 +121,32 @@ public class HuntTask extends Task {
 						return kills > 0 ? Status.SUCCESS : fail("I walked around but couldn't find any animals to hunt");
 					}
 					searchFails = 0;
-					search.start(c, null);
+					// Look further first (a herd out in the field we can see from here), then places
+					// we've seen animals before, and only then wander off to look.
+					BlockPos herd = findHerd(p);
+					if (herd != null) {
+						AiLog.log(c.name(), "hunt: spotted animals over at {}", herd.toShortString());
+					} else {
+						for (var seen : c.memory().sightings("herd", p.getBlockPos(), c.dimension(), 160)) {
+							if (seen.pos().getSquaredDistance(p.getBlockPos()) > RADIUS * RADIUS && !triedHerds.contains(seen.pos())) {
+								herd = seen.pos();
+								AiLog.log(c.name(), "hunt: there were animals over at {} before", herd.toShortString());
+								break;
+							}
+						}
+					}
+					if (herd != null) {
+						triedHerds.add(herd);
+					}
+					search.start(c, herd);
 				}
 				return Status.RUNNING;
 			}
 			searchFails = 0;
 			search.cancel(c);
 			Claims.claim(c, target.getBlockPos());
+			c.memory().sight("herd", target.getBlockPos(), c.dimension(), p.getWorld().getTime());
+			Inventories.equipBestWeapon(p);
 			AiLog.log(c.name(), "hunting a {}", target.getType().getUntranslatedName());
 		}
 		double d = p.distanceTo(target);
@@ -144,6 +169,9 @@ public class HuntTask extends Task {
 			}
 		} else {
 			c.nav().stop();
+			if (ticks() % 20 == 0) {
+				Inventories.equipBestWeapon(p); // picking things up can shuffle the hotbar
+			}
 		}
 		c.actions().attack(target);
 		return Status.RUNNING;
@@ -165,6 +193,32 @@ public class HuntTask extends Task {
 			collecting = null;
 		}
 		return Status.RUNNING;
+	}
+
+	/** Herds we already went to look at during this hunt. */
+	private final java.util.Set<BlockPos> triedHerds = new java.util.HashSet<>();
+
+	/**
+	 * Animals further off, as far as we could see them (about render distance): the nearest
+	 * one that's fair game, judged against its own herd rather than what's near us.
+	 */
+	@Nullable
+	private BlockPos findHerd(CompanionPlayer p) {
+		List<AnimalEntity> far = p.getServerWorld().getEntitiesByClass(AnimalEntity.class, p.getBoundingBox().expand(FAR_RADIUS, 48, FAR_RADIUS),
+			a -> species.isEmpty() ? Animals.FOOD_ANIMALS.contains(a.getType()) : species.contains(a.getType()));
+		far.sort(Comparator.comparingDouble(a -> a.squaredDistanceTo(p)));
+		var border = p.getWorld().getWorldBorder();
+		for (AnimalEntity a : far) {
+			if (!border.contains(a.getBlockPos()) || triedHerds.stream().anyMatch(t -> t.getSquaredDistance(a.getBlockPos()) < 16 * 16)) {
+				continue;
+			}
+			List<AnimalEntity> herd = far.stream().filter(o -> o.squaredDistanceTo(a) < 16 * 16).toList();
+			if (Animals.huntable(a, herd)) {
+				c.memory().sight("herd", a.getBlockPos(), c.dimension(), p.getWorld().getTime());
+				return a.getBlockPos();
+			}
+		}
+		return null;
 	}
 
 	@Nullable
