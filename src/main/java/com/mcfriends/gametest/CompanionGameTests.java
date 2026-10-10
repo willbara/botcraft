@@ -49,11 +49,13 @@ public class CompanionGameTests implements FabricGameTest {
 		// Many tests run side by side, each with its own companions.
 		com.mcfriends.config.CompanionConfig.get().maxCompanions = Math.max(64, com.mcfriends.config.CompanionConfig.get().maxCompanions);
 		com.mcfriends.config.CompanionConfig.get().initiative = 0; // tests want only the behaviour under test
+		com.mcfriends.config.CompanionConfig.get().placeTorches = true; // (a failed test may have left it off)
 		// No shared base unless the test sets one (base tests run in batches of their own).
 		var colony = com.mcfriends.colony.Colony.get();
 		if (colony != null) {
 			colony.clear();
 		}
+		com.mcfriends.brain.Board.clear();
 		return m;
 	}
 
@@ -1929,6 +1931,98 @@ public class CompanionGameTests implements FabricGameTest {
 			c.data.initiative = null;
 			ctx.getWorld().setTimeOfDay(1000);
 			cleanup(m, "GtBedMaker");
+		});
+	}
+
+	/** A base with one chest, collecting only {@code key} (up to {@code want}). */
+	static com.mcfriends.colony.Colony boardBase(TestContext ctx, String key, int want) {
+		var colony = colony(ctx, new BlockPos(6, 1, 6));
+		ctx.setBlockState(9, 1, 6, Blocks.CHEST);
+		colony.addChest(ctx.getAbsolutePos(new BlockPos(9, 1, 6)));
+		for (var t : com.mcfriends.colony.StockTargets.DEFAULTS) {
+			colony.setWant(t.key(), t.key().equals(key) ? want : 0);
+		}
+		return colony;
+	}
+
+	static Companion freeCompanion(TestContext ctx, CompanionManager m, String name, Vec3d at) {
+		ctx.assertTrue(m.spawn(name, "kai", null, ctx.getWorld(), ctx.getAbsolute(at), 0.0F) == null, "spawn " + name);
+		Companion c = m.byName(name);
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		c.data.owner = null;
+		c.data.mode = "free";
+		c.memory().setPlace("home", ctx.getAbsolutePos(new BlockPos(6, 1, 6)), c.dimension(), ctx.getWorld().getTime());
+		return c;
+	}
+
+	/**
+	 * The base is short of coal: the board posts a request and it goes to the companion with spare
+	 * coal by the base, not to the one who'd have to go and mine it. Failing it counts against the
+	 * next bid.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "board_bids")
+	public void boardGivesRequestToBestBidder(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtRich", "GtPoor");
+		flatArena(ctx, 12);
+		boardBase(ctx, "coal", 8);
+		Companion rich = freeCompanion(ctx, m, "GtRich", new Vec3d(7.5, 1, 7.5));
+		Companion poor = freeCompanion(ctx, m, "GtPoor", new Vec3d(2.5, 1, 2.5));
+		give(rich, net.minecraft.item.Items.COAL, 30);
+		give(poor, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		long now = m.tickCount();
+		com.mcfriends.brain.Board.refresh(m, now);
+		var open = com.mcfriends.brain.Board.requests();
+		ctx.assertTrue(open.size() == 1 && open.get(0).key.equals("coal") && open.get(0).count == 8, "requests: " + open.size());
+		ctx.assertTrue(com.mcfriends.brain.Board.take(poor, now) == null, "the miner took it");
+		var a = com.mcfriends.brain.Board.take(rich, now);
+		ctx.assertTrue(a != null && a.steps().size() == 2 && a.steps().get(0).startsWith("goto ") && a.steps().get(1).equals("deposit coal 8"),
+			"rich didn't get it: " + (a == null ? null : a.steps()));
+		var r = a.request();
+		ctx.assertTrue(r.bids.get(0).who().equals("GtRich"), "best bid " + r.bids.get(0).who());
+		var poorBid = r.bids.stream().filter(b -> b.who().equals("GtPoor")).findFirst().orElse(null);
+		ctx.assertTrue(poorBid != null && poorBid.terms().get("time") < -0.5, "the miner's bid should cost time: " + (poorBid == null ? null : poorBid.explain()));
+		com.mcfriends.brain.Board.finished(r.id, "GtRich", false, now);
+		ctx.assertTrue(r.state == com.mcfriends.brain.Board.State.OPEN, "not reopened");
+		var again = com.mcfriends.brain.Board.take(rich, now + 1);
+		ctx.assertTrue(again != null && again.request().bids.get(0).terms().containsKey("failed"), "failure not remembered");
+		cleanup(m, "GtRich", "GtPoor");
+		ctx.complete();
+	}
+
+	/** End to end: a free companion with spare coal takes the request and stores a batch in the base chest. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "board_stock")
+	public void freeCompanionFillsBaseStock(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtSupplier");
+		flatArena(ctx, 12);
+		var colony = boardBase(ctx, "coal", 8);
+		boolean torches = com.mcfriends.config.CompanionConfig.get().placeTorches;
+		com.mcfriends.config.CompanionConfig.get().placeTorches = false; // (the open-air test base counts as dark)
+		Companion c = freeCompanion(ctx, m, "GtSupplier", new Vec3d(4.5, 1, 6.5));
+		c.data.initiative = 1.0F;
+		give(c, net.minecraft.item.Items.STONE_SWORD, 1);
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		give(c, net.minecraft.item.Items.STONE_AXE, 1);
+		give(c, net.minecraft.item.Items.BREAD, 10);
+		give(c, net.minecraft.item.Items.OAK_LOG, 16);
+		give(c, net.minecraft.item.Items.COAL, 30);
+		com.mcfriends.brain.Board.refresh(m, m.tickCount());
+		ctx.setBlockState(2, 1, 10, Blocks.RED_BED.getDefaultState().with(net.minecraft.block.BedBlock.FACING, net.minecraft.util.math.Direction.SOUTH)
+			.with(net.minecraft.block.BedBlock.PART, net.minecraft.block.enums.BedPart.HEAD));
+		ctx.setBlockState(2, 1, 9, Blocks.RED_BED.getDefaultState().with(net.minecraft.block.BedBlock.FACING, net.minecraft.util.math.Direction.SOUTH));
+		c.memory().setPlace("bed", ctx.getAbsolutePos(new BlockPos(2, 1, 10)), c.dimension(), ctx.getWorld().getTime());
+		ctx.getWorld().setTimeOfDay(1000);
+		ctx.addInstantFinalTask(() -> {
+			int stored = countIn(ctx, new BlockPos(9, 1, 6), net.minecraft.item.Items.COAL);
+			ctx.assertTrue(stored >= 8, "stored " + stored + " coal; " + c.describeActivity() + "; queued " + c.jobs().pending()
+				+ "; board " + com.mcfriends.brain.Board.requests().stream().map(r -> r.describe() + " " + r.state + " " + r.note).toList());
+			ctx.assertTrue(com.mcfriends.brain.Board.holding("GtSupplier") == null, "still holding the request");
+			com.mcfriends.config.CompanionConfig.get().placeTorches = torches;
+			c.data.initiative = null;
+			colony.clear();
+			cleanup(m, "GtSupplier");
 		});
 	}
 }

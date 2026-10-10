@@ -218,6 +218,7 @@ public final class Soak {
 		section(sb, "Failsafe rescues (free mode, sent home)", SoakStats.rescues);
 		section(sb, "Finished jobs", SoakStats.jobsDone);
 		section(sb, "Interrupts", SoakStats.interrupts);
+		section(sb, "Request board", SoakStats.board);
 		return sb.toString();
 	}
 

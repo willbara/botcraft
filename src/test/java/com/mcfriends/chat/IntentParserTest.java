@@ -314,6 +314,26 @@ class IntentParserTest {
 	}
 
 	@Test
+	void colonyWants() {
+		Intent i = parse("the base needs 64 coal").intent();
+		assertEquals(Intent.Type.COLONY_WANT, i.type());
+		assertEquals("coal", i.item());
+		assertEquals(64, i.count());
+		i = parse("keep 20 glass in the chests").intent();
+		assertEquals(Intent.Type.COLONY_WANT, i.type());
+		assertEquals("glass", i.item());
+		assertEquals(20, i.count());
+		i = parse("we have enough cobblestone").intent();
+		assertEquals(Intent.Type.COLONY_WANT, i.type());
+		assertEquals("cobblestone", i.item());
+		assertEquals(0, i.count());
+		assertEquals(Intent.Type.COLONY_WANT, type("stop collecting torches"));
+		assertEquals(Intent.Type.COLONY_WANT, type("everyone, the colony needs more food"));
+		assertEquals(Intent.Type.GATHER, type("everyone, we need coal"));
+		assertEquals(Intent.Type.GATHER, type("we need coal"));
+	}
+
+	@Test
 	void lighting() {
 		assertEquals(Intent.Type.LIGHT, type("everyone light up the base"));
 		assertEquals(Intent.Type.LIGHT, type("bob place some torches"));

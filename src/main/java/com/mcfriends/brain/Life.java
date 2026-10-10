@@ -36,7 +36,9 @@ import java.util.function.Predicate;
  *   <li>at night: sleep in a bed (its own or one near home), else head home and wait it out;</li>
  *   <li>when hungry with no food: harvest the farm, cook raw meat, or hunt and cook;</li>
  *   <li>tool progression: sword, pickaxe, stone tools, furnace, iron pickaxe, iron sword;</li>
- *   <li>settle in: a bed (wool from sheep) and a small wheat farm by home;</li>
+ *   <li>settle in: a bed of its own at home (wool from sheep);</li>
+ *   <li>the base's needs: a request from the {@link Board} it's the best bidder for, taking turns
+ *       with its own progression (the target ladder);</li>
  *   <li>stock up: logs, cobblestone, coal, torches;</li>
  *   <li>otherwise explore a little around home.</li>
  * </ol>
@@ -53,6 +55,12 @@ public class Life {
 	private final Map<String, Long> backoff = new HashMap<>();
 	@Nullable
 	private String lastGoal;
+	/** The board request our current jobs are for, if any. */
+	@Nullable
+	private Integer boardRequest;
+	private String boardHolder = "";
+	/** Just finished a board request: give our own progression a turn before the next one. */
+	private boolean boardRest;
 
 	public record Goal(String key, List<String> jobs, String reason) {
 	}
@@ -96,6 +104,9 @@ public class Life {
 		if (free) {
 			nextDecision = now + FREE_DECISION_GAP;
 			g = chooseFree(c, now);
+			if (g == null) {
+				boardRest = false; // nothing of our own to do: the board can have us again
+			}
 		} else {
 			if (c.perception().isNight() || c.perception().ownerDistance() > 24) {
 				return;
@@ -114,6 +125,12 @@ public class Life {
 		AiLog.log(c.name(), "life: {} -> {} ({})", g.key(), g.jobs(), g.reason());
 		lastGoal = g.key();
 		c.jobs().append(g.jobs());
+		if (g.key().equals("board") && boardRequest != null) {
+			Board.Request r = Board.holding(c.name());
+			c.speech().event("board.take", Map.of("item", r == null ? "that" : r.describe(), "reason", g.reason()), 20 * 30, 0.7F);
+			return;
+		}
+		boardRest = false;
 		c.speech().event("event.initiative", Map.of("plan", String.join(", then ", g.jobs().stream().map(Jobs::describe).toList()),
 			"reason", g.reason()), 20 * 30, free ? 0.5F : 0.8F);
 	}
@@ -140,14 +157,32 @@ public class Life {
 	/** A job from a life goal failed: leave that goal alone for a while. */
 	public void failed(long now) {
 		if (lastGoal != null) {
-			backoff.put(lastGoal, now + FAIL_BACKOFF);
-			AiLog.log("life", "backing off goal {}", lastGoal);
+			if (lastGoal.equals("board")) {
+				// The request goes back on the board (with this failure counting against our next bid
+				// for it); we don't need to stay away from the board as a whole.
+				finishBoard(false, now);
+				boardRest = true;
+			} else {
+				backoff.put(lastGoal, now + FAIL_BACKOFF);
+				AiLog.log("life", "backing off goal {}", lastGoal);
+			}
 			lastGoal = null;
 		}
 	}
 
-	public void succeeded() {
+	public void succeeded(long now) {
+		if ("board".equals(lastGoal)) {
+			finishBoard(true, now);
+			boardRest = true;
+		}
 		lastGoal = null;
+	}
+
+	private void finishBoard(boolean ok, long now) {
+		if (boardRequest != null) {
+			Board.finished(boardRequest, boardHolder, ok, now);
+			boardRequest = null;
+		}
 	}
 
 	private boolean allowed(String key, long now) {
@@ -251,6 +286,16 @@ public class Life {
 				String bed = bedFromWool(c, inv);
 				bed = bed != null ? bed : "white_bed";
 				goals.add(new Goal("bed", List.of("craft " + bed + " 1", "place " + bed + " " + h), "I'd like a bed of my own at home"));
+			}
+		}
+		// 5. The colony's request board: what the base is short of, if we're the best one to get it.
+		// (Taking turns with our own progression, so neither starves.)
+		if (!boardRest && goals.stream().noneMatch(g -> allowed(g.key(), now))) {
+			Board.Assignment a = Board.take(c, now);
+			if (a != null) {
+				boardRequest = a.request().id;
+				boardHolder = c.name();
+				return new Goal("board", a.steps(), a.reason());
 			}
 		}
 		// Progression: the next target on the ladder (iron tools, iron armour, diamonds...), got

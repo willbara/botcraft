@@ -84,6 +84,7 @@ public final class CompanionManager {
 
 	static void onServerStopped(MinecraftServer server) {
 		com.mcfriends.colony.Colony.unload();
+		com.mcfriends.brain.Board.clear();
 		instance = null;
 	}
 
@@ -331,6 +332,13 @@ public final class CompanionManager {
 		com.mcfriends.ops.SoakStats.tickTime(System.nanoTime() - started, CompanionConfig.get().tickBudgetMs);
 		com.mcfriends.ops.Soak.tick(server);
 		com.mcfriends.chat.Social.tick(companions.values(), tickCount);
+		if (tickCount % 100 == 0) {
+			try {
+				com.mcfriends.brain.Board.refresh(this, tickCount);
+			} catch (RuntimeException e) {
+				MCFriends.LOG.error("Error updating the request board", e);
+			}
+		}
 		if (tickCount % AUTOSAVE_TICKS == 0) {
 			save();
 		}

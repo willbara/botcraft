@@ -80,7 +80,10 @@ public final class Jobs {
 					return new com.mcfriends.brain.task.DanceTask(c);
 				}
 				case "deposit" -> {
-					return new com.mcfriends.brain.task.DepositTask(c);
+					// "deposit" stores the extras; "deposit coal 8" also hands over a batch for the base.
+					return w.length > 1 ? new com.mcfriends.brain.task.DepositTask(c, deliverable(w[1]), num(w, 2, 1),
+						ItemNames.plural(label(w[1]), num(w, 2, 1)))
+						: new com.mcfriends.brain.task.DepositTask(c);
 				}
 				case "withdraw" -> {
 					String what = w.length > 1 ? w[1] : "food";
@@ -137,7 +140,7 @@ public final class Jobs {
 			case "home" -> "go home";
 			case "sleep" -> "go to bed";
 			case "shelter" -> "dig in for the night";
-			case "deposit" -> "put my things away";
+			case "deposit" -> w.length > 1 ? "bring " + num(w, 2, 1) + " " + ItemNames.plural(label(w[1]), num(w, 2, 1)) + " to the base" : "put my things away";
 			case "dance" -> "dance";
 			case "light" -> "light up the base";
 			case "withdraw" -> "get " + label(w.length > 1 ? w[1] : "food") + " from the chests";

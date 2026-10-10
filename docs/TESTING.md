@@ -5,7 +5,7 @@
 | Command | What it covers |
 |---|---|
 | `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
-| `./gradlew runGametest` | Headless server, 67 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/mcfriends.json` to see AI traces. |
+| `./gradlew runGametest` | Headless server, 69 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/mcfriends.json` to see AI traces. |
 
 | GameTest | Milestone | Passes when |
 |---|---|---|
@@ -210,6 +210,14 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] Free mode, give each companion 3 white wool (or a bed): at dusk they craft or put down a bed near home and sleep in it.
 - [ ] Free mode in daytime with stone tools and no bed: they hunt sheep for wool and set a bed down at home, one each.
 - [ ] Sleep in your own bed while some companions are still awake (guarding, no bed): the night is skipped anyway.
+
+### 26. Base stock and the request board
+- [ ] Set a base with a chest, put 3+ companions in free mode. `/companion colony`: stock targets show have/want, and requests appear for what's short (e.g. "#3 8 coal for the base [open]").
+- [ ] Within a few minutes requests get taken: the winner says so ("I'll get 8 coal for the base, it's quickest for me"), `/companion colony` shows the top bids with their terms, and the batch ends up in the chest.
+- [ ] Give one companion 40 coal: it should win the coal request ("I've got spare already") and drop 8 off without mining.
+- [ ] "the base needs 20 torches" (one companion answers), `/companion colony want glass 8`: the targets update; "we have enough cobblestone" sets it to 0 and the cobblestone request disappears.
+- [ ] Give a companion holding a request an order ("follow me"): the request goes back to open within a few seconds.
+- [ ] `/companion why <name>` on a companion working a request shows the request and its bid.
 
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.

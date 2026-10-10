@@ -56,6 +56,8 @@ public final class Colony {
 		List<int[]> chests = new ArrayList<>();
 		/** "x,y,z" -> purpose name, for chests that have one. */
 		Map<String, String> purposes = new HashMap<>();
+		/** Stock target key -> how many the base should keep (overrides the defaults; 0 = don't collect). */
+		Map<String, Integer> wants = new java.util.LinkedHashMap<>();
 	}
 
 	private final MinecraftServer server;
@@ -83,6 +85,9 @@ public final class Colony {
 					}
 					if (c.data.purposes == null) {
 						c.data.purposes = new HashMap<>();
+					}
+					if (c.data.wants == null) {
+						c.data.wants = new java.util.LinkedHashMap<>();
 					}
 				}
 			} catch (IOException | JsonParseException e) {
@@ -395,15 +400,18 @@ public final class Colony {
 		}
 		// First choice: a spot of its own. On cramped ground (a hilltop), next to another chest
 		// is fine too: two singles just become a double chest.
-		BlockPos spot = chestSpot(w, b, false);
-		return spot != null ? spot : chestSpot(w, b, true);
+		BlockPos spot = chestSpot(w, b, false, 8, 3);
+		spot = spot != null ? spot : chestSpot(w, b, true, 8, 3);
+		// A steep base (a mountain top): look further up and down the slope.
+		spot = spot != null ? spot : chestSpot(w, b, false, 12, 8);
+		return spot != null ? spot : chestSpot(w, b, true, 12, 8);
 	}
 
 	@Nullable
-	private BlockPos chestSpot(ServerWorld w, BlockPos b, boolean mayTouch) {
+	private BlockPos chestSpot(ServerWorld w, BlockPos b, boolean mayTouch, int across, int updown) {
 		BlockPos best = null;
 		double bestD = Double.MAX_VALUE;
-		for (BlockPos p : BlockPos.iterate(b.add(-8, -3, -8), b.add(8, 3, 8))) {
+		for (BlockPos p : BlockPos.iterate(b.add(-across, -updown, -across), b.add(across, updown, across))) {
 			if (p.getSquaredDistance(b) < 4 || !w.getBlockState(p).isReplaceable() || !w.getBlockState(p.up()).isReplaceable()
 				|| !w.getFluidState(p).isEmpty() || !w.getBlockState(p.down()).isSideSolidFullSquare(w, p.down(), Direction.UP)) {
 				continue;
@@ -426,6 +434,25 @@ public final class Colony {
 			}
 		}
 		return best;
+	}
+
+	// ---- stock targets ---------------------------------------------------------------------------
+
+	/** How many of a stock target the base should keep: the player's setting, else the default. */
+	public int want(String key, int fallback) {
+		Integer w = data.wants.get(key);
+		return w == null ? fallback : w;
+	}
+
+	/** Keep {@code n} of something at the base (0: stop collecting it). */
+	public void setWant(String key, int n) {
+		data.wants.put(key, Math.max(0, n));
+		dirty = true;
+	}
+
+	/** What the player has asked the base to keep (target key -> amount). */
+	public Map<String, Integer> wants() {
+		return java.util.Collections.unmodifiableMap(data.wants);
 	}
 
 	public int chestCount() {

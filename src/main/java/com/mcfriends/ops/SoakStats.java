@@ -20,6 +20,8 @@ public final class SoakStats {
 	static final Map<String, Integer> stalls = new TreeMap<>();
 	static final Map<String, Integer> rescues = new TreeMap<>();
 	static final Map<String, Integer> interrupts = new TreeMap<>();
+	/** Request board events: "posted coal", "done coal by Soak2", "reopened coal: why"... */
+	static final Map<String, Integer> board = new TreeMap<>();
 	static final Map<String, Double> distance = new LinkedHashMap<>();
 
 	static long stored;
@@ -63,6 +65,12 @@ public final class SoakStats {
 	public static void rescue(String who, String why) {
 		if (active) {
 			rescues.merge(who + " (" + why + ")", 1, Integer::sum);
+		}
+	}
+
+	public static void board(String event) {
+		if (active) {
+			board.merge(event, 1, Integer::sum);
 		}
 	}
 

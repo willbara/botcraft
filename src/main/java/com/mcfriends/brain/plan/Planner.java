@@ -70,6 +70,27 @@ public final class Planner {
 		this.stock = fetch && colony != null ? new HashMap<>(colony.stock()) : new HashMap<>();
 	}
 
+	/**
+	 * The best way to bring {@code n} new {@code item} to the base: what's already stored there
+	 * (or carried as working stock) of the thing itself doesn't count, but other stored things can
+	 * still be used to make it (coal and sticks for torches, raw iron for ingots).
+	 */
+	public static Decision acquireForBase(Companion c, Item item, int n, java.util.function.Predicate<ItemStack> same) {
+		Planner planner = new Planner(c);
+		planner.carried.keySet().removeIf(it -> same.test(new ItemStack(it)));
+		planner.stock.keySet().removeIf(it -> same.test(new ItemStack(it)));
+		List<Option> options = planner.options(item, n, 0);
+		Option best = options.stream().filter(Option::possible).min(Comparator.comparingDouble(Option::cost)).orElse(IMPOSSIBLE);
+		return new Decision(ItemNames.display(item) + (n > 1 ? " x" + n : "") + " for the base", best, options);
+	}
+
+	/** Seconds to walk from where we are to the base (0 without one). */
+	public static double secondsToBase(Companion c) {
+		Colony colony = Colony.get();
+		BlockPos base = colony == null ? null : colony.base();
+		return base == null ? 0 : Math.sqrt(base.getSquaredDistance(c.player().getBlockPos())) / BLOCKS_PER_SECOND;
+	}
+
 	/** The best way to end up with {@code n} of {@code item}, and what else was considered. */
 	public static Decision acquire(Companion c, Item item, int n) {
 		Planner planner = new Planner(c);

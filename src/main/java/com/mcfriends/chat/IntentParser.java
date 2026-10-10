@@ -53,6 +53,13 @@ public final class IntentParser {
 		"\\b(what'?s in the chests?|what is in the chests?|what do we have|what have we got|what'?s in (storage|the storage)|check the (chests?|stock|storage)|how much do we have|our stock|the stock|what'?s stored)\\b");
 	private static final Pattern LIGHT = Pattern.compile(
 		"\\b(light (up )?(the |our )?(base|home|area|place)|place (some )?torches|put (some )?torches (down|up|around)|torch (up )?(the |our )?(base|home|area|place)|it'?s (too )?dark (here|around here))\\b");
+	/** What the base should keep: "the base needs 64 coal", "keep 20 glass in the chests". */
+	private static final Pattern COLONY_WANT = Pattern.compile(
+		"\\b(?:(?:the |our )?(?:colony|base|chests?|storage) (?:needs?|should (?:have|keep)|wants?)(?: to have)? (?<a>.+)"
+			+ "|keep (?:at least )?(?<b>.+?) (?:in stock|in (?:the )?(?:chests?|storage)|at (?:the )?(?:base|home)|stocked)\\b)");
+	/** ...or shouldn't: "we have enough cobblestone", "stop collecting torches". */
+	private static final Pattern COLONY_ENOUGH = Pattern.compile(
+		"\\b(?:we(?: have|'ve got| got) enough (?<a>.+?)|(?:stop|quit) (?:collecting|gathering|stockpiling|stocking) (?<b>.+?))(?: for the base| at the base| now)?(?: please| pls)?$");
 	/** "Run away": split up and each go do their own thing somewhere else (handy for testing free mode). */
 	private static final Pattern SCATTER = Pattern.compile(
 		"\\b(run away|scatter|disperse|spread out|split up|go your separate ways|everyone split|break up)\\b");
@@ -190,6 +197,8 @@ public final class IntentParser {
 		if (addressed.isEmpty() && ALL_WORDS.matcher(rest).find()) {
 			addressed.add(ALL);
 			direct = true;
+			// "everyone, we need coal": just the address, drop it (so the rest reads as said).
+			rest = rest.trim().replaceFirst("^(everyone|everybody|all of you|you all|you guys|guys|team|y'?all|companions)\\s*,\\s*", "");
 			// "everyone ok?" / "how's everyone doing": speaking to all of them is speaking to "you".
 			rest = ALL_WORDS.matcher(rest).replaceAll(" you ");
 		}
@@ -443,6 +452,20 @@ public final class IntentParser {
 			.replaceAll("\\b(something|anything) to eat\\b|\\bsome grub\\b|\\bgrub\\b", "food");
 		if (text.isEmpty()) {
 			return Intent.of(Intent.Type.UNKNOWN);
+		}
+		Matcher want = COLONY_WANT.matcher(text);
+		if (want.find()) {
+			String item = phrase(want.group("a") != null ? want.group("a") : want.group("b"));
+			if (!item.isEmpty()) {
+				return new Intent(Intent.Type.COLONY_WANT, item, count(text));
+			}
+		}
+		Matcher enough = COLONY_ENOUGH.matcher(text);
+		if (enough.find()) {
+			String item = phrase(enough.group("a") != null ? enough.group("a") : enough.group("b"));
+			if (!item.isEmpty()) {
+				return new Intent(Intent.Type.COLONY_WANT, item, 0);
+			}
 		}
 		if (CANCEL.matcher(text).find()) {
 			return Intent.of(Intent.Type.CANCEL);
