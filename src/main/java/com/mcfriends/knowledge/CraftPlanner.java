@@ -31,7 +31,11 @@ public final class CraftPlanner {
 	public record Craft(CraftingRecipe recipe, Item output, int times) {
 	}
 
-	public record Plan(List<Craft> crafts, Map<Item, Integer> missing, @Nullable String problem, boolean needsTable) {
+	/**
+	 * @param used what the plan takes from the pile it was given (inventory, or inventory plus
+	 *             stock), not counting things it crafts along the way
+	 */
+	public record Plan(List<Craft> crafts, Map<Item, Integer> missing, @Nullable String problem, boolean needsTable, Map<Item, Integer> used) {
 		public boolean ready() {
 			return problem == null && missing.isEmpty();
 		}
@@ -42,6 +46,7 @@ public final class CraftPlanner {
 	private final Map<Item, Integer> have;
 	private final List<Craft> crafts = new ArrayList<>();
 	private final Map<Item, Integer> missing = new LinkedHashMap<>();
+	private final Map<Item, Integer> used = new LinkedHashMap<>();
 	private String problem;
 
 	private CraftPlanner(MinecraftServer server, Map<Item, Integer> inventory) {
@@ -76,7 +81,7 @@ public final class CraftPlanner {
 		for (Craft c : p.crafts) {
 			table |= !c.recipe().fits(2, 2);
 		}
-		return new Plan(p.crafts, p.missing, p.problem, table);
+		return new Plan(p.crafts, p.missing, p.problem, table, p.used);
 	}
 
 	public static boolean craftable(MinecraftServer server, Item item) {
@@ -103,6 +108,9 @@ public final class CraftPlanner {
 			int available = have.getOrDefault(item, 0);
 			int use = Math.min(available, n);
 			have.put(item, available - use);
+			if (use > 0) {
+				used.merge(item, use, Integer::sum);
+			}
 			n -= use;
 			if (n == 0) {
 				return;

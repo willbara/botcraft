@@ -73,6 +73,8 @@ public final class CompanionCommand {
 					.executes(CompanionCommand::info)))
 			.then(CommandManager.literal("list")
 				.executes(CompanionCommand::list))
+			.then(CommandManager.literal("colony")
+				.executes(CompanionCommand::colony))
 			.then(CommandManager.literal("stop")
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
@@ -166,6 +168,31 @@ public final class CompanionCommand {
 			return 0;
 		}
 		ctx.getSource().sendFeedback(() -> Text.literal("Removed companion " + name), true);
+		return 1;
+	}
+
+	/** The shared base: where it is, its chests, and what's stored. */
+	private static int colony(CommandContext<ServerCommandSource> ctx) {
+		var colony = com.mcfriends.colony.Colony.get();
+		if (colony == null || !colony.hasBase()) {
+			ctx.getSource().sendFeedback(() -> Text.literal("No base yet. Stand somewhere and say \"everyone, this is home\"."), false);
+			return 0;
+		}
+		var base = colony.base();
+		ctx.getSource().sendFeedback(() -> Text.literal("Base at " + base.toShortString() + ", " + colony.chests().size() + " chest(s)")
+			.formatted(Formatting.AQUA), false);
+		var stock = new java.util.ArrayList<>(colony.stock().entrySet());
+		stock.sort((a, b) -> b.getValue() - a.getValue());
+		if (stock.isEmpty()) {
+			ctx.getSource().sendFeedback(() -> Text.literal("Nothing stored yet.").formatted(Formatting.GRAY), false);
+		}
+		for (var e : stock.subList(0, Math.min(20, stock.size()))) {
+			String line = e.getValue() + " x " + com.mcfriends.knowledge.ItemNames.display(e.getKey());
+			ctx.getSource().sendFeedback(() -> Text.literal("  " + line).formatted(Formatting.GRAY), false);
+		}
+		if (stock.size() > 20) {
+			ctx.getSource().sendFeedback(() -> Text.literal("  ... and " + (stock.size() - 20) + " more").formatted(Formatting.GRAY), false);
+		}
 		return 1;
 	}
 

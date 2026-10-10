@@ -174,6 +174,15 @@ public class SmeltTask extends Task {
 		int fuelNeeded = Math.min(need, Math.max(have, 1)) * recipe.getCookTime();
 		if (Smelting.fuelAvailable(inv, Smelting.input(recipe)) < fuelNeeded) {
 			int coal = (int) Math.ceil(fuelNeeded / 1600.0);
+			// Fuel from the base chests first: coal, else logs.
+			String stored = Jobs.withdrawSpec(c, "coal", st -> st.isOf(Items.COAL) || st.isOf(Items.CHARCOAL), coal);
+			if (stored == null) {
+				stored = Jobs.withdrawSpec(c, "logs", Inventories::isLog, Math.max(2, (int) Math.ceil(fuelNeeded / 300.0) + 1));
+			}
+			if (stored != null && !askedForFuel) {
+				askedForFuel = true;
+				return deferTo(List.of(stored));
+			}
 			com.mcfriends.Companion helper = askedForFuel ? null : com.mcfriends.brain.Sharing.ask(c, "coal", "coal", coal, false);
 			askedForFuel = true;
 			if (helper != null) {
@@ -390,7 +399,9 @@ public class SmeltTask extends Task {
 				setPhase(Phase.LOAD); // more to put in
 				return Status.RUNNING;
 			}
-			if (placedFurnace && Inventories.bestPickaxe(p.getInventory()) != null) {
+			com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+			boolean atBase = colony != null && colony.near(p.getServerWorld(), furnace, 10); // base furnaces stay put
+			if (placedFurnace && !atBase && Inventories.bestPickaxe(p.getInventory()) != null) {
 				setPhase(Phase.PICKUP);
 				return Status.RUNNING;
 			}

@@ -177,5 +177,13 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] Follow mode, hungry and with nothing to eat: he goes hunting nearby and comes back.
 - [ ] Only two cows around: a fed companion leaves them; a starving one (3 drumsticks or less, no food) takes one.
 
+### 20. Base and storage
+- [ ] "everyone, this is home", then `/companion colony` shows the base. Put a chest down, look at it, and say "this is our chest". The colony view lists it.
+- [ ] Give a companion junk (logs, spare tools, 64 cobblestone, 30 food), then "bob, put your stuff away". He keeps his best tools, 32 blocks and 16 food, and the rest goes into the chest.
+- [ ] Remove all chests. "put your stuff away" with planks on him: he crafts a chest and puts it at the base.
+- [ ] Put 3 iron ingots and 2 sticks in the base chest, then "bob, craft an iron pickaxe". He takes them from the chest (no mining). A chest of your own elsewhere with iron in it stays untouched.
+- [ ] "bob, what's in the chests?" lists the stock (one answer when you ask everyone).
+- [ ] Free mode for a day: companions come home to unload, and the stock grows. At night, armed ones at home smelt, cook and craft instead of standing around.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.

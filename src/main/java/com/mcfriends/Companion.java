@@ -70,6 +70,8 @@ public class Companion {
 	/** Recent deaths (where, when): don't keep walking back into the same danger. */
 	private final java.util.ArrayDeque<long[]> recentDeaths = new java.util.ArrayDeque<>();
 	private boolean lastDeathUnrecoverable;
+	/** Couldn't get to the base chests recently: get things another way until then. */
+	public long baseUnreachableUntil;
 	private final EventWatcher events = new EventWatcher();
 	private final Random random = new Random();
 
@@ -291,7 +293,7 @@ public class Companion {
 			return;
 		}
 		// Items last 5 minutes from the death; keep looking for them that long.
-		leftovers.expect(death.pos(), 6.0, Math.max(20 * 30, 20 * 60 * 5 - age));
+		leftovers.expect(death.pos(), 10.0, Math.max(20 * 30, 20 * 60 * 5 - age));
 		BlockPos at = death.pos();
 		jobs.pushFront(List.of("goto " + at.getX() + " " + at.getY() + " " + at.getZ() + " my things"));
 		AiLog.log(name(), "going back for my things at {}", at.toShortString());

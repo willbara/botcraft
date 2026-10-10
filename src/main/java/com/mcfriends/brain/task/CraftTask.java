@@ -119,6 +119,17 @@ public class CraftTask extends Task {
 		if (!CraftPlanner.craftable(c.server, item) && com.mcfriends.knowledge.Smelting.smeltable(c.server, item)) {
 			return deferTo(List.of("smelt " + ItemNames.id(item) + " " + count)); // e.g. "make iron ingots"
 		}
+		// Already made and sitting in the base chests (a spare sword, someone's old pickaxe)? Take it.
+		int carried = Inventories.count(p.getInventory(), st -> st.isOf(item));
+		if (made == 0 && carried < count) {
+			String stored = com.mcfriends.brain.Jobs.withdrawSpec(c, ItemNames.id(item), st -> st.isOf(item), count - carried);
+			if (stored != null) {
+				return deferTo(List.of(stored));
+			}
+		}
+		if (made == 0 && carried >= count && spec() != null && com.mcfriends.brain.Jobs.attempt(spec()) > 0) {
+			return quietSuccess(); // fetched it from the chests: done
+		}
 		plan = CraftPlanner.plan(c.server, inventoryCounts(p.getInventory()), item, count);
 		if (plan.needsTable() && plan.problem() == null && !hasTableItem(p) && findTable(p) == null) {
 			// We'll have to make a table first, out of the same planks: count it in now, or the
@@ -126,6 +137,12 @@ public class CraftTask extends Task {
 			plan = CraftPlanner.plan(c.server, inventoryCounts(p.getInventory()), item, count, true);
 		}
 		AiLog.log(c.name(), "craft {} x{}: {} crafts, missing {}, problem {}", ItemNames.id(item), count, plan.crafts().size(), plan.missing(), plan.problem());
+		if (!plan.missing().isEmpty() && plan.problem() == null) {
+			List<String> fetch = fromStock(p);
+			if (!fetch.isEmpty()) {
+				return deferTo(fetch);
+			}
+		}
 		if (plan.problem() != null) {
 			return fail(plan.problem());
 		}
@@ -155,7 +172,8 @@ public class CraftTask extends Task {
 				prereqs.add(spec);
 			}
 			if (logs > 0) {
-				prereqs.add(0, "gather logs " + logs);
+				String stored = com.mcfriends.brain.Jobs.withdrawSpec(c, "logs", Inventories::isLog, logs);
+				prereqs.add(0, stored != null ? stored : "gather logs " + logs);
 			}
 			return deferTo(prereqs);
 		}
@@ -231,7 +249,7 @@ public class CraftTask extends Task {
 			c.actions().lookAt(Vec3d.ofCenter(table));
 		}
 		if (stepIndex >= plan.crafts().size()) {
-			if (placedTable && table != null) {
+			if (placedTable && table != null && !atBase(table)) {
 				setPhase(Phase.PICKUP);
 				return Status.RUNNING;
 			}
@@ -312,6 +330,43 @@ public class CraftTask extends Task {
 		if (!p.getInventory().insertStack(stack) && !stack.isEmpty()) {
 			p.dropItem(stack, false);
 		}
+	}
+
+	/**
+	 * What we'd take from the base chests to make this: plan with what we carry plus what's
+	 * stored, and fetch the difference (sticks in the chest beat chopping a tree for them).
+	 */
+	private List<String> fromStock(CompanionPlayer p) {
+		com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+		List<String> out = new ArrayList<>();
+		if (!com.mcfriends.brain.Jobs.canFetch(c)) {
+			return out;
+		}
+		Map<Item, Integer> carried = inventoryCounts(p.getInventory());
+		Map<Item, Integer> stock = colony.stock();
+		if (stock.isEmpty()) {
+			return out;
+		}
+		Map<Item, Integer> both = new java.util.HashMap<>(carried);
+		stock.forEach((it, n) -> both.merge(it, n, Integer::sum));
+		boolean withTable = plan.needsTable() && !hasTableItem(p) && findTable(p) == null;
+		CraftPlanner.Plan withStock = CraftPlanner.plan(c.server, both, item, count, withTable);
+		if (withStock.problem() != null || withStock.missing().size() >= plan.missing().size() && !withStock.ready()) {
+			return out; // the chests don't help
+		}
+		for (Map.Entry<Item, Integer> e : withStock.used().entrySet()) {
+			int take = Math.min(e.getValue() - carried.getOrDefault(e.getKey(), 0), stock.getOrDefault(e.getKey(), 0));
+			if (take > 0) {
+				out.add("withdraw " + ItemNames.id(e.getKey()) + " " + take);
+			}
+		}
+		return out;
+	}
+
+	/** A table put down at the base stays there for everyone. */
+	private boolean atBase(BlockPos pos) {
+		com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+		return colony != null && colony.near(c.player().getServerWorld(), pos, 10);
 	}
 
 	private Status pickup(CompanionPlayer p) {

@@ -68,7 +68,7 @@ public class Life {
 		if (!free && !"follow".equals(c.data.mode)) {
 			return;
 		}
-		if (free && c.perception().isNight() && outdoorErrand(c.brain().job())) {
+		if (free && c.perception().isNight() && (outdoorErrand(c.brain().job()) || leavingBaseToMine(c))) {
 			// Our own errand outdoors and it's getting dark: head in (bed, guard home or dig in),
 			// carry on in the morning.
 			AiLog.log(c.name(), "life: getting dark, dropping {} for the night", c.brain().jobName());
@@ -175,7 +175,8 @@ public class Life {
 				if (fromHome > 8 && allowed("home", now)) {
 					return new Goal("home", List.of("home"), "it's getting dark");
 				}
-				return null;
+				// Home for the night: do the chores that need nothing from outside.
+				return nightChores(c, inv, now);
 			}
 			if (allowed("shelter", now)) {
 				return new Goal("shelter", List.of("shelter"), "I'm not facing the night without a sword");
@@ -183,6 +184,11 @@ public class Life {
 			return null;
 		}
 		List<Goal> goals = new ArrayList<>();
+		// Storage: put things away when we're at the base anyway, or come back when our pockets are full.
+		Goal store = storeGoal(c, inv, now);
+		if (store != null) {
+			goals.add(store);
+		}
 		// 2. Food.
 		// Raw meat is food in a pinch, but it's worth cooking (a steak fills far more than raw beef).
 		int raw = Inventories.count(inv, s -> Animals.RAW_MEAT.contains(s.getItem()));
@@ -192,7 +198,9 @@ public class Life {
 		}
 		boolean hurt = p.getHealth() < p.getMaxHealth() * 0.6F && p.getHungerManager().getFoodLevel() < 18;
 		if ((p.getHungerManager().getFoodLevel() < 16 || hurt) && food == 0 && raw == 0) {
-			goals.add(new Goal("hunt", List.of("hunt meat 4", "smelt food 4"), "I'm getting hungry"));
+			String fetch = Jobs.withdrawSpec(c, "food", Inventories::isGoodFood, 8);
+			goals.add(fetch != null ? new Goal("fetch_food", List.of(fetch), "there's food at home")
+				: new Goal("hunt", List.of("hunt meat 4", "smelt food 4"), "I'm getting hungry"));
 		}
 		// 3. Tool progression, then iron gear.
 		Goal tools = chooseTools(inv, now);
@@ -201,8 +209,13 @@ public class Life {
 		}
 		// Keep some food in reserve, like a player would: hunt before it's urgent, when we know
 		// where animals are (or have nothing at all).
-		if (food + raw < 6 && (herdKnown(c, 80) || animalsInView(c))) {
-			goals.add(new Goal("stock_food", List.of("hunt meat 4", "smelt food 4"), "I should stock up on food"));
+		if (food + raw < 6) {
+			String fetch = Jobs.withdrawSpec(c, "food", Inventories::isGoodFood, 8);
+			if (fetch != null) {
+				goals.add(new Goal("fetch_food", List.of(fetch), "I'll take some food from the chests"));
+			} else if (herdKnown(c, 80) || animalsInView(c)) {
+				goals.add(new Goal("stock_food", List.of("hunt meat 4", "smelt food 4"), "I should stock up on food"));
+			}
 		}
 		boolean stonePick = has(inv, s -> s.getItem() instanceof PickaxeItem && !s.isOf(Items.WOODEN_PICKAXE) && !s.isOf(Items.GOLDEN_PICKAXE));
 		boolean ironPick = has(inv, s -> s.isOf(Items.IRON_PICKAXE) || s.isOf(Items.DIAMOND_PICKAXE) || s.isOf(Items.NETHERITE_PICKAXE));
@@ -252,7 +265,10 @@ public class Life {
 			}
 		}
 		if (has(inv, s -> s.getItem() instanceof net.minecraft.item.AxeItem) && forestAround(p) && Inventories.count(inv, Inventories::isLog) < 24) {
-			goals.add(new Goal("forest_logs", List.of("gather logs 16"), "lots of trees here, good time to stock up on wood"));
+			var stockC = com.mcfriends.colony.Colony.get();
+			if (stockC == null || stockC.count(Inventories::isLog) < 64) {
+				goals.add(new Goal("forest_logs", List.of("gather logs 16"), "lots of trees here, good time to stock up on wood"));
+			}
 		}
 		if (coal > 0 && Inventories.count(inv, s -> s.isOf(Items.TORCH)) < 16) {
 			goals.add(new Goal("torches", List.of("craft torch 8"), "torches for the dark"));
@@ -323,7 +339,9 @@ public class Life {
 		if (stonePickaxe && !has(inv, s -> s.getItem() instanceof net.minecraft.item.AxeItem)) {
 			goals.add(new Goal("axe", List.of("craft stone_axe 1"), "an axe makes chopping faster"));
 		}
-		if (goals.isEmpty() && Inventories.count(inv, Inventories::isLog) < 4) {
+		var colony = com.mcfriends.colony.Colony.get();
+		int storedLogs = colony == null ? 0 : colony.count(Inventories::isLog);
+		if (goals.isEmpty() && Inventories.count(inv, Inventories::isLog) + storedLogs < 4 + (storedLogs > 0 ? 12 : 0)) {
 			goals.add(new Goal("logs", List.of("gather logs 12"), "we could use some wood"));
 		}
 		for (Goal g : goals) {
@@ -332,6 +350,94 @@ public class Life {
 			}
 		}
 		return null;
+	}
+
+	/** A mining job started at the base at night means walking out into the dark to a cave. */
+	private static boolean leavingBaseToMine(Companion c) {
+		var colony = com.mcfriends.colony.Colony.get();
+		var p = c.player();
+		return c.brain().job() instanceof com.mcfriends.brain.task.MineTask && colony != null
+			&& colony.near(p.getServerWorld(), p.getBlockPos(), com.mcfriends.colony.Colony.BASE_RADIUS)
+			&& p.getServerWorld().isSkyVisible(p.getBlockPos().up());
+	}
+
+	/** Put things in the base chests: when we're there with plenty to store, or when we're nearly full. */
+	@Nullable
+	private Goal storeGoal(Companion c, PlayerInventory inv, long now) {
+		var colony = com.mcfriends.colony.Colony.get();
+		var p = c.player();
+		if (colony == null || !colony.hasBase() || colony.world() != p.getServerWorld() || !allowed("deposit", now)) {
+			return null;
+		}
+		int toStore = com.mcfriends.colony.Kit.storeSlots(inv);
+		int empty = com.mcfriends.colony.Kit.emptySlots(inv);
+		boolean atBase = colony.near(p.getServerWorld(), p.getBlockPos(), com.mcfriends.colony.Colony.BASE_RADIUS);
+		if (atBase && (toStore >= 4 || (toStore > 0 && empty < 8))) {
+			return new Goal("deposit", List.of("deposit"), "I'll put my things away");
+		}
+		if (!atBase && empty <= 3 && toStore >= 4 && colony.near(p.getServerWorld(), p.getBlockPos(), 256)) {
+			return new Goal("deposit", List.of("home", "deposit"), "my pockets are full");
+		}
+		return null;
+	}
+
+	/**
+	 * Night at the base (armed, no bed): things that need only what we carry and what's in the
+	 * chests: store, cook, smelt iron, make iron gear. Nothing that sends us out into the dark.
+	 */
+	@Nullable
+	private Goal nightChores(Companion c, PlayerInventory inv, long now) {
+		var colony = com.mcfriends.colony.Colony.get();
+		var p = c.player();
+		if (colony == null || !colony.hasBase() || !colony.near(p.getServerWorld(), p.getBlockPos(), com.mcfriends.colony.Colony.BASE_RADIUS)) {
+			return null;
+		}
+		if (com.mcfriends.colony.Kit.storeSlots(inv) > 0 && allowed("deposit", now)) {
+			return new Goal("deposit", List.of("deposit"), "might as well tidy up");
+		}
+		java.util.Map<net.minecraft.item.Item, Integer> have = new java.util.HashMap<>(com.mcfriends.brain.task.CraftTask.inventoryCounts(inv));
+		colony.stock().forEach((item, n) -> have.merge(item, n, Integer::sum));
+		int raw = have.entrySet().stream().filter(e -> Animals.RAW_MEAT.contains(e.getKey())).mapToInt(java.util.Map.Entry::getValue).sum();
+		boolean fuel = have.getOrDefault(Items.COAL, 0) + have.getOrDefault(Items.CHARCOAL, 0) > 0
+			|| have.entrySet().stream().anyMatch(e -> new net.minecraft.item.ItemStack(e.getKey()).isIn(net.minecraft.registry.tag.ItemTags.LOGS)
+			|| new net.minecraft.item.ItemStack(e.getKey()).isIn(net.minecraft.registry.tag.ItemTags.PLANKS));
+		if (raw > 0 && fuel && Inventories.foodCount(inv) - Inventories.count(inv, s -> Animals.RAW_MEAT.contains(s.getItem())) < com.mcfriends.colony.Kit.FOOD
+			&& allowed("cook", now)) {
+			if (Inventories.count(inv, s -> Animals.RAW_MEAT.contains(s.getItem())) == 0) {
+				return new Goal("cook", List.of("withdraw " + rawMeatKey(have) + " " + Math.min(raw, 8), "smelt food " + Math.min(raw, 8)), "dinner time");
+			}
+			return new Goal("cook", List.of("smelt food " + Math.min(raw, 8)), "dinner time");
+		}
+		int rawIron = have.getOrDefault(Items.RAW_IRON, 0);
+		if (rawIron >= 3 && fuel && allowed("smelt_iron", now)) {
+			return new Goal("smelt_iron", List.of("smelt iron_ingot " + Math.min(rawIron, 16)), "a good night to smelt iron");
+		}
+		for (net.minecraft.item.Item gear : List.of(Items.IRON_PICKAXE, Items.IRON_SWORD, Items.IRON_CHESTPLATE, Items.IRON_LEGGINGS,
+			Items.IRON_HELMET, Items.IRON_BOOTS)) {
+			if (has(inv, s -> s.isOf(gear)) || wearing(p, gear)) {
+				continue;
+			}
+			String id = com.mcfriends.knowledge.ItemNames.id(gear);
+			if (allowed("night_" + id, now) && com.mcfriends.knowledge.CraftPlanner.plan(c.server, have, gear, 1).ready()) {
+				return new Goal("night_" + id, List.of("craft " + id + " 1"), "there's enough iron in the chests for this");
+			}
+		}
+		return null;
+	}
+
+	private static boolean wearing(com.mcfriends.entity.CompanionPlayer p, net.minecraft.item.Item item) {
+		for (var s : p.getArmorItems()) {
+			if (s.isOf(item)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** The raw meat we have most of (for fetching it from the chests). */
+	private static String rawMeatKey(java.util.Map<net.minecraft.item.Item, Integer> have) {
+		return have.entrySet().stream().filter(e -> Animals.RAW_MEAT.contains(e.getKey())).max(java.util.Map.Entry.comparingByValue())
+			.map(e -> com.mcfriends.knowledge.ItemNames.id(e.getKey())).orElse("beef");
 	}
 
 	/** Self-chosen jobs that keep a companion outdoors and away from home after dark. */
@@ -350,6 +456,10 @@ public class Life {
 		}
 		if (Inventories.count(inv, s -> Animals.RAW_MEAT.contains(s.getItem())) > 0 && allowed("cook", now)) {
 			return new Goal("cook", List.of("smelt food 4"), "I've got raw meat to cook");
+		}
+		String fetch = Jobs.withdrawSpec(c, "food", Inventories::isGoodFood, 8);
+		if (fetch != null && allowed("fetch_food", now)) {
+			return new Goal("fetch_food", List.of(fetch), "there's food at home");
 		}
 		return allowed("hunt", now) ? new Goal("hunt", List.of("hunt meat 3", "smelt food 3"), "I'm getting hungry") : null;
 	}
