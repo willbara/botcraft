@@ -1496,4 +1496,67 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtBuilder");
 		});
 	}
+
+	/** Free mode ignores the owner entirely: far away, it neither follows nor teleports to them. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 400, batchId = "free_no_follow")
+	public void freeModeIgnoresOwner(TestContext ctx) {
+		for (int x = -2; x <= 64; x++) {
+			for (int z = -2; z <= 6; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				for (int y = 1; y <= 3; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+		Companion[] c = ownerAndFollower(ctx, "GtFarOwner", "GtLoner", new Vec3d(62.5, 1, 2.5), new Vec3d(1.5, 1, 2.5));
+		Companion free = c[1];
+		free.data.mode = "free";
+		Vec3d start = free.player().getPos();
+		ctx.runAtTick(380, () -> {
+			double moved = free.player().getPos().distanceTo(start);
+			double toOwner = free.player().distanceTo(c[0].player());
+			ctx.assertTrue(toOwner > 40, "went to the owner (" + toOwner + " away now, moved " + moved + ")");
+			cleanup(CompanionManager.get(), "GtFarOwner", "GtLoner");
+			ctx.complete();
+		});
+	}
+
+	/** Stuck in free mode: the failsafe sends it home (not to the owner); a following companion is left alone. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 60, batchId = "failsafe")
+	public void failsafeSendsStuckHome(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtStuck");
+		flatArena(ctx, 14);
+		ctx.assertTrue(m.spawn("GtStuck", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 2.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtStuck");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		// Home 40 blocks off (standing still near home is resting, not stuck), on a small pad.
+		for (int x = 0; x <= 4; x++) {
+			for (int z = 38; z <= 42; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				ctx.setBlockState(x, 1, z, Blocks.AIR);
+				ctx.setBlockState(x, 2, z, Blocks.AIR);
+			}
+		}
+		BlockPos home = ctx.getAbsolutePos(new BlockPos(2, 1, 40));
+		c.memory().setPlace("home", home, c.dimension(), ctx.getWorld().getTime());
+		var safe = new com.mcfriends.brain.Failsafe();
+		c.data.mode = "follow";
+		ctx.assertTrue(safe.check(c, 0, home) == null && safe.check(c, com.mcfriends.brain.Failsafe.STUCK_TICKS * 2, home) == null,
+			"following: not the failsafe's business");
+		c.data.mode = "free";
+		long t = com.mcfriends.brain.Failsafe.STUCK_TICKS * 3; // after the follow-mode checks above
+		ctx.assertTrue(safe.check(c, t, home) == null, "first look just records");
+		// Looked at every second, like in a game.
+		String why = null;
+		for (long dt = 20; dt <= com.mcfriends.brain.Failsafe.STUCK_TICKS + 40 && why == null; dt += 20) {
+			why = safe.check(c, t + dt, home);
+			ctx.assertTrue(why == null || dt > com.mcfriends.brain.Failsafe.STUCK_TICKS, "tripped early at " + dt);
+		}
+		ctx.assertTrue(why != null, "stuck for 5 minutes should trip it");
+		c.rescueHome(why);
+		ctx.assertTrue(c.player().getBlockPos().getSquaredDistance(home) < 4 * 4, "rescued to " + c.player().getBlockPos() + ", home " + home);
+		cleanup(m, "GtStuck");
+		ctx.complete();
+	}
 }

@@ -67,6 +67,7 @@ public class Companion {
 	private final Life life = new Life();
 	private final com.mcfriends.brain.Leftovers leftovers = new com.mcfriends.brain.Leftovers(this);
 	private final com.mcfriends.brain.Watchdog watchdog = new com.mcfriends.brain.Watchdog();
+	private final com.mcfriends.brain.Failsafe failsafe = new com.mcfriends.brain.Failsafe();
 	/** Recent deaths (where, when): don't keep walking back into the same danger. */
 	private final java.util.ArrayDeque<long[]> recentDeaths = new java.util.ArrayDeque<>();
 	private boolean lastDeathUnrecoverable;
@@ -177,6 +178,13 @@ public class Companion {
 		}
 		if (serverTick % 40 == 0 && watchdog.check(this, serverTick)) {
 			onStalled();
+		}
+		if (serverTick % 20 == 0) {
+			Memory.Place home = memory.place("home");
+			String why = failsafe.check(this, serverTick, home != null && dimension().equals(home.dim) ? home.pos() : null);
+			if (why != null) {
+				rescueHome(why);
+			}
 		}
 		jobs.tick();
 		life.tick(this, serverTick);
@@ -313,6 +321,32 @@ public class Companion {
 		life.failed(now);
 		speech.event("event.task_failed", Map.of("reason", "I got stuck", "job", what), 0, 1.0F);
 		headBackIfLost("stalled");
+		if (failsafe.stalled(now) && "free".equals(data.mode)) {
+			rescueHome("jobs keep stalling");
+		}
+	}
+
+	/**
+	 * Free mode's failsafe: something went wrong (wedged in blocks, stuck for minutes, jobs
+	 * stalling one after another), so put the companion back home. Never to the owner.
+	 */
+	public void rescueHome(String why) {
+		CompanionManager m = CompanionManager.get();
+		if (player == null || m == null) {
+			return;
+		}
+		var at = m.homeArrival(this);
+		AiLog.log(name(), "failsafe: {} at {}, back home to {}", why, player.getBlockPos().toShortString(),
+			BlockPos.ofFloored(at.pos()).toShortString());
+		memory.count("rescues", 1);
+		com.mcfriends.ops.SoakStats.rescue(name(), why);
+		nav.stop();
+		brain.setJob(null);
+		jobs.clear();
+		player.teleport(at.world(), at.pos().x, at.pos().y, at.pos().z, player.getYaw(), player.getPitch());
+		player.fallDistance = 0;
+		player.setAir(player.getMaxAir());
+		speech.event("event.rescued", Map.of(), 20 * 60, 0.8F);
 	}
 
 	void onDeath() {

@@ -394,11 +394,21 @@ public final class CompanionManager {
 		return null;
 	}
 
-	private record Arrival(ServerWorld world, Vec3d pos) {
+	public record Arrival(ServerWorld world, Vec3d pos) {
+	}
+
+	/** Bed, else home, else world spawn (never the owner): where a free companion is rescued to. */
+	public Arrival homeArrival(Companion c) {
+		return respawnPoint(c, false);
 	}
 
 	/** Where a companion comes back: bed, home, a safely standing owner, or world spawn. */
 	private Arrival respawnPoint(Companion c) {
+		// Free companions live on their own: they come back home, not at the owner's side.
+		return respawnPoint(c, !"free".equals(c.data.mode));
+	}
+
+	private Arrival respawnPoint(Companion c, boolean ownerOk) {
 		ServerWorld world = server.getOverworld();
 		BlockPos at = null;
 		// Like a player: our bed, else home, else with the owner (only if they're somewhere safe:
@@ -415,7 +425,7 @@ public final class CompanionManager {
 			}
 		}
 		ServerPlayerEntity owner = c.owner();
-		if (at == null && owner != null && !owner.isDead() && !owner.isSpectator() && owner.isOnGround() && !owner.isTouchingWater()) {
+		if (ownerOk && at == null && owner != null && !owner.isDead() && !owner.isSpectator() && owner.isOnGround() && !owner.isTouchingWater()) {
 			BlockPos safe = SafeSpot.near(owner.getServerWorld(), owner.getBlockPos(), 4);
 			if (safe != null) {
 				world = owner.getServerWorld();

@@ -6,7 +6,7 @@ AI companions for Minecraft **1.20.1 (Fabric)** that join the server as real pla
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.
 - **One optional network call.** Looking up the skin of a registered Minecraft account goes to Mojang, the same way player heads do. Turn it off with `allowSkinLookup`.
 
-This document describes version **0.7.1**.
+This document describes version **0.7.2**.
 
 ---
 
@@ -246,7 +246,7 @@ While mining:
 
 ### Death, rejoining and getting lost
 
-- **Respawning.** A companion that dies comes back after `respawnDelayTicks`. It returns at its bed, else home, else next to you if you're standing somewhere safe, else world spawn, always on dry, solid ground. It never reappears looking dead.
+- **Respawning.** A companion that dies comes back after `respawnDelayTicks`. It returns at its bed, else home, else (when following you) next to you if you're standing somewhere safe, else world spawn, always on dry, solid ground. It never reappears looking dead.
 - **Getting its things back.** After respawning it goes back for what it dropped, and keeps looking for as long as the items last (5 minutes from the death), unless it died in lava, fire, the void or by drowning, or that spot has already killed it twice in 10 minutes. A death also counts as a failed goal, so free mode puts that goal aside for a while.
 - **Unsafe saves.** A companion saved somewhere deadly (under water, in lava, inside a block) is moved to the nearest safe spot when the world loads.
 - **Not getting lost.**
@@ -296,7 +296,16 @@ Every task has its own time limit, but a task can keep itself busy without getti
 - **Whatever suits where it is:** chopping with an axe in a forest; mining coal, iron, then diamonds (with an iron pickaxe) in a nearby cave; turning spare coal into torches.
 - **Otherwise:** it revisits a remembered cave or wanders.
 
-It says what it's doing, and a goal that fails is put aside for a while. **Any other order ends free mode** (back to following you), so its plans never compete with yours. In follow mode it only does light tool upkeep near you. `initiative` controls how readily it sets its own goals.
+It says what it's doing, and a goal that fails is put aside for a while. **Any other order ends free mode** (back to following you), so its plans never compete with yours.
+
+**Free mode ignores you completely.** It never follows you, and never teleports to you. If it dies with no bed or home, it respawns at world spawn, not at your side.
+
+**Free mode's failsafe** is the only teleport, and it always goes home (or to world spawn without a home), never to you. It happens only when something has clearly gone wrong:
+- stuck inside blocks for 3 seconds;
+- not moving more than a few blocks for 5 minutes (sleeping, sheltering, waiting on a friend or resting near home don't count);
+- the watchdog giving up on two jobs within 10 minutes.
+
+The soak report lists every rescue. In follow mode it only does light tool upkeep near you. `initiative` controls how readily it sets its own goals.
 
 ### Sleep
 
@@ -467,17 +476,17 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 50 GameTests. It resets its world on every run. The tests cover:
+- `./gradlew runGametest` runs a headless server with 52 GameTests. It resets its world on every run. The tests cover:
   - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
-  - combat, free mode, shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;
+  - combat, free mode (including ignoring the owner, and the failsafe), shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;
   - chat, banter, sharing, spreading out, tool prep and picking up drops;
   - the base: storing all but the kit, placing a chest when needed, and crafting from base stock (never from other chests);
   - player slots.
 - `./gradlew runSoak -PsoakMinutes=30 -PsoakCompanions=6` runs an unattended soak test. It starts a dedicated server in `run/soak` with a fresh world (seed `-PsoakSeed`, default 12345, Normal difficulty), and spawns the companions in free mode at world spawn with no player online. When time is up it writes `run/soak/soak-report.md` and stops. The report covers:
   - deaths per companion-hour, with causes;
-  - stalls, finished and failed jobs (with reasons), and interrupts;
+  - stalls, failsafe rescues, finished and failed jobs (with reasons), and interrupts;
   - what each companion gathered and hunted, how far it walked, its hunger at the end, and the best pickaxe, sword and armour it reached;
   - AI time per tick, how many chunks stayed loaded, and items stored at the base (with the final stock).
 - `./gradlew runServer` starts a dev dedicated server in `run/server`. Type commands into the console.
