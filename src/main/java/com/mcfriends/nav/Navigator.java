@@ -305,8 +305,8 @@ public class Navigator {
 	private boolean shaftUp(CompanionPlayer p) {
 		BlockPos start = feet(p);
 		if (goal == null || goal.heuristic(start.up(8)) > goal.heuristic(start) - 2.5
-			|| Inventories.count(p.getInventory(), Inventories::isThrowaway) < 1) {
-			return false; // going up doesn't help (or nothing to stand on)
+			|| Inventories.count(p.getInventory(), Inventories::isThrowaway) < 1 || p.isTouchingWater()) {
+			return false; // going up doesn't help (or nothing to stand on: blocks can't go down in water)
 		}
 		ServerWorld world = p.getServerWorld();
 		Terrain t = new Terrain(world, true, p.getInventory());

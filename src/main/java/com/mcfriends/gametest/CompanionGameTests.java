@@ -2132,4 +2132,75 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtDiver");
 		});
 	}
+
+	/** A ladder shaft out of a pit, optionally with a waterfall pouring down right beside the ladder. */
+	static void ladderPit(TestContext ctx, boolean waterfall) {
+		for (int x = 0; x <= 3; x++) {
+			for (int z = 0; z <= 2; z++) {
+				for (int y = 0; y <= 13; y++) {
+					ctx.setBlockState(x, y, z, Blocks.STONE);
+				}
+			}
+		}
+		for (int y = 1; y <= 12; y++) {
+			ctx.setBlockState(1, y, 1, y <= 10 ? Blocks.LADDER.getDefaultState().with(net.minecraft.block.LadderBlock.FACING, net.minecraft.util.math.Direction.SOUTH)
+				: Blocks.AIR.getDefaultState());
+			if (waterfall) {
+				ctx.setBlockState(2, y, 1, Blocks.WATER.getDefaultState().with(net.minecraft.block.FluidBlock.LEVEL, 8)); // falling water
+			}
+		}
+	}
+
+	/** Never climb (or swim) up beside a waterfall: the water drags you back down. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "nav_waterfall")
+	public void noClimbingBesideWaterfalls(TestContext ctx) {
+		ladderPit(ctx, false);
+		Terrain terrain = new Terrain(ctx.getWorld());
+		BlockPos start = ctx.getAbsolutePos(new BlockPos(1, 1, 1));
+		Goal top = Goal.near(ctx.getAbsolutePos(new BlockPos(1, 11, 1)), 0.5);
+		TickBudget.begin(1000);
+		PathFinder dry = new PathFinder(terrain, start, top, PathFinder.Options.basic(5000, 32), new LongOpenHashSet());
+		ctx.assertTrue(dry.step(100000) == PathFinder.Status.FOUND, "can't climb a plain ladder");
+		ladderPit(ctx, true);
+		terrain = new Terrain(ctx.getWorld());
+		TickBudget.begin(1000);
+		PathFinder wet = new PathFinder(terrain, start, top, PathFinder.Options.basic(5000, 32), new LongOpenHashSet());
+		ctx.assertTrue(wet.step(100000) != PathFinder.Status.FOUND, "climbed up beside a waterfall");
+		ctx.complete();
+	}
+
+	/** A drowned under water isn't something to swim out and fight. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "drowned_ignored")
+	public void leavesDrownedInTheWater(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtShore");
+		stoneArena(ctx, 10);
+		for (int x = 5; x <= 9; x++) {
+			for (int z = 0; z <= 9; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				for (int y = 1; y <= 3; y++) {
+					ctx.setBlockState(x, y, z, Blocks.WATER);
+				}
+			}
+		}
+		for (int x = 5; x <= 9; x++) {
+			for (int z = 0; z <= 9; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.WATER); // a deeper pool: floor one lower
+				ctx.setBlockState(x, -1, z, Blocks.STONE);
+			}
+		}
+		ctx.assertTrue(m.spawn("GtShore", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(1.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtShore");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		var drowned = ctx.spawnEntity(net.minecraft.entity.EntityType.DROWNED, new BlockPos(7, 0, 4));
+		drowned.setAiDisabled(true);
+		drowned.setPersistent();
+		ctx.waitAndRun(10, () -> {
+			ctx.assertTrue(drowned.isSubmergedInWater(), "drowned should be under water");
+			ctx.assertTrue(c.perception().threats().stream().noneMatch(t -> t == drowned), "treats a submerged drowned as a fight");
+			drowned.discard();
+			cleanup(m, "GtShore");
+			ctx.complete();
+		});
+	}
 }

@@ -1,6 +1,7 @@
 package com.mcfriends.brain;
 
 import com.mcfriends.Companion;
+import com.mcfriends.action.Inventories;
 import com.mcfriends.entity.CompanionPlayer;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
@@ -29,6 +30,18 @@ public final class Failsafe {
 	private long wedgedSince = -1;
 	private long lastStall = -1_000_000;
 	private long lastCheck = Long.MIN_VALUE;
+
+	private long lastWaterGiveUp = -1_000_000;
+	private long handDigSince = -1;
+	/** Digging out by hand (no pickaxe) this long means we're entombed, not getting anywhere soon. */
+	public static final long HAND_DIG_TICKS = 20 * 90;
+
+	/** A job was given up for too much water. @return true if it's the second within the window */
+	public boolean waterTrapped(long now) {
+		boolean repeated = now - lastWaterGiveUp < STALL_WINDOW;
+		lastWaterGiveUp = now;
+		return repeated;
+	}
 
 	/** A watchdog stall happened. @return true if it's the second within the window */
 	public boolean stalled(long now) {
@@ -59,6 +72,18 @@ public final class Failsafe {
 			}
 		} else {
 			wedgedSince = -1;
+		}
+		// Entombed in rock with no pickaxe: punching out a block every 7 s, which keeps the other
+		// checks happy (it moves, it breaks things) while it gets nowhere.
+		boolean handDigging = c.nav().escaping() && Inventories.bestPickaxe(p.getInventory()) == null
+			&& !p.getWorld().isSkyVisible(p.getBlockPos().up());
+		if (!handDigging) {
+			handDigSince = -1;
+		} else if (handDigSince < 0) {
+			handDigSince = now;
+		} else if (now - handDigSince > HAND_DIG_TICKS) {
+			handDigSince = -1;
+			return "digging out by hand with no pickaxe";
 		}
 		BlockPos pos = p.getBlockPos();
 		boolean resting = c.brain().currentObjective() == Objective.SLEEP || RESTING_JOBS.contains(c.brain().jobName())

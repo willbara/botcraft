@@ -194,6 +194,11 @@ public class Perception {
 		// Mobs after us, our owner, or a fellow companion nearby (we look out for each other).
 		boolean targetingUs = target == p || (owner != null && target == owner)
 			|| (target instanceof CompanionPlayer friend && friend.squaredDistanceTo(p) < 16 * 16);
+		// Under water (drowned, guardians): fighting them means swimming into deep water after
+		// them. Only hit back when one is right on us; otherwise keep away from the water.
+		if (m.isSubmergedInWater()) {
+			return m.squaredDistanceTo(p) < 2.5 * 2.5;
+		}
 		// Neutral mobs only count when they're already after us.
 		if (m instanceof EndermanEntity || m instanceof ZombifiedPiglinEntity || m instanceof PiglinEntity) {
 			return targetingUs;
