@@ -1199,4 +1199,59 @@ public class CompanionGameTests implements FabricGameTest {
 		ctx.assertTrue(!withTable.ready() && !withTable.missing().isEmpty(), "but not with a table too: " + withTable.missing());
 		ctx.complete();
 	}
+
+	/** The watchdog flags a job that makes no progress for its whole window, and not one that does. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "watchdog")
+	public void watchdogFlagsStalledJob(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtStall");
+		floor(ctx, 8);
+		ctx.assertTrue(m.spawn("GtStall", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtStall");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		BlockPos far = ctx.getAbsolutePos(new BlockPos(3, 1, 60));
+		c.jobs().replace(java.util.List.of("goto " + far.getX() + " " + far.getY() + " " + far.getZ() + " nowhere"));
+		c.jobs().tick();
+		ctx.assertTrue(c.brain().hasJob(), "job started");
+		var dog = new com.mcfriends.brain.Watchdog();
+		ctx.assertTrue(!dog.check(c, 1000), "first look just records");
+		ctx.assertTrue(!dog.check(c, 1000 + com.mcfriends.brain.Watchdog.STALL_TICKS / 2), "not yet");
+		ctx.assertTrue(dog.check(c, 1000 + com.mcfriends.brain.Watchdog.STALL_TICKS + 1), "stalled after the window");
+		give(c, net.minecraft.item.Items.COBBLESTONE, 1); // progress: what it carries changed
+		ctx.assertTrue(!dog.check(c, 1000 + 2 * com.mcfriends.brain.Watchdog.STALL_TICKS + 2), "progress resets it");
+		c.jobs().clear();
+		ctx.assertTrue(!dog.check(c, 1000 + 4 * com.mcfriends.brain.Watchdog.STALL_TICKS), "no job, no stall");
+		cleanup(m, "GtStall");
+		ctx.complete();
+	}
+
+	/** After dying, it goes back for what it dropped. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "recover_gear")
+	public void recoversGearAfterDeath(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtLazarus");
+		flatArena(ctx, 14);
+		ctx.assertTrue(m.spawn("GtLazarus", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 2.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtLazarus");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.data.owner = null;
+		c.data.mode = "follow";
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.IRON_INGOT, 3);
+		give(c, net.minecraft.item.Items.COBBLESTONE, 10);
+		BlockPos home = ctx.getAbsolutePos(new BlockPos(11, 1, 11));
+		c.memory().setPlace("home", home, c.dimension(), ctx.getWorld().getTime());
+		var first = c.player();
+		first.kill();
+		ctx.addInstantFinalTask(() -> {
+			var p = c.player();
+			ctx.assertTrue(p != null && p != first, "not respawned yet");
+			ctx.assertTrue(count(c, net.minecraft.item.Items.IRON_INGOT) == 3, "has " + count(c, net.minecraft.item.Items.IRON_INGOT)
+				+ " iron back; at " + p.getBlockPos() + "; " + c.describeActivity() + "; queued " + c.jobs().pending()
+				+ "; items around " + ctx.getWorld().getEntitiesByClass(net.minecraft.entity.ItemEntity.class, p.getBoundingBox().expand(16), e -> true)
+					.stream().map(e -> e.getStack() + "@" + e.getBlockPos().toShortString() + " owner " + e.getOwner()).toList()
+				+ "; ours " + c.leftovers().lying() + " expected " + c.leftovers().anyExpected());
+			cleanup(m, "GtLazarus");
+		});
+	}
 }
