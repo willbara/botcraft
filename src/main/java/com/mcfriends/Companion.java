@@ -473,6 +473,9 @@ public class Companion {
 			if (breathCount >= 3) {
 				breathJob = null;
 				giveUpJob("there's too much water here");
+				if (failsafe.waterTrapped(now) && "free".equals(data.mode)) {
+					rescueHome("keeps getting caught in water"); // the next job would lead straight back in
+				}
 			}
 		}
 		if (objective == Objective.FIGHT && task instanceof FightTask) {

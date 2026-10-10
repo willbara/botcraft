@@ -441,6 +441,9 @@ public class PathFinder {
 		if (!usable(u) || deadly(u) || deadly(u.up())) {
 			return;
 		}
+		if (terrain.nearFallingWater(p) || terrain.nearFallingWater(u)) {
+			return; // a waterfall drags us down: no climbing (vines, ladders) or swimming up through it
+		}
 		if (terrain.isClimbable(p) && (terrain.isClimbable(u) || terrain.passable(u))) {
 			if (terrain.passable(u.up()) || terrain.isClimbable(u.up())) {
 				add(cur, u, LADDER_UP, MoveType.CLIMB, null, List.of());

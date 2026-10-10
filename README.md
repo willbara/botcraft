@@ -175,6 +175,7 @@ The parser also copes with:
 - **Avoiding hazards.**
   - **Lava** and fire are strongly avoided.
   - **Water:** swimming costs extra, being fully underwater costs much more, and currents (rivers, waterfalls) cost more still. Paths go around water whenever a dry route exists.
+  - **Waterfalls:** no climbing (vines, ladders) or swimming up in or right beside falling water, which drags you back down. No digging-up-and-pillaring while standing in water either.
   - **Swimming upright:** in water a companion only sprint-swims (the swimming pose, head under) where the route itself goes under water. Across the surface it swims upright, so it can breathe.
   - **Breath:** a path may stay with the head under water for at most 14 blocks in a row, fewer when the companion is already short of air. Longer underwater stretches cost more the longer they get. It never routes through a flooded tunnel longer than a breath lasts.
 - **Getting unstuck.**
@@ -251,6 +252,7 @@ While mining:
 ### Combat and safety
 
 - **Fighting.** With at least 4 melee damage it fights any hostile mob, creepers included, backing off while a creeper hisses.
+- **Mobs under water** (drowned, guardians) aren't chased into the water. It only hits back when one is right on top of it.
 - **Fleeing.** Unarmed, it runs (never off a cliff). At low health it retreats from monsters that are close. Hurt with no food, it can't heal (natural healing needs a nearly full hunger bar), so it asks a friend for food or hunts.
 - **Armour.** It wears the best armour it has.
 - **Protecting others.** Companions defend each other: a mob going after a nearby companion counts as a threat. With "defend me", it also attacks mobs targeting you.
@@ -365,6 +367,8 @@ It says what it's doing, and a goal that fails is put aside for a while. **Any o
 
 **Free mode's failsafe** is the only teleport, and it always goes home (or to world spawn without a home), never to you. It happens only when something has clearly gone wrong:
 - stuck inside blocks for 3 seconds;
+- digging its way out of rock by hand (no pickaxe) for 90 seconds;
+- giving up two jobs within 10 minutes because of water (the next job would lead it straight back in);
 - not moving more than a few blocks for 5 minutes (sleeping, sheltering, waiting on a friend or resting near home don't count);
 - the watchdog giving up on two jobs within 10 minutes.
 
@@ -554,8 +558,8 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 72 GameTests. It resets its world on every run. The tests cover:
-  - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air (including swimming a sideways route out), and never pathing through a flooded tunnel longer than a breath;
+- `./gradlew runGametest` runs a headless server with 74 GameTests. It resets its world on every run. The tests cover:
+  - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air (including swimming a sideways route out), never pathing through a flooded tunnel longer than a breath, and never climbing beside a waterfall;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
   - combat (including full-damage hits), free mode (including ignoring the owner, and the failsafe), shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;

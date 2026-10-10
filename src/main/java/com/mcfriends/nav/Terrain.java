@@ -185,6 +185,31 @@ public class Terrain {
 		return kind(pos) == WATER;
 	}
 
+	/**
+	 * Water pouring down (a waterfall, or water spilling over an edge): it drags whatever is in it
+	 * downward, so there's no swimming or climbing up through it.
+	 */
+	public boolean isFallingWater(BlockPos pos) {
+		if (kind(pos) != WATER) {
+			return false;
+		}
+		var f = world.getFluidState(pos);
+		return !f.isStill() && f.contains(net.minecraft.fluid.FlowableFluid.FALLING) && f.get(net.minecraft.fluid.FlowableFluid.FALLING);
+	}
+
+	/** Falling water here or right beside it (it catches our body as we climb past). */
+	public boolean nearFallingWater(BlockPos pos) {
+		if (isFallingWater(pos)) {
+			return true;
+		}
+		for (Direction d : Direction.Type.HORIZONTAL) {
+			if (isFallingWater(pos.offset(d))) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public boolean isLava(BlockPos pos) {
 		return kind(pos) == LAVA;
 	}
