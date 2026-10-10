@@ -33,6 +33,9 @@ public class DepositTask extends Task {
 	/** Where the new chest goes (worked out once; it's a big search on steep ground). */
 	@org.jetbrains.annotations.Nullable
 	private BlockPos newSpot;
+	/** Spots where putting the chest down didn't work (someone in the way...). */
+	private final java.util.Set<BlockPos> badSpots = new java.util.HashSet<>();
+	private int spotTicks;
 	/** A batch for the base: at least this many of these go in, kit or not. */
 	@org.jetbrains.annotations.Nullable
 	private final java.util.function.Predicate<ItemStack> batch;
@@ -134,7 +137,8 @@ public class DepositTask extends Task {
 			return deferTo(List.of("craft chest 1"));
 		}
 		if (newSpot == null || !p.getWorld().getBlockState(newSpot).isReplaceable()) {
-			newSpot = colony.newChestSpot();
+			newSpot = colony.newChestSpot(badSpots);
+			spotTicks = 0;
 			if (newSpot == null) {
 				AiLog.log(c.name(), "deposit: no room for another chest at the base");
 				return done();
@@ -163,9 +167,14 @@ public class DepositTask extends Task {
 			placing = false;
 			newSpot = null;
 			chestsTried = 0;
-		} else if (placeTicks > 20 * 10) {
+		} else if (++spotTicks > 20 * 3) {
+			// In reach but it won't go down here: try somewhere else (a few times).
 			AiLog.log(c.name(), "deposit: couldn't place a chest at {} ({})", spot.toShortString(), c.actions().lastPlaceProblem());
-			return done();
+			badSpots.add(spot);
+			newSpot = null;
+			if (badSpots.size() >= 3) {
+				return done();
+			}
 		}
 		return Status.RUNNING;
 	}
