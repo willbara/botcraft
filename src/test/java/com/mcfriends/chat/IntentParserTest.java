@@ -281,4 +281,17 @@ class IntentParserTest {
 		assertEquals(Intent.Type.INVENTORY, type("bob what do you have"));
 		assertEquals(Intent.Type.HOME_SET, type("everyone this is home"));
 	}
+
+	@Test
+	void chestPurposes() {
+		var ores = IntentParser.parse("everyone this chest is for ores", List.of("bob")).intent();
+		assertEquals(Intent.Type.CHEST_SET, ores.type());
+		assertEquals("ORES", ores.item());
+		assertEquals("FOOD", IntentParser.parse("bob food goes in this chest", List.of("bob")).intent().item());
+		assertEquals("WOOD", IntentParser.parse("bob put the wood here", List.of("bob")).intent().item());
+		assertEquals("GEAR", IntentParser.parse("bob this is the tool chest", List.of("bob")).intent().item());
+		assertEquals("", IntentParser.parse("bob this is our chest", List.of("bob")).intent().item());
+		assertEquals(Intent.Type.COME_HERE, type("everyone come here"));
+		assertFalse(type("everyone go here") == Intent.Type.CHEST_SET);
+	}
 }

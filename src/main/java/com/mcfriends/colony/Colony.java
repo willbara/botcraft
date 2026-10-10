@@ -54,6 +54,8 @@ public final class Colony {
 		int[] base;
 		String dim;
 		List<int[]> chests = new ArrayList<>();
+		/** "x,y,z" -> purpose name, for chests that have one. */
+		Map<String, String> purposes = new HashMap<>();
 	}
 
 	private final MinecraftServer server;
@@ -78,6 +80,9 @@ public final class Colony {
 					c.data = d;
 					if (c.data.chests == null) {
 						c.data.chests = new ArrayList<>();
+					}
+					if (c.data.purposes == null) {
+						c.data.purposes = new HashMap<>();
 					}
 				}
 			} catch (IOException | JsonParseException e) {
@@ -281,13 +286,17 @@ public final class Colony {
 		}).min(Comparator.comparingDouble(p -> p.getSquaredDistance(from))).orElse(null);
 	}
 
-	/** The nearest base chest with room for this item (an empty slot, or a matching stack with space). */
+	/**
+	 * Where to put this item: a chest for its kind first, then a general chest (no purpose), and
+	 * only then any chest with room. Within each, a chest already holding the item wins.
+	 */
 	@Nullable
 	public BlockPos chestWithRoom(ItemStack stack, BlockPos from) {
 		ServerWorld w = world();
 		if (w == null) {
 			return null;
 		}
+		Purpose kind = Purpose.of(stack);
 		BlockPos best = null;
 		double bestD = Double.MAX_VALUE;
 		for (BlockPos p : chests()) {
@@ -311,14 +320,66 @@ public final class Colony {
 			if (!room) {
 				continue;
 			}
-			// Keep like with like: a chest already holding this item wins.
-			double d = p.getSquaredDistance(from) - (same ? 10_000 : 0);
+			Purpose purpose = purpose(p);
+			double rank = purpose == kind ? 0 : purpose == null ? 1 : 2; // ours, general, someone else's
+			double d = rank * 1_000_000 + p.getSquaredDistance(from) - (same ? 10_000 : 0);
 			if (d < bestD) {
 				bestD = d;
 				best = p;
 			}
 		}
 		return best;
+	}
+
+	/** What this chest is for, or null for a general chest. Both halves of a double chest share it. */
+	@Nullable
+	public Purpose purpose(BlockPos pos) {
+		String name = data.purposes.get(key(pos));
+		if (name == null) {
+			ServerWorld w = world();
+			if (w != null && w.getBlockState(pos).getBlock() instanceof ChestBlock
+				&& w.getBlockState(pos).get(ChestBlock.CHEST_TYPE) != net.minecraft.block.enums.ChestType.SINGLE) {
+				name = data.purposes.get(key(pos.offset(ChestBlock.getFacing(w.getBlockState(pos)))));
+			}
+		}
+		try {
+			return name == null ? null : Purpose.valueOf(name);
+		} catch (IllegalArgumentException e) {
+			return null;
+		}
+	}
+
+	public void setPurpose(BlockPos pos, @Nullable Purpose purpose) {
+		if (purpose == null) {
+			data.purposes.remove(key(pos));
+		} else {
+			data.purposes.put(key(pos), purpose.name());
+		}
+		dirty = true;
+	}
+
+	private static String key(BlockPos p) {
+		return p.getX() + "," + p.getY() + "," + p.getZ();
+	}
+
+	/** Each chest's purpose and how many items it holds (for /companion colony). */
+	public List<String> describeChests() {
+		ServerWorld w = world();
+		List<String> out = new ArrayList<>();
+		if (w == null) {
+			return out;
+		}
+		for (BlockPos p : chests()) {
+			int items = 0;
+			if (w.isChunkLoaded(p) && w.getBlockEntity(p) instanceof Inventory inv) {
+				for (int i = 0; i < inv.size(); i++) {
+					items += inv.getStack(i).getCount();
+				}
+			}
+			Purpose purpose = purpose(p);
+			out.add(p.toShortString() + ": " + (purpose == null ? "general" : purpose.label) + ", " + items + " item(s)");
+		}
+		return out;
 	}
 
 	/**

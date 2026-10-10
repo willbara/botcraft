@@ -86,9 +86,12 @@ public class DepositTask extends Task {
 		if (chest == null) {
 			return Status.RUNNING;
 		}
-		// Open: move what fits.
+		// Open: move what belongs here (each item's best chest is this one) and fits.
 		for (Map.Entry<Integer, Integer> e : toStore.entrySet()) {
 			ItemStack s = inv.getStack(e.getKey());
+			if (!visit.chest().equals(colony.chestWithRoom(s, p.getBlockPos()))) {
+				continue; // has a better home (its own kind's chest); we'll take it there next
+			}
 			ItemStack part = s.split(e.getValue());
 			int moved = ChestVisit.insert(chest, part);
 			stored += moved;

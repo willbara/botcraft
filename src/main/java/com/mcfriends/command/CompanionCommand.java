@@ -181,6 +181,9 @@ public final class CompanionCommand {
 		var base = colony.base();
 		ctx.getSource().sendFeedback(() -> Text.literal("Base at " + base.toShortString() + ", " + colony.chests().size() + " chest(s)")
 			.formatted(Formatting.AQUA), false);
+		for (String line : colony.describeChests()) {
+			ctx.getSource().sendFeedback(() -> Text.literal("  chest " + line).formatted(Formatting.GRAY), false);
+		}
 		var stock = new java.util.ArrayList<>(colony.stock().entrySet());
 		stock.sort((a, b) -> b.getValue() - a.getValue());
 		if (stock.isEmpty()) {
