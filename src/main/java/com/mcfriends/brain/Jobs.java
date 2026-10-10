@@ -73,6 +73,9 @@ public final class Jobs {
 				case "collect" -> {
 					return new com.mcfriends.brain.task.CollectTask(c);
 				}
+				case "dance" -> {
+					return new com.mcfriends.brain.task.DanceTask(c);
+				}
 				case "deposit" -> {
 					return new com.mcfriends.brain.task.DepositTask(c);
 				}
@@ -132,6 +135,7 @@ public final class Jobs {
 			case "sleep" -> "go to bed";
 			case "shelter" -> "dig in for the night";
 			case "deposit" -> "put my things away";
+			case "dance" -> "dance";
 			case "withdraw" -> "get " + label(w.length > 1 ? w[1] : "food") + " from the chests";
 			case "smelt" -> {
 				String what = w.length > 1 ? w[1].replace('_', ' ') : "food";

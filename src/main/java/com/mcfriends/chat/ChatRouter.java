@@ -179,6 +179,11 @@ public final class ChatRouter {
 						jobs.add("deposit");
 					}
 				}
+				case DANCE -> {
+					// A little fun: dance now, then carry on with whatever we were doing.
+					c.jobs().interruptWith(List.of("dance"));
+					speech.reply("ack.dance", sender, vars);
+				}
 				case STOCK -> {
 					if (once("stock")) {
 						vars.put("list", stockSummary());

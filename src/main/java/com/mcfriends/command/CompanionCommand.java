@@ -75,6 +75,10 @@ public final class CompanionCommand {
 				.executes(CompanionCommand::list))
 			.then(CommandManager.literal("colony")
 				.executes(CompanionCommand::colony))
+			.then(CommandManager.literal("why")
+				.then(CommandManager.argument("name", StringArgumentType.word())
+					.suggests(COMPANION_NAMES)
+					.executes(CompanionCommand::why)))
 			.then(CommandManager.literal("stop")
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
@@ -168,6 +172,45 @@ public final class CompanionCommand {
 			return 0;
 		}
 		ctx.getSource().sendFeedback(() -> Text.literal("Removed companion " + name), true);
+		return 1;
+	}
+
+	/** Why a companion is doing what it's doing: its goal, the plan, the alternatives, what it has learned. */
+	private static int why(CommandContext<ServerCommandSource> ctx) {
+		String name = StringArgumentType.getString(ctx, "name");
+		Companion c = manager(ctx).byName(name);
+		if (c == null) {
+			ctx.getSource().sendError(Text.literal("No companion named " + name));
+			return 0;
+		}
+		var src = ctx.getSource();
+		src.sendFeedback(() -> Text.literal(c.name() + " (" + c.data.mode + " mode): " + c.describeActivity()).formatted(Formatting.AQUA), false);
+		if (!c.jobs().pending().isEmpty()) {
+			src.sendFeedback(() -> Text.literal("  queued: " + String.join(" | ", c.jobs().pending())).formatted(Formatting.GRAY), false);
+		}
+		var d = c.life().lastDecision();
+		if (d == null) {
+			src.sendFeedback(() -> Text.literal("  no progression plan yet (free mode plans its next target)").formatted(Formatting.GRAY), false);
+		} else {
+			src.sendFeedback(() -> Text.literal("  target " + c.life().lastTarget() + " -> " + d.chosen().method() + " ("
+				+ (d.chosen().possible() ? Math.round(d.chosen().cost()) + "s" : "impossible") + ", " + d.chosen().note() + ")").formatted(Formatting.WHITE), false);
+			if (!d.chosen().steps().isEmpty()) {
+				src.sendFeedback(() -> Text.literal("    plan: " + String.join(", then ", d.chosen().steps())).formatted(Formatting.GRAY), false);
+			}
+			for (var o : d.considered()) {
+				if (o != d.chosen()) {
+					src.sendFeedback(() -> Text.literal("    also: " + o.method() + " " + (o.possible() ? Math.round(o.cost()) + "s" : "no")
+						+ " (" + o.note() + ")").formatted(Formatting.DARK_GRAY), false);
+				}
+			}
+		}
+		var learned = com.mcfriends.brain.plan.MethodStats.summary(c);
+		if (!learned.isEmpty()) {
+			src.sendFeedback(() -> Text.literal("  learned:").formatted(Formatting.GRAY), false);
+			for (String line : learned) {
+				src.sendFeedback(() -> Text.literal("    " + line).formatted(Formatting.DARK_GRAY), false);
+			}
+		}
 		return 1;
 	}
 

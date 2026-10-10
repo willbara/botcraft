@@ -185,5 +185,12 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] "bob, what's in the chests?" lists the stock (one answer when you ask everyone).
 - [ ] Free mode for a day: companions come home to unload, and the stock grows. At night, armed ones at home smelt, cook and craft instead of standing around.
 
+### 21. Chest purposes, planning, dancing
+- [ ] Look at a chest: "everyone, this chest is for ores". Another: "food goes in this chest". `/companion colony` lists the purposes. Storing puts raw ores and ingots in the first, food in the second, everything else in a general chest.
+- [ ] Free mode with stone tools: `/companion why bob` shows "iron tools: an iron pickaxe" with a plan (mine, smelt, craft) and the alternatives with costs.
+- [ ] Put 3 iron ingots in a base chest: the next `/companion why` plan takes them from the chest instead of mining.
+- [ ] After a companion fails or dies mining, `/companion why` lists it under "learned", and mining costs go up.
+- [ ] "everyone dance": they dance for about 12 seconds, then carry on. Free mode keeps going afterwards.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.

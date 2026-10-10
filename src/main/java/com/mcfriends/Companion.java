@@ -138,6 +138,10 @@ public class Companion {
 		return memory;
 	}
 
+	public Life life() {
+		return life;
+	}
+
 	/** What our own work dropped and we still have to pick up. */
 	public com.mcfriends.brain.Leftovers leftovers() {
 		return leftovers;
@@ -349,12 +353,36 @@ public class Companion {
 		speech.event("event.rescued", Map.of(), 20 * 60, 0.8F);
 	}
 
+	/** How many things a finished task got us (for learning how well each method works). */
+	private static int unitsFrom(Task task) {
+		if (task instanceof MineTask m) {
+			return m.gathered();
+		}
+		if (task instanceof GatherLogsTask g) {
+			return g.gathered();
+		}
+		if (task instanceof com.mcfriends.brain.task.HuntTask h) {
+			return h.kills();
+		}
+		if (task instanceof com.mcfriends.brain.task.SmeltTask sm) {
+			return sm.made();
+		}
+		if (task instanceof CraftTask cr) {
+			return cr.made();
+		}
+		return 0;
+	}
+
 	void onDeath() {
 		AiLog.log(name(), "died");
 		nav.stop();
 		memory.count("deaths", 1);
-		// A goal that got us killed is put aside for a while, like one that failed.
+		// A goal that got us killed is put aside for a while, like one that failed; and the way we
+		// were going about it is remembered as dangerous.
 		life.failed(now);
+		if (data.job != null) {
+			com.mcfriends.brain.plan.MethodStats.death(this, com.mcfriends.brain.plan.MethodStats.key(data.job));
+		}
 		var source = player == null ? null : player.getRecentDamageSource();
 		String cause = source == null ? "unknown" : source.getName();
 		lastDeathUnrecoverable = source != null && (source.isIn(net.minecraft.registry.tag.DamageTypeTags.IS_FIRE)
@@ -431,6 +459,8 @@ public class Companion {
 		}
 		if (task.spec() != null && !task.silent()) {
 			com.mcfriends.ops.SoakStats.job(name(), task.name(), status == Status.SUCCESS, status == Status.FAILED ? task.failReason() : "");
+			com.mcfriends.brain.plan.MethodStats.record(this, com.mcfriends.brain.plan.MethodStats.key(task.spec()), status == Status.SUCCESS,
+				unitsFrom(task), task.ticks());
 		}
 		if (status == Status.FAILED && Jobs.optional(task.spec())) {
 			// Tool prep didn't work out: get on with the actual job.

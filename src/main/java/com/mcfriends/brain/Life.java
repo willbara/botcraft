@@ -223,23 +223,13 @@ public class Life {
 		if (rawIron >= 3) {
 			goals.add(new Goal("smelt_iron", List.of("smelt iron_ingot " + rawIron), "I should smelt this iron"));
 		}
-		if (stonePick && !ironPick) {
-			goals.add(new Goal("iron_pickaxe", List.of("craft iron_pickaxe 1"), "time to get some iron"));
-		}
-		if (ironPick && Inventories.bestWeaponDamage(inv) < 6.0) {
-			goals.add(new Goal("iron_sword", List.of("craft iron_sword 1"), "an iron sword would be nice"));
-		}
-		if (ironPick) {
-			// One armour piece at a time, for any slot not already at least iron.
-			for (net.minecraft.item.Item piece : List.of(Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS)) {
-				net.minecraft.item.ArmorItem ironPiece = (net.minecraft.item.ArmorItem) piece;
-				var worn = p.getEquippedStack(ironPiece.getSlotType());
-				boolean weaker = !(worn.getItem() instanceof net.minecraft.item.ArmorItem a) || a.getProtection() < ironPiece.getProtection();
-				if (weaker && !has(inv, st -> st.isOf(piece))) {
-					String id = com.mcfriends.knowledge.ItemNames.id(piece);
-					goals.add(new Goal("armor_" + id, List.of("craft " + id + " 1"), "some armour would keep me alive"));
-					break;
-				}
+		// Progression: the next target on the ladder (iron tools, iron armour, diamonds...), got
+		// whichever way the planner finds cheapest right now.
+		// (Planned only when nothing more urgent is waiting: planning isn't free.)
+		if (stonePick && goals.stream().noneMatch(g -> allowed(g.key(), now))) {
+			Goal target = targetGoal(c, now);
+			if (target != null) {
+				goals.add(target);
 			}
 		}
 		// 4. Settle in: a bed at home.
@@ -444,6 +434,44 @@ public class Life {
 	private static boolean outdoorErrand(@Nullable Task job) {
 		return job instanceof com.mcfriends.brain.task.HuntTask || job instanceof com.mcfriends.brain.task.GatherLogsTask
 			|| (job instanceof com.mcfriends.brain.task.GoToTask g && g.label().equals("exploring"));
+	}
+
+	/** The last planning decision, for /companion why. */
+	@Nullable
+	private com.mcfriends.brain.plan.Planner.Decision lastDecision;
+	@Nullable
+	private String lastTarget;
+
+	@Nullable
+	public com.mcfriends.brain.plan.Planner.Decision lastDecision() {
+		return lastDecision;
+	}
+
+	@Nullable
+	public String lastTarget() {
+		return lastTarget;
+	}
+
+	/** The next progression target and the cheapest way to reach it. */
+	@Nullable
+	private Goal targetGoal(Companion c, long now) {
+		var target = com.mcfriends.brain.plan.Targets.next(c, t -> allowed("target_" + com.mcfriends.knowledge.ItemNames.id(t.item()), now));
+		if (target == null) {
+			return null;
+		}
+		var decision = com.mcfriends.brain.plan.Planner.acquire(c, target.item(), 1);
+		lastDecision = decision;
+		lastTarget = target.tier() + ": " + target.name();
+		String key = "target_" + com.mcfriends.knowledge.ItemNames.id(target.item());
+		if (!decision.chosen().possible() || decision.chosen().steps().isEmpty()) {
+			AiLog.log(c.name(), "life: can't plan {} ({})", target.name(), decision.chosen().note());
+			backoff.put(key, now + FAIL_BACKOFF);
+			return null;
+		}
+		AiLog.log(c.name(), "plan for {}: {} ({}s) {} | also {}", target.name(), decision.chosen().method(),
+			Math.round(decision.chosen().cost()), decision.chosen().steps(), decision.considered().stream()
+				.filter(o -> o != decision.chosen()).map(o -> o.method() + " " + (o.possible() ? Math.round(o.cost()) + "s" : "no")).toList());
+		return new Goal(key, decision.chosen().steps(), target.tier() + " next: " + target.name());
 	}
 
 	/** Hungry with nothing to eat while following: cook what we have, else hunt nearby. */
