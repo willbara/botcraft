@@ -121,7 +121,10 @@ public class CraftTask extends Task {
 		}
 		// Already made and sitting in the base chests (a spare sword, someone's old pickaxe)? Take it.
 		int carried = Inventories.count(p.getInventory(), st -> st.isOf(item));
-		if (made == 0 && carried < count) {
+		// Only on the first try: if the chests turned out not to have it after all (taken, out of
+		// reach), the next try crafts it instead of going back to the chests again.
+		boolean firstTry = spec() == null || com.botcraft.brain.Jobs.attempt(spec()) == 0;
+		if (made == 0 && carried < count && firstTry) {
 			String stored = com.botcraft.brain.Jobs.withdrawSpec(c, ItemNames.id(item), st -> st.isOf(item), count - carried);
 			if (stored != null) {
 				return deferTo(List.of(stored));
