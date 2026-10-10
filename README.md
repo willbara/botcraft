@@ -551,11 +551,11 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 69 GameTests. It resets its world on every run. The tests cover:
+- `./gradlew runGametest` runs a headless server with 70 GameTests. It resets its world on every run. The tests cover:
   - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
-  - combat, free mode (including ignoring the owner, and the failsafe), shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;
+  - combat (including full-damage hits), free mode (including ignoring the owner, and the failsafe), shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;
   - chat, banter, sharing, spreading out, tool prep and picking up drops;
   - the base: storing all but the kit, chests with a purpose, placing a chest when needed, and crafting from base stock (never from other chests);
   - the planner (using stock, smelting what's carried, chaining from scratch, learning from failure), the target ladder, the request board (bidding, failure memory, stocking the base end to end), dancing, scattering on "run away", and beds (putting a carried bed down, crafting one at night in free mode, the night skip with a companion still awake);

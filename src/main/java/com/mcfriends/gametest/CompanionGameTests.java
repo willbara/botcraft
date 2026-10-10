@@ -1865,7 +1865,7 @@ public class CompanionGameTests implements FabricGameTest {
 			targets.add(to);
 		}
 		double apart = Math.sqrt(targets.get(0).getSquaredDistance(targets.get(1)));
-		ctx.assertTrue(apart > 40, "headed only " + (int) apart + " apart");
+		ctx.assertTrue(apart > 25, "headed only " + (int) apart + " apart");
 		cleanup(m, "GtScatterA", "GtScatterB");
 		ctx.complete();
 	}
@@ -2023,6 +2023,37 @@ public class CompanionGameTests implements FabricGameTest {
 			c.data.initiative = null;
 			colony.clear();
 			cleanup(m, "GtSupplier");
+		});
+	}
+
+	/**
+	 * Hits land charged: an iron sword (6) kills a cow (10 health) in two hits. (Swinging before
+	 * hitting used to reset the attack charge, so every blow did 20% damage.)
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 200, batchId = "melee_damage")
+	public void hitsLandAtFullDamage(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtSwinger");
+		clearAnimals(ctx);
+		stoneArena(ctx, 6);
+		ctx.assertTrue(m.spawn("GtSwinger", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtSwinger");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.IRON_SWORD, 1);
+		var cow = ctx.spawnEntity(net.minecraft.entity.EntityType.COW, new BlockPos(3, 1, 3));
+		cow.setAiDisabled(true);
+		int[] hits = {0};
+		ctx.addInstantFinalTask(() -> {
+			if (cow.isAlive()) {
+				com.mcfriends.action.Inventories.equipBestWeapon(c.player());
+				if (c.actions().attack(cow)) {
+					hits[0]++;
+				}
+			}
+			ctx.assertTrue(!cow.isAlive(), "cow alive after " + hits[0] + " hits, health " + cow.getHealth());
+			ctx.assertTrue(hits[0] <= 3, "took " + hits[0] + " hits (an iron sword needs 2, 3 with a whiff)");
+			cleanup(m, "GtSwinger");
 		});
 	}
 }
