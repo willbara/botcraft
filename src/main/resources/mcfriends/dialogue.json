@@ -6,6 +6,7 @@
   "ack.come": ["On my way!", "Coming!", "Be right there, {nick}.", "Heading over.", "Omw!", "Coming, coming!"],
   "ack.defend": ["I've got your back, {nick}.", "Nothing's getting past me.", "I'll keep the monsters off you.", "Bodyguard mode: on.", "Anything comes near you, it deals with me."],
   "ack.defend.timid": ["I'll... try my best to protect you.", "Okay, I'll watch your back. Gulp.", "Right. Defending. I can do this."],
+  "ack.scatter": ["Scatter! See you around.", "Run away? Okay, bye!", "I'm off! Catch me if you can.", "Splitting up. I'll find my own spot.", "Alright, I'm heading my own way.", "Everyone for themselves!"],
   "ack.free": ["Alright, I'll do my own thing around here. Call me if you need me!", "Free time! I'll keep busy.", "Sweet, I'll go live my best Minecraft life.", "Okay, I'll be around home doing stuff.", "Don't worry about me, I've got plans.", "Time to get some stuff done on my own."],
   "ack.plan": ["Okay: {plan}.", "On it. I'll {plan}.", "Got it, {plan}.", "Sure thing: {plan}.", "Can do. First I'll {plan}.", "You got it. {plan}.", "Alright, {plan}. Leave it to me."],
   "ack.plan_more": ["Okay, after that I'll {plan}.", "Added to my list: {plan}.", "Sure, I'll {plan} next.", "Noted. Then I'll {plan}."],

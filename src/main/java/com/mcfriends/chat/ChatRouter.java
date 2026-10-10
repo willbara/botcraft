@@ -82,6 +82,47 @@ public final class ChatRouter {
 	}
 
 	/**
+	 * Where to head on "run away": 40-64 blocks off, away from whoever said it, each companion on
+	 * its own bearing (golden-angle steps by name order, so a crowd fans out evenly). Dry land if
+	 * the ground there is loaded.
+	 */
+	static BlockPos scatterSpot(Companion c, @Nullable ServerPlayerEntity sender) {
+		CompanionPlayer p = c.player();
+		java.util.Random random = new java.util.Random();
+		double base = sender != null && sender.squaredDistanceTo(p) > 1
+			? Math.atan2(p.getZ() - sender.getZ(), p.getX() - sender.getX())
+			: random.nextDouble() * Math.PI * 2;
+		int index = 0;
+		CompanionManager m = CompanionManager.get();
+		if (m != null) {
+			List<String> names = m.all().stream().map(Companion::name).sorted().toList();
+			index = Math.max(0, names.indexOf(c.name()));
+		}
+		var world = p.getServerWorld();
+		BlockPos fallback = null;
+		for (int attempt = 0; attempt < 8; attempt++) {
+			double angle = base + index * 2.39996 + attempt * Math.PI / 4;
+			double dist = 40 + random.nextInt(25);
+			int x = (int) Math.floor(p.getX() + Math.cos(angle) * dist);
+			int z = (int) Math.floor(p.getZ() + Math.sin(angle) * dist);
+			if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+				if (fallback == null) {
+					fallback = new BlockPos(x, p.getBlockY(), z);
+				}
+				continue;
+			}
+			BlockPos top = world.getTopPosition(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, new BlockPos(x, 0, z));
+			if (fallback == null) {
+				fallback = top;
+			}
+			if (world.getFluidState(top.down()).isEmpty() && world.getFluidState(top).isEmpty()) {
+				return top;
+			}
+		}
+		return fallback;
+	}
+
+	/**
 	 * Carry out the request and reply. {@code sender} is null for console commands.
 	 *
 	 * @return an error for command feedback, or null
@@ -98,6 +139,7 @@ public final class ChatRouter {
 		List<String> jobs = new ArrayList<>();
 		String mode = null;
 		boolean defend = false;
+		BlockPos scatterTo = null;
 		String error = null;
 
 		for (Intent intent : intents) {
@@ -118,6 +160,15 @@ public final class ChatRouter {
 						BlockPos at = c.player().getBlockPos();
 						c.memory().setPlace("home", at, c.dimension(), c.server.getOverworld().getTime());
 					}
+				}
+				case SCATTER -> {
+					// Free mode, but first everyone heads off their own way.
+					mode = "free";
+					if (c.memory().place("home") == null) {
+						BlockPos at = c.player().getBlockPos();
+						c.memory().setPlace("home", at, c.dimension(), c.server.getOverworld().getTime());
+					}
+					scatterTo = scatterSpot(c, sender);
 				}
 				case STOP -> mode = "stay";
 				case DEFEND -> {
@@ -297,7 +348,7 @@ public final class ChatRouter {
 		// Any order other than "do your own thing" ends free mode, so the companion's own plans
 		// never compete with what it was just told to do.
 		// (Setting home is information, not a competing order.)
-		boolean ordered = intents.stream().anyMatch(i -> i.type().isOrder() && i.type() != Intent.Type.FREE && i.type() != Intent.Type.HOME_SET
+		boolean ordered = intents.stream().anyMatch(i -> i.type().isOrder() && i.type() != Intent.Type.FREE && i.type() != Intent.Type.SCATTER && i.type() != Intent.Type.HOME_SET
 			&& i.type() != Intent.Type.CHEST_SET);
 		if (ordered && "free".equals(c.data.mode) && (mode == null || "free".equals(mode))) {
 			mode = "follow";
@@ -321,8 +372,13 @@ public final class ChatRouter {
 			c.brain().reconsider();
 			Map<String, String> vars = new HashMap<>();
 			if (jobs.isEmpty()) {
-				speech.reply(defend ? "ack.defend" : "stay".equals(mode) ? "ack.stop" : "free".equals(mode) ? "ack.free" : "ack.follow", sender, vars);
+				speech.reply(defend ? "ack.defend" : "stay".equals(mode) ? "ack.stop" : scatterTo != null ? "ack.scatter"
+					: "free".equals(mode) ? "ack.free" : "ack.follow", sender, vars);
 			}
+		}
+		if (scatterTo != null && jobs.isEmpty()) {
+			AiLog.log(c.name(), "scattering to {}", scatterTo.toShortString());
+			c.jobs().replace(List.of("goto " + scatterTo.getX() + " " + scatterTo.getY() + " " + scatterTo.getZ() + " somewhere else"));
 		}
 		if (!jobs.isEmpty()) {
 			if (append) {

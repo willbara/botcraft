@@ -113,6 +113,7 @@ A companion only responds when you **say its name** ("Bob, follow me") or addres
 | this is our chest / use this chest | The chest you're looking at (or standing next to) becomes a base chest. |
 | this chest is for ores / food goes in this chest / put the wood here / this is the tool chest | The same, with a purpose: ores and metals, wood, food, tools and gear, building blocks, or everything else. |
 | light up the base / place some torches / it's dark around here | Make torches if needed, then put torches on every pitch-dark patch of ground within 12 blocks of the base. |
+| run away / scatter / spread out / split up | Free mode, but first each one walks 40-64 blocks off in its own direction (away from you, fanned out so a crowd splits evenly), then lives on its own from there. Handy for testing free mode. They still share the base, so they may drift back to it. |
 | dance / everyone dance / bust a move | About 12 seconds of dancing (spins, hops, crouch spam, punching the air), then back to whatever it was doing. Anyone can ask, and it doesn't end free mode. |
 | put your stuff away / empty your inventory / deposit | Store everything except the kit in the base chests. |
 | go home / come home | Go home. |
@@ -525,14 +526,14 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 64 GameTests. It resets its world on every run. The tests cover:
+- `./gradlew runGametest` runs a headless server with 65 GameTests. It resets its world on every run. The tests cover:
   - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
   - combat, free mode (including ignoring the owner, and the failsafe), shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;
   - chat, banter, sharing, spreading out, tool prep and picking up drops;
   - the base: storing all but the kit, chests with a purpose, placing a chest when needed, and crafting from base stock (never from other chests);
-  - the planner (using stock, smelting what's carried, chaining from scratch, learning from failure), the target ladder, and dancing;
+  - the planner (using stock, smelting what's carried, chaining from scratch, learning from failure), the target ladder, dancing, and scattering on "run away";
   - torches in a dark cave and lighting up a dark base;
   - the popbob easter egg (attacking, being fought back, griefing but never chests, ignoring orders);
   - player slots.
