@@ -116,7 +116,7 @@ public abstract class Task {
 		if (Jobs.optional(self)) {
 			// Optional prep only sets up a table or furnace; anything bigger isn't "easy" any more.
 			for (String pre : prerequisites) {
-				if (!pre.startsWith("craft crafting_table") && !pre.startsWith("craft furnace")) {
+				if (!pre.startsWith("craft crafting_table") && !pre.startsWith("craft furnace") && !pre.startsWith("withdraw ")) {
 					return fail("not worth the trouble right now");
 				}
 				list.add("?" + pre);

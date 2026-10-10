@@ -58,6 +58,7 @@ public final class CompanionManager {
 	// ---- lifecycle ------------------------------------------------------------------------
 
 	static void onServerStarted(MinecraftServer server) {
+		com.mcfriends.colony.Colony.load(server);
 		instance = new CompanionManager(server);
 		instance.loadAndSpawnAll();
 		com.mcfriends.ops.Soak.maybeStart(server);
@@ -82,6 +83,7 @@ public final class CompanionManager {
 	}
 
 	static void onServerStopped(MinecraftServer server) {
+		com.mcfriends.colony.Colony.unload();
 		instance = null;
 	}
 
@@ -104,7 +106,16 @@ public final class CompanionManager {
 		}
 	}
 
+	/** Server ticks counted by the manager (what companions use as "now"). */
+	public long tickCount() {
+		return tickCount;
+	}
+
 	public void save() {
+		com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+		if (colony != null) {
+			colony.save();
+		}
 		List<CompanionData> list = new ArrayList<>();
 		for (Companion c : companions.values()) {
 			list.add(c.data);

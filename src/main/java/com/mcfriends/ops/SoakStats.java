@@ -21,6 +21,7 @@ public final class SoakStats {
 	static final Map<String, Integer> interrupts = new TreeMap<>();
 	static final Map<String, Double> distance = new LinkedHashMap<>();
 
+	static long stored;
 	static long ticks;
 	static long tickNanos;
 	static long maxTickNanos;
@@ -61,6 +62,12 @@ public final class SoakStats {
 	public static void interrupt(String objective) {
 		if (active) {
 			interrupts.merge(objective, 1, Integer::sum);
+		}
+	}
+
+	public static void stored(int items) {
+		if (active) {
+			stored += items;
 		}
 	}
 

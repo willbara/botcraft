@@ -82,6 +82,10 @@ public final class Soak {
 			home = top;
 		}
 		CompanionConfig.get().verboseAiLogging = true;
+		com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+		if (colony != null) {
+			colony.setBase(home, world.getRegistryKey().getValue().toString());
+		}
 		for (int i = 1; i <= count; i++) {
 			String name = "Soak" + i;
 			names.add(name);
@@ -166,7 +170,11 @@ public final class Soak {
 		double avgMs = SoakStats.ticks == 0 ? 0 : SoakStats.tickNanos / 1e6 / SoakStats.ticks;
 		sb.append(String.format("| AI time per tick (all companions) | avg %.2f ms, max %.1f ms, over budget %d ticks |%n", avgMs,
 			SoakStats.maxTickNanos / 1e6, SoakStats.ticksOverBudget));
-		sb.append(String.format("| Loaded chunks at the end | %d |%n%n", server.getOverworld().getChunkManager().getLoadedChunkCount()));
+		sb.append(String.format("| Loaded chunks at the end | %d |%n", server.getOverworld().getChunkManager().getLoadedChunkCount()));
+		com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+		int inChests = colony == null ? 0 : colony.stock().values().stream().mapToInt(Integer::intValue).sum();
+		sb.append(String.format("| Items stored at the base | %d put away; %d in %d chest(s) at the end |%n%n", SoakStats.stored, inChests,
+			colony == null ? 0 : colony.chests().size()));
 
 		sb.append("## Companions\n\n");
 		sb.append("| Name | Deaths | Walked | Logs | Coal | Iron | Diamonds | Smelted | Hunted | Pickaxe | Sword | Armour | Food | Hunger |\n");
@@ -199,6 +207,11 @@ public final class Soak {
 				p == null ? "-" : p.getHungerManager().getFoodLevel() + "/20"));
 		}
 		sb.append('\n');
+		if (colony != null && !colony.stock().isEmpty()) {
+			Map<String, Integer> stock = new LinkedHashMap<>();
+			colony.stock().forEach((item, n) -> stock.put(com.mcfriends.knowledge.ItemNames.id(item), n));
+			section(sb, "Base stock", stock);
+		}
 		section(sb, "Deaths by cause", SoakStats.deathCauses);
 		section(sb, "Failed jobs (task: reason)", SoakStats.failReasons);
 		section(sb, "Stalls", SoakStats.stalls);

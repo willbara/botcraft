@@ -268,4 +268,17 @@ class IntentParserTest {
 		assertEquals(Intent.Type.FOLLOW, type("everyone follow me"));
 		assertEquals(Intent.Type.FREE, type("bob go do something"));
 	}
+
+	@Test
+	void baseStorage() {
+		assertEquals(Intent.Type.CHEST_SET, type("everyone, this is our chest"));
+		assertEquals(Intent.Type.CHEST_SET, type("bob use this chest"));
+		assertEquals(Intent.Type.DEPOSIT, type("bob put your stuff away"));
+		assertEquals(Intent.Type.DEPOSIT, type("everyone empty your inventory"));
+		assertEquals(Intent.Type.DEPOSIT, type("bob store your things in the chest"));
+		assertEquals(Intent.Type.STOCK, type("what's in the chests?"));
+		assertEquals(Intent.Type.STOCK, type("bob what do we have"));
+		assertEquals(Intent.Type.INVENTORY, type("bob what do you have"));
+		assertEquals(Intent.Type.HOME_SET, type("everyone this is home"));
+	}
 }

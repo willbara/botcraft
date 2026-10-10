@@ -73,6 +73,13 @@ public final class Jobs {
 				case "collect" -> {
 					return new com.mcfriends.brain.task.CollectTask(c);
 				}
+				case "deposit" -> {
+					return new com.mcfriends.brain.task.DepositTask(c);
+				}
+				case "withdraw" -> {
+					String what = w.length > 1 ? w[1] : "food";
+					return new com.mcfriends.brain.task.WithdrawTask(c, deliverable(what), label(what), num(w, 2, 1));
+				}
 				case "shelter" -> {
 					return new com.mcfriends.brain.task.ShelterTask(c);
 				}
@@ -124,6 +131,8 @@ public final class Jobs {
 			case "home" -> "go home";
 			case "sleep" -> "go to bed";
 			case "shelter" -> "dig in for the night";
+			case "deposit" -> "put my things away";
+			case "withdraw" -> "get " + label(w.length > 1 ? w[1] : "food") + " from the chests";
 			case "smelt" -> {
 				String what = w.length > 1 ? w[1].replace('_', ' ') : "food";
 				int n = num(w, 2, 1);
@@ -155,6 +164,11 @@ public final class Jobs {
 	 */
 	@Nullable
 	public static String sourceSpec(Companion c, Item item, int n) {
+		// The base chests come first: no point mining iron that's sitting at home.
+		String fromStock = withdrawSpec(c, ItemNames.id(item), s -> s.isOf(item), n);
+		if (fromStock != null) {
+			return fromStock;
+		}
 		ItemStack stack = new ItemStack(item);
 		if (stack.isIn(net.minecraft.registry.tag.ItemTags.LOGS)) {
 			return "gather logs " + n;
@@ -186,6 +200,27 @@ public final class Jobs {
 		return null;
 	}
 
+	/**
+	 * "withdraw <key> <n>" if the base chests have some of it and we're close enough to fetch it,
+	 * else null. Takes what's there (up to n); the caller sources any remainder the usual way.
+	 */
+	@org.jetbrains.annotations.Nullable
+	public static String withdrawSpec(Companion c, String key, java.util.function.Predicate<ItemStack> which, int n) {
+		com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+		if (!canFetch(c)) {
+			return null;
+		}
+		int have = colony.count(which);
+		return have > 0 ? "withdraw " + key + " " + Math.min(n, have) : null;
+	}
+
+	/** The base chests are worth going to: there's a base, it's close enough, and we can get there. */
+	public static boolean canFetch(Companion c) {
+		com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+		return colony != null && colony.hasBase() && c.player() != null && c.now() >= c.baseUnreachableUntil
+			&& colony.near(c.player().getServerWorld(), c.player().getBlockPos(), com.mcfriends.colony.Colony.FETCH_RANGE);
+	}
+
 	/** The spec without markers: a leading "?" (optional job), trailing "~N" (deferrals) and "!" (tools checked). */
 	static String base(String spec) {
 		String s = spec.trim();
@@ -200,7 +235,7 @@ public final class Jobs {
 		return spec != null && spec.trim().startsWith("?");
 	}
 
-	static int attempt(String spec) {
+	public static int attempt(String spec) {
 		java.util.regex.Matcher m = java.util.regex.Pattern.compile("~(\\d+)(\\s+!)?$").matcher(spec.trim());
 		return m.find() ? Integer.parseInt(m.group(1)) : 0;
 	}

@@ -147,10 +147,41 @@ public final class ChatRouter {
 					BlockPos at = sender != null ? sender.getBlockPos() : c.player().getBlockPos();
 					String dim = sender != null ? sender.getWorld().getRegistryKey().getValue().toString() : c.dimension();
 					c.memory().setPlace("home", at, dim, c.server.getOverworld().getTime());
+					com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+					if (colony != null && sender != null) {
+						colony.setBase(at, dim); // the owner's home is the shared base
+					}
 					vars.put("x", Integer.toString(at.getX()));
 					vars.put("y", Integer.toString(at.getY()));
 					vars.put("z", Integer.toString(at.getZ()));
 					speech.reply("ack.home_set", sender, vars);
+				}
+				case CHEST_SET -> {
+					String problem = markChest(c, sender);
+					if (once("chest_set")) {
+						if (problem == null) {
+							speech.reply("ack.chest_set", sender, vars);
+						} else {
+							vars.put("reason", problem);
+							speech.reply("cant.do", sender, vars);
+						}
+					}
+				}
+				case DEPOSIT -> {
+					com.mcfriends.colony.Colony colony = com.mcfriends.colony.Colony.get();
+					if (colony == null || !colony.hasBase()) {
+						vars.put("reason", "we don't have a base yet (say \"this is home\")");
+						speech.reply("cant.do", sender, vars);
+						error = vars.get("reason");
+					} else {
+						jobs.add("deposit");
+					}
+				}
+				case STOCK -> {
+					if (once("stock")) {
+						vars.put("list", stockSummary());
+						speech.reply(vars.get("list").isEmpty() ? "stock.empty" : "stock", sender, vars);
+					}
 				}
 				case SLEEP -> {
 					if (c.perception().isNight()) {
@@ -248,7 +279,8 @@ public final class ChatRouter {
 		// Any order other than "do your own thing" ends free mode, so the companion's own plans
 		// never compete with what it was just told to do.
 		// (Setting home is information, not a competing order.)
-		boolean ordered = intents.stream().anyMatch(i -> i.type().isOrder() && i.type() != Intent.Type.FREE && i.type() != Intent.Type.HOME_SET);
+		boolean ordered = intents.stream().anyMatch(i -> i.type().isOrder() && i.type() != Intent.Type.FREE && i.type() != Intent.Type.HOME_SET
+			&& i.type() != Intent.Type.CHEST_SET);
 		if (ordered && "free".equals(c.data.mode) && (mode == null || "free".equals(mode))) {
 			mode = "follow";
 			if (!jobs.isEmpty()) {
@@ -496,5 +528,73 @@ public final class ChatRouter {
 		}
 		vars.put("list", String.join("; ", parts));
 		c.speech().reply("found", sender, vars);
+	}
+
+	private static final java.util.Map<String, Long> LAST_ONCE = new java.util.HashMap<>();
+
+	/** For things said to everyone that only need one answer ("what's in the chests?"). */
+	private static boolean once(String key) {
+		var m = com.mcfriends.CompanionManager.get();
+		long now = m == null ? 0 : m.tickCount();
+		Long last = LAST_ONCE.get(key);
+		if (last != null && now - last < 40 && now >= last) {
+			return false;
+		}
+		LAST_ONCE.put(key, now);
+		return true;
+	}
+
+	/** The chest the owner is looking at (or standing right next to) joins the base. @return problem or null */
+	@org.jetbrains.annotations.Nullable
+	private static String markChest(Companion c, @org.jetbrains.annotations.Nullable ServerPlayerEntity sender) {
+		var colony = com.mcfriends.colony.Colony.get();
+		if (colony == null || sender == null) {
+			return "I can't tell which chest you mean";
+		}
+		var world = sender.getServerWorld();
+		BlockPos chest = null;
+		var hit = sender.raycast(5.0, 0.0F, false);
+		if (hit instanceof net.minecraft.util.hit.BlockHitResult bh && com.mcfriends.colony.Colony.inventory(world, bh.getBlockPos()) != null) {
+			chest = bh.getBlockPos();
+		}
+		if (chest == null) {
+			double best = Double.MAX_VALUE;
+			for (BlockPos p : BlockPos.iterate(sender.getBlockPos().add(-3, -2, -3), sender.getBlockPos().add(3, 2, 3))) {
+				if (com.mcfriends.colony.Colony.inventory(world, p) != null && p.getSquaredDistance(sender.getBlockPos()) < best) {
+					best = p.getSquaredDistance(sender.getBlockPos());
+					chest = p.toImmutable();
+				}
+			}
+		}
+		if (chest == null) {
+			return "I don't see a chest there (look at it, or stand next to it)";
+		}
+		if (!colony.hasBase() || colony.world() != world) {
+			colony.setBase(sender.getBlockPos(), world.getRegistryKey().getValue().toString());
+		} else if (!colony.near(world, chest, 32)) {
+			return "that chest is too far from home";
+		}
+		colony.addChest(chest);
+		return null;
+	}
+
+	/** "64 cobblestone, 12 iron ingots, ..." (the most plentiful first). */
+	private static String stockSummary() {
+		var colony = com.mcfriends.colony.Colony.get();
+		if (colony == null || !colony.hasBase()) {
+			return "";
+		}
+		var list = new java.util.ArrayList<>(colony.stock().entrySet());
+		list.sort((a, b) -> b.getValue() - a.getValue());
+		java.util.List<String> parts = new java.util.ArrayList<>();
+		for (var e : list) {
+			if (parts.size() >= 10) {
+				parts.add("and " + (list.size() - 10) + " more kinds of things");
+				break;
+			}
+			String name = com.mcfriends.knowledge.ItemNames.display(e.getKey());
+			parts.add(e.getValue() + " " + com.mcfriends.knowledge.ItemNames.plural(name, e.getValue()));
+		}
+		return String.join(", ", parts);
 	}
 }

@@ -6,7 +6,7 @@ AI companions for Minecraft **1.20.1 (Fabric)** that join the server as real pla
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.
 - **One optional network call.** Looking up the skin of a registered Minecraft account goes to Mojang, the same way player heads do. Turn it off with `allowSkinLookup`.
 
-This document describes version **0.6.2**.
+This document describes version **0.7.0**.
 
 ---
 
@@ -56,6 +56,7 @@ All commands need permission level 2 by default (`commandPermissionLevel`).
 | `/companion info <name>` | Debug view: personality, orders, job queue, current drive scores, memory. |
 | `/companion remove <name>` | Dismisses the companion and forgets it. Its playerdata file is kept. |
 | `/companion list` | Name, owner, position, health, food and current activity of every companion. |
+| `/companion colony` | The shared base: where it is, how many chests, and what's stored. |
 | `/companion stop <name>` | Stays put and drops any job. |
 | `/companion task <name> <text>` | Anything you could say in chat, for example `get 10 logs then craft a stone pickaxe`. |
 
@@ -107,7 +108,9 @@ A companion only responds when you **say its name** ("Bob, follow me") or addres
 | wood / some wood please / iron pickaxe please | Naming a thing is a request for it. |
 | give me the logs / give me everything | Hand it over now, walking to you first if you're far away. |
 | go to steve / follow alex / steve, give alex your logs / bring alex 5 coal | The same orders, aimed at another companion or player. |
-| this is home / set home here | Remember this place as home. |
+| this is home / set home here | Remember this place as home. Your home is also the shared base. |
+| this is our chest / use this chest | The chest you're looking at (or standing next to) becomes a base chest. |
+| put your stuff away / empty your inventory / deposit | Store everything except the kit in the base chests. |
 | go home / come home | Go home. |
 | go to sleep / go to bed | Find a free bed and sleep (only at night). |
 | do your own thing / go explore / you're free | Free mode: live and progress on its own around home. Any other order ends it. |
@@ -125,6 +128,7 @@ Item names are resolved against the game's own item list:
 | where are you? | Coordinates, distance and direction from you, and the biome. |
 | what are you doing? / what's your task? / what's the plan? / what you doing | Current activity, queued jobs, health and food. |
 | what do you have? / show me your inventory | Inventory summary. |
+| what's in the chests? / what do we have? | What's stored at the base (one companion answers). |
 | what have you found? / seen any diamonds? | Ores and trees it remembers seeing, with coordinates. |
 | how many logs have you chopped? / stats | Lifetime stats: logs, ores, crafts, kills, deaths. |
 | what can you do? / help | A short list of abilities. |
@@ -249,6 +253,24 @@ While mining:
   - **Nobody to follow:** in follow mode with you offline, spectating or in another dimension, a companion that's finished or whose job failed heads home if it's more than 24 blocks away.
   - **Can't find a way back to you:** if it keeps failing to reach you (for example deep in a cave), it teleports to you. It also does this whenever it's more than `teleportToOwnerDistance` away.
 
+### The base and shared storage
+
+- **One shared base.** Saying "this is home" sets the base for all companions. It's saved in `<world>/mcfriends/colony.json` along with the base chests.
+- **Only base chests.** Companions use only chests they placed at the base, or ones you mark ("this is our chest"). They never touch any other chest. Double chests and barrels work too.
+- **What they keep (the kit).** The best tool of each kind, a weapon, worn armour, up to 16 food (cooked first), 32 building blocks and 16 torches. Spare tools, logs, ores, ingots, coal and odds and ends go into the chests. Like goes with like: a chest already holding an item is filled first.
+- **When they store things.**
+  - **Free mode:** when back at the base with several stacks to store, or when nearly full while out (they come home to unload).
+  - **Night chore:** while at the base.
+  - **On command:** "put your stuff away".
+  - **New chests:** when all chests are full, a companion crafts a chest from carried wood and places it at the base (spaced apart, so no accidental double chests).
+- **Taking from the chests first.**
+  - **Crafting** plans with what it carries plus what's stored, then fetches the difference ("craft an iron pickaxe" takes ingots and sticks from the chest instead of mining and chopping).
+  - **Smelting** takes inputs and fuel (coal, else logs) from the chests.
+  - **A hungry companion** takes food from the chests before hunting, and free mode keeps its food reserve topped up from there.
+  - **Range:** this applies within about 96 blocks of the base. If the chests turn out to have less than expected, a companion takes what's there and gets the rest the usual way.
+- **Base stations.** A crafting table or furnace put down at the base stays there for everyone, instead of being picked back up.
+- **Night chores.** An armed companion at the base at night (with no bed) stores its things, cooks raw meat, smelts raw iron and crafts iron gear from carried and stored materials. It doesn't leave the base for anything after dark.
+
 ### Watchdog
 
 Every task has its own time limit, but a task can keep itself busy without getting anywhere (re-planning to the same unreachable spot, retrying the same placement). If a companion is on a job and for 3 minutes it neither moves more than a few blocks, nor breaks anything, nor gains any items (eating doesn't count), the job is abandoned with "I got stuck" and the usual failure handling takes over. Sleeping, sheltering for the night and waiting on a friend are exempt.
@@ -326,7 +348,7 @@ Pillars, bridges and staircases built while travelling are left in the world. So
 
 - **Crafting** covers crafting-table and furnace recipes only: no smithing, brewing, enchanting, stonecutting, blast furnaces or smokers.
 - **No farming.** It was removed for now and will come back reworked.
-- **No chests.** Companions don't store or fetch items in chests, so their inventories fill up.
+- **Storage is basic.** There's one base, chests aren't sorted beyond "like with like", and nothing is reserved: two companions can head for the same items, and the second gets whatever's left. Companions don't organise chests you fill yourself, and they never use chests away from the base.
 - **No torches in caves.** Companions don't light up caves (free mode crafts torches but doesn't place them).
 - **Hunting** never takes the last two animals of a species nearby (the last one when starving), so a lone cow is always left alone. There's no breeding yet, so a heavily hunted area runs out of animals. Animals beyond about 96 blocks, or more than 48 blocks up or down, aren't noticed until the companion gets closer. Fish, crops and other food sources aren't used.
 - **Mining** reads ore positions from the world, like an "x-ray" of the 24-block scan area. A player would have to dig to find buried ore.
@@ -393,11 +415,12 @@ com.mcfriends
 │               recovery), BreakPolicy, Goal
 ├─ perception/  Perception (threats, owner, time, inventory summary), Surroundings (rolling 8-block
 │               picture), BlockScanner, CaveFinder
+├─ colony/      Colony (the base, its chests, stock; colony.json), Kit (what a companion keeps)
 ├─ brain/       Brain (utility selection + interrupt stack), Drives, Objective, Personality,
 │               JobQueue + Jobs (persisted job specs, prerequisites, optional prep), Life (free mode),
 │               Sharing, Claims (spreading out), Leftovers (own drops), Watchdog (stalled jobs)
 │  └─ task/     Follow, Stay, Idle, GoTo, GatherLogs, Mine, Craft, Smelt, Hunt, Place, Deliver,
-│               Await, Sleep, Shelter, Eat, Fight, Flee/Retreat, Breathe, Collect, ToolPrep,
+│               Await, Sleep, Shelter, Eat, Fight, Flee/Retreat, Breathe, Collect, Deposit, Withdraw, ToolPrep,
 │               SearchTrips, Pickup, Spots
 ├─ knowledge/   OreKind, ItemNames, CraftPlanner, Smelting, Animals
 ├─ memory/      Memory (places, sightings, stats, people; per-companion JSON)
@@ -434,6 +457,7 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 **Events.** Fabric's block-break and entity-death events record a companion's own drops.
 
 **Persistence.**
+- `<world>/mcfriends/colony.json`: the base position and its chests.
 - `<world>/mcfriends/companions.json`: name, UUID, owner, skin (including fetched textures), personality, mode, defend flag, the current job and the queue.
 - `<world>/mcfriends/memory/<name>.json`: memory.
 - Vanilla playerdata: everything else.
@@ -443,18 +467,19 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 47 GameTests. It resets its world on every run. The tests cover:
+- `./gradlew runGametest` runs a headless server with 50 GameTests. It resets its world on every run. The tests cover:
   - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
   - combat, free mode, shelter, safe respawns, gear recovery after death, the watchdog, and heading home when lost;
   - chat, banter, sharing, spreading out, tool prep and picking up drops;
+  - the base: storing all but the kit, placing a chest when needed, and crafting from base stock (never from other chests);
   - player slots.
 - `./gradlew runSoak -PsoakMinutes=30 -PsoakCompanions=6` runs an unattended soak test. It starts a dedicated server in `run/soak` with a fresh world (seed `-PsoakSeed`, default 12345, Normal difficulty), and spawns the companions in free mode at world spawn with no player online. When time is up it writes `run/soak/soak-report.md` and stops. The report covers:
   - deaths per companion-hour, with causes;
   - stalls, finished and failed jobs (with reasons), and interrupts;
   - what each companion gathered and hunted, how far it walked, its hunger at the end, and the best pickaxe, sword and armour it reached;
-  - AI time per tick, and how many chunks stayed loaded.
+  - AI time per tick, how many chunks stayed loaded, and items stored at the base (with the final stock).
 - `./gradlew runServer` starts a dev dedicated server in `run/server`. Type commands into the console.
 - To see AI decisions, set `verboseAiLogging: true` and grep `latest.log` for `[<name>]`.
 

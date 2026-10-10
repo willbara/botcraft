@@ -24,6 +24,15 @@ import net.minecraft.util.math.Vec3d;
  * empty Fabric template, so no structure files are needed.
  */
 public class CompanionGameTests implements FabricGameTest {
+	/** Remove animals left over from other tests nearby, so a test only sees its own. */
+	static void clearAnimals(TestContext ctx) {
+		var center = ctx.getAbsolute(new Vec3d(0, 0, 0));
+		for (var a : ctx.getWorld().getEntitiesByClass(net.minecraft.entity.passive.AnimalEntity.class,
+			new net.minecraft.util.math.Box(center, center).expand(96, 32, 96), e -> true)) {
+			a.discard();
+		}
+	}
+
 	static void floor(TestContext ctx, int size) {
 		for (int x = 0; x < size; x++) {
 			for (int z = 0; z < size; z++) {
@@ -40,6 +49,11 @@ public class CompanionGameTests implements FabricGameTest {
 		// Many tests run side by side, each with its own companions.
 		com.mcfriends.config.CompanionConfig.get().maxCompanions = Math.max(64, com.mcfriends.config.CompanionConfig.get().maxCompanions);
 		com.mcfriends.config.CompanionConfig.get().initiative = 0; // tests want only the behaviour under test
+		// No shared base unless the test sets one (base tests run in batches of their own).
+		var colony = com.mcfriends.colony.Colony.get();
+		if (colony != null) {
+			colony.clear();
+		}
 		return m;
 	}
 
@@ -564,6 +578,7 @@ public class CompanionGameTests implements FabricGameTest {
 	/** Mechanics: hunt a cow (only when there are more than two) and cook the beef. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 2000, batchId = "hunt_cook")
 	public void huntsAndCooks(TestContext ctx) {
+		clearAnimals(ctx);
 		CompanionManager m = manager(ctx);
 		cleanup(m, "GtHunter");
 		flatArena(ctx, 12);
@@ -846,6 +861,7 @@ public class CompanionGameTests implements FabricGameTest {
 	/** Hunting with nothing in sight: it picks a direction and goes looking instead of giving up. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 3600, batchId = "hunt_search")
 	public void huntSearchesForAnimals(TestContext ctx) {
+		clearAnimals(ctx);
 		CompanionManager m = manager(ctx);
 		cleanup(m, "GtTracker");
 		for (int x = -50; x <= 56; x++) {
@@ -1135,6 +1151,7 @@ public class CompanionGameTests implements FabricGameTest {
 	/** Animals out of close range but in plain view (~40 blocks): it heads straight for them. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "hunt_far")
 	public void huntsHerdInTheDistance(TestContext ctx) {
+		clearAnimals(ctx);
 		CompanionManager m = manager(ctx);
 		cleanup(m, "GtScout");
 		// (The test world only loads a few chunks around each test, so keep it within ~48 blocks.)
@@ -1179,6 +1196,7 @@ public class CompanionGameTests implements FabricGameTest {
 	/** Bare-handed with a couple of logs: it makes a wooden sword before going after animals. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1200, batchId = "hunt_sword")
 	public void craftsSwordBeforeHunting(TestContext ctx) {
+		clearAnimals(ctx);
 		CompanionManager m = manager(ctx);
 		cleanup(m, "GtArmed");
 		flatArena(ctx, 12);
@@ -1282,6 +1300,7 @@ public class CompanionGameTests implements FabricGameTest {
 	/** Passing by animals is enough to remember where they are. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 300, batchId = "herd_watch")
 	public void remembersHerdsItSees(TestContext ctx) {
+		clearAnimals(ctx);
 		CompanionManager m = manager(ctx);
 		cleanup(m, "GtWatcher");
 		field(ctx, 40);
@@ -1304,6 +1323,7 @@ public class CompanionGameTests implements FabricGameTest {
 	/** Starving with nothing to eat, it will take one of a pair (but not when fed). */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "hunt_desperate")
 	public void starvingTakesOneOfAPair(TestContext ctx) {
+		clearAnimals(ctx);
 		CompanionManager m = manager(ctx);
 		cleanup(m, "GtStarving");
 		flatArena(ctx, 12);
@@ -1331,6 +1351,7 @@ public class CompanionGameTests implements FabricGameTest {
 	/** Free mode keeps food in reserve: fed but with nothing to eat, it hunts and cooks. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 2400, batchId = "stock_food")
 	public void freeModeStocksFood(TestContext ctx) {
+		clearAnimals(ctx);
 		CompanionManager m = manager(ctx);
 		cleanup(m, "GtPantry");
 		flatArena(ctx, 12);
@@ -1358,6 +1379,115 @@ public class CompanionGameTests implements FabricGameTest {
 				+ "; queued " + c.jobs().pending());
 			c.data.initiative = null;
 			cleanup(m, "GtPantry");
+		});
+	}
+
+	static com.mcfriends.colony.Colony colony(TestContext ctx, BlockPos base) {
+		var colony = com.mcfriends.colony.Colony.get();
+		ctx.assertTrue(colony != null, "colony loaded");
+		colony.clear();
+		colony.setBase(ctx.getAbsolutePos(base), ctx.getWorld().getRegistryKey().getValue().toString());
+		return colony;
+	}
+
+	static int countIn(TestContext ctx, BlockPos chest, net.minecraft.item.Item item) {
+		var inv = com.mcfriends.colony.Colony.inventory(ctx.getWorld(), ctx.getAbsolutePos(chest));
+		int n = 0;
+		for (int i = 0; inv != null && i < inv.size(); i++) {
+			if (inv.getStack(i).isOf(item)) {
+				n += inv.getStack(i).getCount();
+			}
+		}
+		return n;
+	}
+
+	/** "Put your stuff away": the kit stays on it, everything else goes into the base chest. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "deposit")
+	public void depositsAllButTheKit(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtStorer");
+		flatArena(ctx, 12);
+		var colony = colony(ctx, new BlockPos(6, 1, 6));
+		ctx.setBlockState(9, 1, 6, Blocks.CHEST);
+		colony.addChest(ctx.getAbsolutePos(new BlockPos(9, 1, 6)));
+		ctx.assertTrue(m.spawn("GtStorer", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 6.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtStorer");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		give(c, net.minecraft.item.Items.WOODEN_PICKAXE, 1);
+		give(c, net.minecraft.item.Items.COBBLESTONE, 64);
+		give(c, net.minecraft.item.Items.OAK_LOG, 10);
+		give(c, net.minecraft.item.Items.IRON_INGOT, 5);
+		give(c, net.minecraft.item.Items.COOKED_BEEF, 20);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "put your stuff away", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			BlockPos chest = new BlockPos(9, 1, 6);
+			ctx.assertTrue(countIn(ctx, chest, net.minecraft.item.Items.OAK_LOG) == 10 && countIn(ctx, chest, net.minecraft.item.Items.IRON_INGOT) == 5,
+				"logs/iron not stored; " + c.describeActivity());
+			ctx.assertTrue(countIn(ctx, chest, net.minecraft.item.Items.WOODEN_PICKAXE) == 1, "spare pickaxe not stored");
+			ctx.assertTrue(count(c, net.minecraft.item.Items.STONE_PICKAXE) == 1, "kept its best pickaxe");
+			ctx.assertTrue(count(c, net.minecraft.item.Items.COBBLESTONE) == com.mcfriends.colony.Kit.BLOCKS
+				&& countIn(ctx, chest, net.minecraft.item.Items.COBBLESTONE) == 64 - com.mcfriends.colony.Kit.BLOCKS, "kept 32 blocks");
+			ctx.assertTrue(count(c, net.minecraft.item.Items.COOKED_BEEF) == com.mcfriends.colony.Kit.FOOD, "kept 16 food");
+			colony.clear();
+			cleanup(m, "GtStorer");
+		});
+	}
+
+	/** No chest at the base yet: it puts one down (from the one it carries) and stores into it. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "deposit_new_chest")
+	public void placesAChestWhenNeeded(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtCarpenter");
+		flatArena(ctx, 12);
+		var colony = colony(ctx, new BlockPos(6, 1, 6));
+		ctx.assertTrue(m.spawn("GtCarpenter", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 6.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtCarpenter");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.CHEST, 1);
+		give(c, net.minecraft.item.Items.RAW_IRON, 12);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "put your stuff away", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(colony.chests().size() == 1, "chests " + colony.chests() + "; " + c.describeActivity());
+			ctx.assertTrue(colony.count(st -> st.isOf(net.minecraft.item.Items.RAW_IRON)) == 12, "stock " + colony.stock());
+			colony.clear();
+			cleanup(m, "GtCarpenter");
+		});
+	}
+
+	/** Crafting takes what it needs from the base chests, and never from a chest that isn't ours. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "withdraw")
+	public void craftsFromBaseStock(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtBuilder");
+		flatArena(ctx, 12);
+		var colony = colony(ctx, new BlockPos(6, 1, 6));
+		BlockPos ours = new BlockPos(10, 1, 9);
+		BlockPos theirs = new BlockPos(3, 1, 3);
+		ctx.setBlockState(ours, Blocks.CHEST);
+		ctx.setBlockState(theirs, Blocks.CHEST);
+		colony.addChest(ctx.getAbsolutePos(ours));
+		var oursInv = com.mcfriends.colony.Colony.inventory(ctx.getWorld(), ctx.getAbsolutePos(ours));
+		var theirsInv = com.mcfriends.colony.Colony.inventory(ctx.getWorld(), ctx.getAbsolutePos(theirs));
+		oursInv.setStack(0, new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_INGOT, 3));
+		oursInv.setStack(1, new net.minecraft.item.ItemStack(net.minecraft.item.Items.STICK, 2));
+		theirsInv.setStack(0, new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_INGOT, 3));
+		theirsInv.setStack(1, new net.minecraft.item.ItemStack(net.minecraft.item.Items.STICK, 2));
+		ctx.assertTrue(colony.count(st -> st.isOf(net.minecraft.item.Items.IRON_INGOT)) == 3, "stock counts only our chest");
+		ctx.assertTrue(m.spawn("GtBuilder", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtBuilder");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.CRAFTING_TABLE, 1);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "craft an iron pickaxe", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.IRON_PICKAXE) == 1, "no pickaxe; " + c.describeActivity() + "; queued " + c.jobs().pending());
+			ctx.assertTrue(countIn(ctx, theirs, net.minecraft.item.Items.IRON_INGOT) == 3, "took from someone else's chest");
+			ctx.assertTrue(countIn(ctx, ours, net.minecraft.item.Items.IRON_INGOT) == 0, "didn't use the base iron");
+			colony.clear();
+			cleanup(m, "GtBuilder");
 		});
 	}
 }
