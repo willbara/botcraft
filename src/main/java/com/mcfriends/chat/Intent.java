@@ -16,7 +16,7 @@ public record Intent(Type type, String item, int count, String target) {
 	}
 
 	public enum Type {
-		FOLLOW, STOP, COME_HERE, DEFEND, CANCEL, FREE,
+		FOLLOW, STOP, COME_HERE, DEFEND, CANCEL, FREE, SCATTER,
 		GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT,
 		HOME_SET, HOME_GO, SLEEP, CHEST_SET, DEPOSIT, STOCK, DANCE, LIGHT,
 		WHERE, INVENTORY, STATS, FOUND, HELP, STATUS,
@@ -34,7 +34,7 @@ public record Intent(Type type, String item, int count, String target) {
 		/** Orders change behaviour; only the owner may give them. */
 		public boolean isOrder() {
 			return switch (this) {
-				case FOLLOW, STOP, COME_HERE, DEFEND, CANCEL, FREE, GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT, HOME_SET, HOME_GO, SLEEP,
+				case FOLLOW, STOP, COME_HERE, DEFEND, CANCEL, FREE, SCATTER, GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT, HOME_SET, HOME_GO, SLEEP,
 					CHEST_SET, DEPOSIT, LIGHT -> true;
 				default -> false;
 			};

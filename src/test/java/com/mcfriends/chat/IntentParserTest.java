@@ -304,6 +304,16 @@ class IntentParserTest {
 	}
 
 	@Test
+	void scatter() {
+		assertEquals(Intent.Type.SCATTER, type("everyone run away"));
+		assertEquals(Intent.Type.SCATTER, type("bob run away!"));
+		assertEquals(Intent.Type.SCATTER, type("everyone scatter"));
+		assertEquals(Intent.Type.SCATTER, type("spread out guys"));
+		assertEquals(Intent.Type.SCATTER, type("everyone split up"));
+		assertEquals(Intent.Type.FREE, type("bob do your own thing"));
+	}
+
+	@Test
 	void lighting() {
 		assertEquals(Intent.Type.LIGHT, type("everyone light up the base"));
 		assertEquals(Intent.Type.LIGHT, type("bob place some torches"));

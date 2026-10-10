@@ -53,6 +53,9 @@ public final class IntentParser {
 		"\\b(what'?s in the chests?|what is in the chests?|what do we have|what have we got|what'?s in (storage|the storage)|check the (chests?|stock|storage)|how much do we have|our stock|the stock|what'?s stored)\\b");
 	private static final Pattern LIGHT = Pattern.compile(
 		"\\b(light (up )?(the |our )?(base|home|area|place)|place (some )?torches|put (some )?torches (down|up|around)|torch (up )?(the |our )?(base|home|area|place)|it'?s (too )?dark (here|around here))\\b");
+	/** "Run away": split up and each go do their own thing somewhere else (handy for testing free mode). */
+	private static final Pattern SCATTER = Pattern.compile(
+		"\\b(run away|scatter|disperse|spread out|split up|go your separate ways|everyone split|break up)\\b");
 	private static final Pattern DANCE = Pattern.compile(
 		"\\b(dance|dancing|dance party|boogie|bust a move|show (me|us) (your|some) moves|do a (little )?dance|let'?s dance|get down|hit the dance floor|party time)\\b");
 	private static final Pattern SLEEP = Pattern.compile("\\b(go to (sleep|bed)|sleep|bedtime|take a nap|get in bed|hit the hay)\\b");
@@ -443,6 +446,9 @@ public final class IntentParser {
 		}
 		if (CANCEL.matcher(text).find()) {
 			return Intent.of(Intent.Type.CANCEL);
+		}
+		if (SCATTER.matcher(text).find() && !text.matches(".*\\b(don'?t|do not|never)\\b.*")) {
+			return Intent.of(Intent.Type.SCATTER);
 		}
 		if (FREE.matcher(text).find()) {
 			return Intent.of(Intent.Type.FREE);

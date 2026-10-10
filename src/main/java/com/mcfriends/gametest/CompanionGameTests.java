@@ -1838,4 +1838,36 @@ public class CompanionGameTests implements FabricGameTest {
 		cleanup(m, "popbob");
 		ctx.complete();
 	}
+
+	/** "Everyone run away": free mode, and they head off in different directions. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "scatter")
+	public void scattersOnRunAway(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtScatterA", "GtScatterB");
+		stoneArena(ctx, 6);
+		ctx.assertTrue(m.spawn("GtScatterA", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 3.5)), 0.0F) == null, "spawn a");
+		ctx.assertTrue(m.spawn("GtScatterB", "noor", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(4.5, 1, 3.5)), 0.0F) == null, "spawn b");
+		Companion a = m.byName("GtScatterA");
+		Companion b = m.byName("GtScatterB");
+		// Room to go: knock the arena walls down and lay a wide floor.
+		for (int x = -40; x <= 46; x++) {
+			for (int z = -40; z <= 46; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				for (int y = 1; y <= 3; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+		var names = java.util.List.of("GtScatterA", "GtScatterB");
+		for (Companion c : java.util.List.of(a, b)) {
+			var parsed = com.mcfriends.chat.IntentParser.parse("everyone run away", names);
+			ctx.assertTrue(com.mcfriends.chat.ChatRouter.respond(c, null, parsed.intents(), false) == null, "respond");
+			ctx.assertTrue("free".equals(c.data.mode), "not free: " + c.data.mode);
+		}
+		ctx.addInstantFinalTask(() -> {
+			double apart = a.player().distanceTo(b.player());
+			ctx.assertTrue(apart > 30, "only " + (int) apart + " apart; " + a.describeActivity() + " / " + b.describeActivity());
+			cleanup(m, "GtScatterA", "GtScatterB");
+		});
+	}
 }
