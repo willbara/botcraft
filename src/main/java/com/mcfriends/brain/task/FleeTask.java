@@ -128,7 +128,7 @@ public class FleeTask extends Task {
 	}
 
 	/** The next block that way has something to stand on within a safe fall. */
-	private static boolean safeStep(Terrain t, BlockPos from, Vec3d dir) {
+	static boolean safeStep(Terrain t, BlockPos from, Vec3d dir) {
 		BlockPos next = BlockPos.ofFloored(from.getX() + 0.5 + dir.x * 1.2, from.getY(), from.getZ() + 0.5 + dir.z * 1.2);
 		for (int k = 0; k <= 3; k++) {
 			if (t.standable(next.down(k)) && !t.isWater(next.down(k))) {

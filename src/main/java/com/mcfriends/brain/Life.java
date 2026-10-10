@@ -68,10 +68,30 @@ public class Life {
 		if (!free && !"follow".equals(c.data.mode)) {
 			return;
 		}
+		if (free && c.perception().isNight() && outdoorErrand(c.brain().job())) {
+			// Our own errand outdoors and it's getting dark: head in (bed, guard home or dig in),
+			// carry on in the morning.
+			AiLog.log(c.name(), "life: getting dark, dropping {} for the night", c.brain().jobName());
+			c.jobs().clear();
+			c.nav().stop();
+		}
 		if (!c.jobs().isIdle() || !c.perception().threats().isEmpty() || c.brain().currentObjective() == Objective.SLEEP) {
 			return;
 		}
 		Goal g;
+		if (!free) {
+			// Following: no side projects, but don't starve either.
+			Goal food = followFood(c, now);
+			if (food != null && !c.perception().isNight() && c.perception().ownerDistance() <= 24) {
+				nextDecision = now + 200;
+				AiLog.log(c.name(), "life: {} -> {} ({})", food.key(), food.jobs(), food.reason());
+				lastGoal = food.key();
+				c.jobs().append(food.jobs());
+				c.speech().event("event.initiative", Map.of("plan", String.join(", then ", food.jobs().stream().map(Jobs::describe).toList()),
+					"reason", food.reason()), 20 * 30, 0.8F);
+				return;
+			}
+		}
 		if (free) {
 			nextDecision = now + FREE_DECISION_GAP;
 			g = chooseFree(c, now);
@@ -162,17 +182,24 @@ public class Life {
 		}
 		List<Goal> goals = new ArrayList<>();
 		// 2. Food.
-		int food = Inventories.foodCount(inv);
-		if (Inventories.count(inv, s -> Animals.RAW_MEAT.contains(s.getItem())) > 0 && (food < 4 || p.getHungerManager().getFoodLevel() < 16)) {
-			goals.add(new Goal("cook", List.of("smelt food 8"), "I've got raw meat to cook"));
+		// Raw meat is food in a pinch, but it's worth cooking (a steak fills far more than raw beef).
+		int raw = Inventories.count(inv, s -> Animals.RAW_MEAT.contains(s.getItem()));
+		int food = Inventories.foodCount(inv) - raw;
+		if (raw > 0 && (food < 6 || p.getHungerManager().getFoodLevel() < 16)) {
+			goals.add(new Goal("cook", List.of("smelt food " + Math.min(raw, 16)), "I've got raw meat to cook"));
 		}
-		if (p.getHungerManager().getFoodLevel() < 16 && food == 0) {
-			goals.add(new Goal("hunt", List.of("hunt meat 3", "smelt food 3"), "I'm getting hungry"));
+		if (p.getHungerManager().getFoodLevel() < 16 && food == 0 && raw == 0) {
+			goals.add(new Goal("hunt", List.of("hunt meat 4", "smelt food 4"), "I'm getting hungry"));
 		}
 		// 3. Tool progression, then iron gear.
 		Goal tools = chooseTools(inv, now);
 		if (tools != null) {
 			goals.add(tools);
+		}
+		// Keep some food in reserve, like a player would: hunt before it's urgent, when we know
+		// where animals are (or have nothing at all).
+		if (food + raw < 6 && (herdKnown(c, 80) || animalsInView(c))) {
+			goals.add(new Goal("stock_food", List.of("hunt meat 4", "smelt food 4"), "I should stock up on food"));
 		}
 		boolean stonePick = has(inv, s -> s.getItem() instanceof PickaxeItem && !s.isOf(Items.WOODEN_PICKAXE) && !s.isOf(Items.GOLDEN_PICKAXE));
 		boolean ironPick = has(inv, s -> s.isOf(Items.IRON_PICKAXE) || s.isOf(Items.DIAMOND_PICKAXE) || s.isOf(Items.NETHERITE_PICKAXE));
@@ -302,6 +329,38 @@ public class Life {
 			}
 		}
 		return null;
+	}
+
+	/** Self-chosen jobs that keep a companion outdoors and away from home after dark. */
+	private static boolean outdoorErrand(@Nullable Task job) {
+		return job instanceof com.mcfriends.brain.task.HuntTask || job instanceof com.mcfriends.brain.task.GatherLogsTask
+			|| (job instanceof com.mcfriends.brain.task.GoToTask g && g.label().equals("exploring"));
+	}
+
+	/** Hungry with nothing to eat while following: cook what we have, else hunt nearby. */
+	@Nullable
+	private Goal followFood(Companion c, long now) {
+		var p = c.player();
+		PlayerInventory inv = p.getInventory();
+		if (p.getHungerManager().getFoodLevel() >= 14 || Inventories.foodCount(inv) > 0) {
+			return null;
+		}
+		if (Inventories.count(inv, s -> Animals.RAW_MEAT.contains(s.getItem())) > 0 && allowed("cook", now)) {
+			return new Goal("cook", List.of("smelt food 4"), "I've got raw meat to cook");
+		}
+		return allowed("hunt", now) ? new Goal("hunt", List.of("hunt meat 3", "smelt food 3"), "I'm getting hungry") : null;
+	}
+
+	/** Three or more food animals within 32 blocks right now. */
+	private static boolean animalsInView(Companion c) {
+		var p = c.player();
+		return p.getServerWorld().getEntitiesByClass(net.minecraft.entity.passive.AnimalEntity.class, p.getBoundingBox().expand(32, 12, 32),
+			a -> Animals.FOOD_ANIMALS.contains(a.getType()) && !a.isBaby()).size() >= 3;
+	}
+
+	/** We remember animals somewhere within {@code range} blocks. */
+	private static boolean herdKnown(Companion c, double range) {
+		return !c.memory().sightings("herd", c.player().getBlockPos(), c.dimension(), range).isEmpty();
 	}
 
 	/** Home: the remembered place, else set it here (free companions need a base). */

@@ -171,5 +171,11 @@ Optional: set `"verboseAiLogging": true` in `config/mcfriends.json` and read `lo
 - [ ] Let a companion die with items on it (not in lava or water). After respawning it says it's going back for its stuff and collects it.
 - [ ] Watch for "watchdog: no progress on …" in the log. Each one is a bug worth a look.
 
+### 19. Food
+- [ ] Walk a companion past a herd of cows while it does something else, then later say "bob, get some food". He heads straight for the herd.
+- [ ] Free mode with no food but full hunger: within a few minutes he says he'll stock up on food, hunts and cooks.
+- [ ] Follow mode, hungry and with nothing to eat: he goes hunting nearby and comes back.
+- [ ] Only two cows around: a fed companion leaves them; a starving one (3 drumsticks or less, no food) takes one.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, MCFriends work runs under the server tick and stays within `tickBudgetMs`.

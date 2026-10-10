@@ -156,7 +156,10 @@ public class HuntTask extends Task {
 		}
 		c.actions().lookAt(target);
 		if (d > 2.6) {
-			if (d < 6 && p.canSee(target)) {
+			Vec3d toward = target.getPos().subtract(p.getPos());
+			boolean groundOk = FleeTask.safeStep(new com.mcfriends.nav.Terrain(p.getServerWorld()), p.getBlockPos(),
+				new Vec3d(toward.x, 0, toward.z).normalize());
+			if (d < 6 && p.canSee(target) && groundOk) {
 				c.nav().stop();
 				c.actions().moveTo(target.getPos());
 				c.actions().sprint(d > 4);
@@ -195,6 +198,11 @@ public class HuntTask extends Task {
 		return Status.RUNNING;
 	}
 
+	/** Starving with nothing to eat: take one of a pair rather than starve. */
+	private static boolean desperate(CompanionPlayer p) {
+		return p.getHungerManager().getFoodLevel() <= 6 && Inventories.foodCount(p.getInventory()) == 0;
+	}
+
 	/** Herds we already went to look at during this hunt. */
 	private final java.util.Set<BlockPos> triedHerds = new java.util.HashSet<>();
 
@@ -213,7 +221,7 @@ public class HuntTask extends Task {
 				continue;
 			}
 			List<AnimalEntity> herd = far.stream().filter(o -> o.squaredDistanceTo(a) < 16 * 16).toList();
-			if (Animals.huntable(a, herd)) {
+			if (Animals.huntable(a, herd, desperate(p))) {
 				c.memory().sight("herd", a.getBlockPos(), c.dimension(), p.getWorld().getTime());
 				return a.getBlockPos();
 			}
@@ -223,12 +231,27 @@ public class HuntTask extends Task {
 
 	@Nullable
 	private AnimalEntity findTarget(CompanionPlayer p) {
+		AnimalEntity found = findTargetNear(p);
+		if (found == null) {
+			// Standing where we remembered animals and there are none: forget that spot.
+			for (var seen : c.memory().sightings("herd", p.getBlockPos(), c.dimension(), 12)) {
+				c.memory().forgetSighting("herd", seen.pos());
+			}
+		}
+		return found;
+	}
+
+	@Nullable
+	private AnimalEntity findTargetNear(CompanionPlayer p) {
+		// A real radius, not the corners of the search box: the chase gives up on anything further
+		// than RADIUS + 8, so picking a target out there would just be dropped again next tick.
 		List<AnimalEntity> around = p.getServerWorld().getEntitiesByClass(AnimalEntity.class, p.getBoundingBox().expand(RADIUS, 12, RADIUS),
-			a -> species.isEmpty() ? Animals.FOOD_ANIMALS.contains(a.getType()) : species.contains(a.getType()));
+			a -> (species.isEmpty() ? Animals.FOOD_ANIMALS.contains(a.getType()) : species.contains(a.getType()))
+				&& a.squaredDistanceTo(p) <= RADIUS * RADIUS);
 		around.sort(Comparator.comparingDouble(a -> a.squaredDistanceTo(p)));
 		AnimalEntity shared = null;
 		for (AnimalEntity a : around) {
-			if (Animals.huntable(a, around)) {
+			if (Animals.huntable(a, around, desperate(p))) {
 				// Leave animals by someone else to them, unless that's all there is.
 				if (!Claims.crowded(c, a.getBlockPos(), 6)) {
 					return a;
