@@ -142,10 +142,8 @@ public final class Drives {
 		double d = c.perception().ownerDistance();
 		float helpful = b.personality().helpfulness();
 		if (b.hasJob()) {
-			// Busy with a job: only drop it if the owner wandered really far away.
-			if (d > 40) {
-				out.propose(Objective.FOLLOW, 0.6F, "owner far while working");
-			}
+			// Busy with a job: let it finish, however far it takes us (hunting trips, caves).
+			// Being pulled back mid-job meant a teleport to the owner and a walk back out, over and over.
 			return;
 		}
 		double comfy = CompanionConfig.get().followDistance;

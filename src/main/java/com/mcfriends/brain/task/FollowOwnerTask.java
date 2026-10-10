@@ -73,9 +73,24 @@ public class FollowOwnerTask extends Task {
 		double comfy = CompanionConfig.get().followDistance * (c.perception().isNight() ? 0.75 : 1.0);
 		double tp = CompanionConfig.get().teleportToOwnerDistance;
 		double d = owner.getWorld() == p.getWorld() ? owner.distanceTo(p) : Double.POSITIVE_INFINITY;
-		if (tp > 0 && (d > tp || owner.getWorld() != p.getWorld())) {
-			teleportNear(owner);
+		if (tp > 0 && owner.getWorld() != p.getWorld()) {
+			teleportNear(owner); // another dimension: no walking there
 			return Status.RUNNING;
+		}
+		if (tp > 0 && d > tp) {
+			// Far away: walk if there's a way; teleport only if walking isn't getting us there.
+			if (farSince == 0) {
+				farSince = c.now();
+			}
+			boolean walkingFails = c.nav().state() == Navigator.State.FAILED || c.now() - farSince > 20 * 30;
+			if (walkingFails && c.now() >= nextTeleport) {
+				nextTeleport = c.now() + 20 * 60;
+				farSince = 0;
+				teleportNear(owner);
+				return Status.RUNNING;
+			}
+		} else {
+			farSince = 0;
 		}
 
 		// Being close isn't enough if a wall or closed door is between us.
@@ -98,6 +113,11 @@ public class FollowOwnerTask extends Task {
 		}
 		return Status.RUNNING;
 	}
+
+	/** No more than one teleport a minute (it's a fallback, not how we get around). */
+	private long nextTeleport;
+	/** When we first found ourselves too far from the owner (0 = not far). */
+	private long farSince;
 
 	/** Failed attempts in a row to path to the owner. */
 	private int failures;
@@ -125,7 +145,8 @@ public class FollowOwnerTask extends Task {
 				c.nav().stop();
 				// Stuck somewhere (deep in a cave, a pit) and it keeps failing: come back the way
 				// we do when far away, rather than wait there forever.
-				if (++failures >= 3 && d > 12 && CompanionConfig.get().teleportToOwnerDistance > 0) {
+				if (++failures >= 3 && d > 12 && CompanionConfig.get().teleportToOwnerDistance > 0 && c.now() >= nextTeleport) {
+					nextTeleport = c.now() + 20 * 60;
 					AiLog.log(c.name(), "can't find a way back to owner, teleporting");
 					failures = 0;
 					teleportNear(owner);
