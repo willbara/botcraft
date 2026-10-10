@@ -1764,4 +1764,78 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(m, "GtLamplighter");
 		});
 	}
+
+	/** An open arena walled with plain stone (which popbob doesn't grief). */
+	static void stoneArena(TestContext ctx, int size) {
+		for (int x = -1; x <= size; x++) {
+			for (int z = -1; z <= size; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				for (int y = 1; y <= 4; y++) {
+					boolean wall = x == -1 || z == -1 || x == size || z == size;
+					ctx.setBlockState(x, y, z, wall && y <= 2 ? Blocks.STONE : Blocks.AIR);
+				}
+			}
+		}
+	}
+
+	/** Easter egg: popbob goes for the nearest companion, and that companion fights back. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 400, batchId = "popbob_fight")
+	public void popbobAttacksAndGetsHitBack(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "popbob", "GtVictim");
+		stoneArena(ctx, 10);
+		var server = ctx.getWorld().getServer();
+		boolean pvp = server.isPvpEnabled();
+		server.setPvpEnabled(true); // off on the test server; players can't hurt each other without it
+		ctx.assertTrue(m.spawn("popbob", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(1.5, 1, 5.5)), 0.0F) == null, "spawn popbob");
+		ctx.assertTrue(m.spawn("GtVictim", "noor", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(8.5, 1, 5.5)), 0.0F) == null, "spawn victim");
+		Companion bob = m.byName("popbob");
+		Companion victim = m.byName("GtVictim");
+		bob.player().getInventory().clear();
+		victim.player().getInventory().clear();
+		com.mcfriends.chat.CommandTasks.stay(victim);
+		boolean[] seen = new boolean[3]; // victim hurt, victim fought, popbob hurt
+		ctx.addInstantFinalTask(() -> {
+			seen[0] |= victim.player().getHealth() < victim.player().getMaxHealth();
+			seen[1] |= victim.brain().currentObjective() == com.mcfriends.brain.Objective.FIGHT;
+			seen[2] |= bob.player().getHealth() < bob.player().getMaxHealth();
+			ctx.assertTrue(seen[0], "popbob never hit the victim; popbob at " + bob.player().getPos() + ", victim " + victim.player().getPos());
+			ctx.assertTrue(seen[1], "victim never fought back: " + victim.describeActivity());
+			ctx.assertTrue(seen[2], "popbob never got hit");
+			server.setPvpEnabled(pvp);
+			cleanup(m, "popbob", "GtVictim");
+		});
+	}
+
+	/** Easter egg: with nobody around, popbob griefs a build (planks) but leaves containers alone. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "popbob_grief")
+	public void popbobGriefsButSparesChests(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "popbob");
+		stoneArena(ctx, 8);
+		ctx.setBlockState(5, 1, 3, Blocks.OAK_PLANKS);
+		ctx.setBlockState(5, 1, 5, Blocks.CHEST);
+		ctx.assertTrue(m.spawn("popbob", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion bob = m.byName("popbob");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(ctx.getBlockState(new BlockPos(5, 1, 3)).isAir(), "planks still there; at " + bob.player().getPos());
+			ctx.assertTrue(ctx.getBlockState(new BlockPos(5, 1, 5)).isOf(Blocks.CHEST), "chest was broken");
+			cleanup(m, "popbob");
+		});
+	}
+
+	/** Easter egg: popbob doesn't take orders. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "popbob_orders")
+	public void popbobIgnoresOrders(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "popbob");
+		stoneArena(ctx, 6);
+		ctx.assertTrue(m.spawn("popbob", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion bob = m.byName("popbob");
+		var parsed = com.mcfriends.chat.IntentParser.parse("popbob get 10 logs", java.util.List.of("popbob"));
+		ctx.assertTrue(com.mcfriends.chat.ChatRouter.respond(bob, null, parsed.intents(), false) == null, "respond");
+		ctx.assertTrue(bob.jobs().isIdle(), "popbob took the order");
+		cleanup(m, "popbob");
+		ctx.complete();
+	}
 }

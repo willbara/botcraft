@@ -8,6 +8,7 @@ import com.mcfriends.brain.Task;
 import com.mcfriends.entity.CompanionPlayer;
 import com.mcfriends.nav.Goal;
 import com.mcfriends.util.AiLog;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.mob.CreeperEntity;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.util.math.BlockPos;
@@ -24,13 +25,14 @@ import java.util.Random;
 public class FightTask extends Task {
 	private static final double GIVE_UP_DISTANCE = 24.0;
 	private final Random random = new Random();
-	private MobEntity target;
+	/** Usually a hostile mob; can be a player (the popbob easter egg). */
+	private LivingEntity target;
 	private BlockPos goalCenter = BlockPos.ORIGIN;
 	private int backOff;
 	private int strafeDir = 1;
 	private int kills;
 
-	public FightTask(Companion c, MobEntity target) {
+	public FightTask(Companion c, LivingEntity target) {
 		super(c);
 		this.target = target;
 	}

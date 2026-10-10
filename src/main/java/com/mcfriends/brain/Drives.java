@@ -50,6 +50,15 @@ public final class Drives {
 		List<MobEntity> threats = per.threats();
 		List<MobEntity> ownerThreats = c.data.defendOwner ? per.ownerThreats() : List.of();
 		if (threats.isEmpty() && ownerThreats.isEmpty()) {
+			// The popbob easter egg: armed companions take it on; anyone it's hitting hits back.
+			var popbob = Popbob.near(c, 12);
+			if (popbob != null && !Popbob.is(c)) {
+				double d = popbob.distanceTo(p);
+				boolean armed = per.inventory().bestWeapon() >= ARMED_DAMAGE;
+				if (armed || d < 4) {
+					out.propose(Objective.FIGHT, d < 6 ? 0.9F : 0.75F, String.format("popbob %.1f away", d));
+				}
+			}
 			return;
 		}
 		boolean armed = per.inventory().bestWeapon() >= ARMED_DAMAGE;

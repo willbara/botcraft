@@ -69,6 +69,7 @@ public class Companion {
 	private final com.mcfriends.brain.Watchdog watchdog = new com.mcfriends.brain.Watchdog();
 	private final com.mcfriends.brain.Failsafe failsafe = new com.mcfriends.brain.Failsafe();
 	private final com.mcfriends.brain.Lighting lighting = new com.mcfriends.brain.Lighting();
+	private final com.mcfriends.brain.Popbob popbob = new com.mcfriends.brain.Popbob();
 	/** Recent deaths (where, when): don't keep walking back into the same danger. */
 	private final java.util.ArrayDeque<long[]> recentDeaths = new java.util.ArrayDeque<>();
 	private boolean lastDeathUnrecoverable;
@@ -194,9 +195,13 @@ public class Companion {
 				rescueHome(why);
 			}
 		}
-		jobs.tick();
-		life.tick(this, serverTick);
-		brain.tick(serverTick);
+		if (com.mcfriends.brain.Popbob.is(this)) {
+			popbob.tick(this, serverTick); // the easter egg: no jobs, no plans, just trouble
+		} else {
+			jobs.tick();
+			life.tick(this, serverTick);
+			brain.tick(serverTick);
+		}
 		nav.tick();
 		actions.tick();
 		events.tick(this, serverTick);

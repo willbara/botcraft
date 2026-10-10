@@ -69,7 +69,7 @@ public final class Sharing {
 		double bestD = Double.MAX_VALUE;
 		for (Companion o : m.all()) {
 			CompanionPlayer op = o.player();
-			if (o == asker || op == null || !o.isOnline() || op.isDead() || op.isSleeping() || op.getWorld() != ap.getWorld()) {
+			if (o == asker || op == null || !o.isOnline() || op.isDead() || op.isSleeping() || op.getWorld() != ap.getWorld() || Popbob.is(o)) {
 				continue;
 			}
 			Objective obj = o.brain().currentObjective();

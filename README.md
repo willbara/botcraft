@@ -352,6 +352,17 @@ It goes to bed when you do, so the night can be skipped.
 - **Unprompted remarks** on nightfall and morning, weather, new biomes, low health, creepers, you getting hurt or dying, diamonds, each step of a plan, plan failures (with the reason), kills, fleeing, missing beds, its own initiative, and idle musings. How often depends on chattiness.
 - **Customising.** Create `config/mcfriends-dialogue.json` in the same format as [`dialogue.json`](src/main/resources/mcfriends/dialogue.json); any key you define replaces that key's default lines. Placeholders include `{player}`, `{nick}`, `{name}`, `{friend}`, `{mob}`, `{item}`, `{count}`, `{plan}`, `{result}`, `{reason}`, `{biome}`, `{time}` and `{fav}`. Restart to reload.
 
+### Easter eggs
+
+Spawn a companion named **popbob** (any capitalisation) and it turns on everyone:
+
+- It goes for the nearest player or companion within 48 blocks, with the best weapon it has, taunting as it goes.
+- With nobody around it wanders and griefs: planks, wool, glass, stairs, slabs, fences, doors, torches, crafting tables, cobblestone, bricks and similar build blocks. It never breaks containers or other block entities, dirt or stone, or anything unbreakable.
+- It ignores every order and question, doesn't greet anyone, and never shares or asks for help.
+- Other companions treat it as a threat. Armed ones fight it from up to 12 blocks away; unarmed ones fight back once it's within 4.
+- It can only hurt players and companions when PvP is on (`pvp=true` in `server.properties`; singleplayer has it on).
+- Remove it with `/companion remove popbob`, or set `easterEggs: false` to make popbob an ordinary companion.
+
 ---
 
 ## Limitations
@@ -439,6 +450,7 @@ Pillars, bridges and staircases built while travelling are left in the world. So
 | `sleepWithOwner` | true | Go to bed when the owner sleeps. |
 | `commandPermissionLevel` | 2 | Permission level for `/companion`. |
 | `placeTorches` | true | Put torches down in dark caves and around a dark base. |
+| `easterEggs` | true | Easter eggs. Currently: a companion named "popbob" (see [Easter eggs](#easter-eggs)). |
 | `verboseAiLogging` | false | Log AI decisions at INFO instead of DEBUG, so they show in `latest.log`. |
 
 ---
@@ -513,7 +525,7 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 ## Development
 
 - `./gradlew build` compiles and runs the JUnit tests (intent parser, templates, skin UUIDs).
-- `./gradlew runGametest` runs a headless server with 61 GameTests. It resets its world on every run. The tests cover:
+- `./gradlew runGametest` runs a headless server with 64 GameTests. It resets its world on every run. The tests cover:
   - movement and pathfinding: shafts, ladders, parkour, diving, digging out, surfacing for air;
   - gathering, mining (including whole veins) and crafting (including table budgeting);
   - smelting, and hunting (near, far, sword first, searching, noticing herds, starving, keeping a food stock);
@@ -522,6 +534,7 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
   - the base: storing all but the kit, chests with a purpose, placing a chest when needed, and crafting from base stock (never from other chests);
   - the planner (using stock, smelting what's carried, chaining from scratch, learning from failure), the target ladder, and dancing;
   - torches in a dark cave and lighting up a dark base;
+  - the popbob easter egg (attacking, being fought back, griefing but never chests, ignoring orders);
   - player slots.
 - `./gradlew runSoak -PsoakMinutes=30 -PsoakCompanions=6` runs an unattended soak test. It starts a dedicated server in `run/soak` with a fresh world (seed `-PsoakSeed`, default 12345, Normal difficulty), and spawns the companions in free mode at world spawn with no player online. When time is up it writes `run/soak/soak-report.md` and stops. The report covers:
   - deaths per companion-hour, with causes;
