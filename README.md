@@ -6,8 +6,6 @@ AI companions for Minecraft 1.20.1 (Fabric) that join the server as real players
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.
 - **One optional network call.** Looking up the skin of a registered Minecraft account goes to Mojang, the same way player heads do. Turn it off with `allowSkinLookup`.
 
-Botcraft was called MCFriends until version 0.9.6. Configs and worlds from MCFriends are moved over automatically the first time Botcraft runs, companions included.
-
 ## Install
 
 You need Minecraft 1.20.1, Fabric Loader 0.15 or later, and Fabric API.
