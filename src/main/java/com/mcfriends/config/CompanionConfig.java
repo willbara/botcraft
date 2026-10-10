@@ -68,6 +68,8 @@ public class CompanionConfig {
 	/** Permission level required for /companion. */
 	public int commandPermissionLevel = 2;
 	/** Log AI decisions at INFO (instead of DEBUG) so they show up in latest.log without log config. */
+	/** Put torches down in dark caves and around a dark base. */
+	public boolean placeTorches = true;
 	public boolean verboseAiLogging = false;
 
 	public static CompanionConfig get() {

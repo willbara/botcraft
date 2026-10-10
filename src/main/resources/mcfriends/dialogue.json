@@ -11,6 +11,7 @@
   "ack.plan_more": ["Okay, after that I'll {plan}.", "Added to my list: {plan}.", "Sure, I'll {plan} next.", "Noted. Then I'll {plan}."],
   "ack.cancel": ["Okay, forget it.", "Cancelled.", "Alright, dropping that.", "Fine by me.", "Never mind it is."],
   "ack.give": ["Here you go, {count} {item}.", "Catch!", "Take these.", "All yours.", "Special delivery!", "Here, {nick}."],
+  "ack.light":["On it, torches coming up.", "Let's get some light in here.", "I'll light the place up."],
   "ack.dance": ["Oh, you don't have to ask me twice!", "Dance party!", "Watch this.", "Okay okay, check out these moves.", "Let's gooo!", "Hit it!"],
   "ack.chest_purpose": ["Got it, that chest is for {purpose}.", "{purpose} go in that one, noted.", "Okay: that's the chest for {purpose}."],
   "ack.chest_set": ["Got it, that's our chest.", "Our chest, noted. I'll keep things in there.", "Okay, that one's for storage."],

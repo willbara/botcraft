@@ -1697,4 +1697,71 @@ public class CompanionGameTests implements FabricGameTest {
 			cleanup(CompanionManager.get(), "GtDancer");
 		});
 	}
+
+	/** A sealed, unlit stone room (x,z 0..size, floor y0, air y1..3, roof y4). */
+	static void darkRoom(TestContext ctx, int size) {
+		for (int x = -1; x <= size + 1; x++) {
+			for (int z = -1; z <= size + 1; z++) {
+				boolean wall = x < 0 || z < 0 || x > size || z > size;
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				for (int y = 1; y <= 3; y++) {
+					ctx.setBlockState(x, y, z, wall ? Blocks.STONE : Blocks.AIR);
+				}
+				ctx.setBlockState(x, 4, z, Blocks.STONE);
+			}
+		}
+	}
+
+	/** Underground in the dark with torches: it puts one down beside it. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 200, batchId = "cave_torch")
+	public void lightsDarkCaves(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtCaver");
+		darkRoom(ctx, 6);
+		ctx.assertTrue(m.spawn("GtCaver", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtCaver");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.TORCH, 8);
+		ctx.addInstantFinalTask(() -> {
+			int torches = 0;
+			for (BlockPos b : BlockPos.iterate(ctx.getAbsolutePos(new BlockPos(0, 1, 0)), ctx.getAbsolutePos(new BlockPos(6, 1, 6)))) {
+				if (ctx.getWorld().getBlockState(b).isOf(Blocks.TORCH)) {
+					torches++;
+				}
+			}
+			ctx.assertTrue(torches >= 1, "no torch placed; carrying " + count(c, net.minecraft.item.Items.TORCH));
+			cleanup(m, "GtCaver");
+		});
+	}
+
+	/** "Light up the base": no pitch-dark floor left inside a dark base room. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "light_home")
+	public void lightsUpTheBase(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtLamplighter");
+		darkRoom(ctx, 10);
+		var colony = colony(ctx, new BlockPos(5, 1, 5));
+		ctx.assertTrue(m.spawn("GtLamplighter", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(5.5, 1, 5.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtLamplighter");
+		com.mcfriends.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.TORCH, 16);
+		ctx.assertTrue(com.mcfriends.chat.CommandTasks.apply(c, "light up the base", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			int dark = 0;
+			int torches = 0;
+			for (BlockPos b : BlockPos.iterate(ctx.getAbsolutePos(new BlockPos(0, 1, 0)), ctx.getAbsolutePos(new BlockPos(10, 1, 10)))) {
+				if (ctx.getWorld().getBlockState(b).isOf(Blocks.TORCH)) {
+					torches++;
+				} else if (ctx.getWorld().getBlockState(b).isAir() && ctx.getWorld().getLightLevel(net.minecraft.world.LightType.BLOCK, b) < 1) {
+					dark++;
+				}
+			}
+			ctx.assertTrue(torches >= 1 && !"light_home".equals(c.brain().jobName()), "job still going or no torch: " + torches + "; " + c.describeActivity());
+			ctx.assertTrue(dark == 0, dark + " dark spots left; " + c.describeActivity() + "; torches left " + count(c, net.minecraft.item.Items.TORCH));
+			colony.clear();
+			cleanup(m, "GtLamplighter");
+		});
+	}
 }

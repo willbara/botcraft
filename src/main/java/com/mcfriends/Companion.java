@@ -68,6 +68,7 @@ public class Companion {
 	private final com.mcfriends.brain.Leftovers leftovers = new com.mcfriends.brain.Leftovers(this);
 	private final com.mcfriends.brain.Watchdog watchdog = new com.mcfriends.brain.Watchdog();
 	private final com.mcfriends.brain.Failsafe failsafe = new com.mcfriends.brain.Failsafe();
+	private final com.mcfriends.brain.Lighting lighting = new com.mcfriends.brain.Lighting();
 	/** Recent deaths (where, when): don't keep walking back into the same danger. */
 	private final java.util.ArrayDeque<long[]> recentDeaths = new java.util.ArrayDeque<>();
 	private boolean lastDeathUnrecoverable;
@@ -182,6 +183,9 @@ public class Companion {
 		}
 		if (serverTick % 40 == 0 && watchdog.check(this, serverTick)) {
 			onStalled();
+		}
+		if (serverTick % 20 == 7) {
+			lighting.tick(this, serverTick);
 		}
 		if (serverTick % 20 == 0) {
 			Memory.Place home = memory.place("home");

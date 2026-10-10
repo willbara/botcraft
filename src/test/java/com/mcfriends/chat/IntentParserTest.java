@@ -302,4 +302,11 @@ class IntentParserTest {
 		assertEquals(Intent.Type.DANCE, type("bob bust a move"));
 		assertEquals(Intent.Type.DANCE, type("everyone dance party"));
 	}
+
+	@Test
+	void lighting() {
+		assertEquals(Intent.Type.LIGHT, type("everyone light up the base"));
+		assertEquals(Intent.Type.LIGHT, type("bob place some torches"));
+		assertEquals(Intent.Type.LIGHT, type("bob it's dark around here"));
+	}
 }

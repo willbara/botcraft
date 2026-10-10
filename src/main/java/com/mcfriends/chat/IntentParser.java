@@ -51,6 +51,8 @@ public final class IntentParser {
 		"\\b((put|store|stash) (your|the|all your|away your) (stuff|things|items|loot|junk)( away| in the chests?)?|put (your|the) (stuff|things|items) away|deposit( (your|everything|it all|your stuff))?|empty your (inventory|pockets|bags?)|unload( your stuff)?|stash (it|everything))\\b");
 	private static final Pattern STOCK = Pattern.compile(
 		"\\b(what'?s in the chests?|what is in the chests?|what do we have|what have we got|what'?s in (storage|the storage)|check the (chests?|stock|storage)|how much do we have|our stock|the stock|what'?s stored)\\b");
+	private static final Pattern LIGHT = Pattern.compile(
+		"\\b(light (up )?(the |our )?(base|home|area|place)|place (some )?torches|put (some )?torches (down|up|around)|torch (up )?(the |our )?(base|home|area|place)|it'?s (too )?dark (here|around here))\\b");
 	private static final Pattern DANCE = Pattern.compile(
 		"\\b(dance|dancing|dance party|boogie|bust a move|show (me|us) (your|some) moves|do a (little )?dance|let'?s dance|get down|hit the dance floor|party time)\\b");
 	private static final Pattern SLEEP = Pattern.compile("\\b(go to (sleep|bed)|sleep|bedtime|take a nap|get in bed|hit the hay)\\b");
@@ -444,6 +446,9 @@ public final class IntentParser {
 		}
 		if (FREE.matcher(text).find()) {
 			return Intent.of(Intent.Type.FREE);
+		}
+		if (LIGHT.matcher(text).find()) {
+			return Intent.of(Intent.Type.LIGHT);
 		}
 		if (DANCE.matcher(text).find() && !text.matches(".*\\b(do you|can you|how do you|like to)\\b.*dance.*")) {
 			return Intent.of(Intent.Type.DANCE);
