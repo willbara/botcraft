@@ -257,4 +257,15 @@ class IntentParserTest {
 		assertEquals(Intent.Type.CRAFT, after.get(1).type());
 		assertEquals("food", IntentParser.parse("bob get me something to eat", List.of("bob")).intent().item());
 	}
+
+	@Test
+	void everyoneQuestions() {
+		assertEquals(Intent.Type.STATUS, type("everyone ok?"));
+		assertEquals(Intent.Type.STATUS, type("how's everyone doing"));
+		assertEquals(Intent.Type.STATUS, type("what's everyone doing?"));
+		assertEquals(Intent.Type.STATUS, type("everyone what are you doing"));
+		assertEquals(Intent.Type.GATHER, type("everyone get some wood"));
+		assertEquals(Intent.Type.FOLLOW, type("everyone follow me"));
+		assertEquals(Intent.Type.FREE, type("bob go do something"));
+	}
 }

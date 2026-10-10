@@ -292,7 +292,21 @@ public class SmeltTask extends Task {
 				int per = Smelting.fuelTicks(fuelItem);
 				int items = (int) Math.ceil((burnNeeded - fuelIn) / (double) per);
 				moveInto(inv, f, SLOT_FUEL, s -> s.isOf(fuelItem), items);
+				AiLog.log(c.name(), "{}: fuelled with {} (need {} ticks, had {})", name(), ItemNames.id(fuelItem), burnNeeded, fuelIn);
 			}
+		}
+		if (!f.getStack(SLOT_IN).isEmpty() && f.getStack(SLOT_FUEL).isEmpty() && !isBurning(f)) {
+			// Out of fuel and nothing to burn on us: take our things back and go get fuel,
+			// rather than stand here reloading an empty fuel slot until we time out.
+			ItemStack back = f.getStack(SLOT_IN).copy();
+			f.setStack(SLOT_IN, ItemStack.EMPTY);
+			if (!inv.insertStack(back) && !back.isEmpty()) {
+				p.dropItem(back, false);
+			}
+			f.markDirty();
+			c.perception().invalidateInventory();
+			AiLog.log(c.name(), "{}: out of fuel, fetching some", name());
+			return deferTo(List.of("gather logs 2"));
 		}
 		p.swingHand(Hand.MAIN_HAND);
 		f.markDirty();
