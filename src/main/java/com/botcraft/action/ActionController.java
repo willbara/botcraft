@@ -481,7 +481,11 @@ public class ActionController {
 		p.setSneaking(wasSneaking);
 		if (r.isAccepted()) {
 			p.swingHand(Hand.MAIN_HAND);
-			return !world.getBlockState(target).isReplaceable();
+			boolean placed = !world.getBlockState(target).isReplaceable();
+			if (!placed) {
+				lastPlaceProblem = "accepted against " + at.support().toShortString() + " " + at.face() + " but nothing appeared";
+			}
+			return placed;
 		}
 		lastPlaceProblem = "refused: " + r;
 		com.botcraft.util.AiLog.log(companion.name(), "place at {} against {} {} refused: {} (holding {})", target.toShortString(),

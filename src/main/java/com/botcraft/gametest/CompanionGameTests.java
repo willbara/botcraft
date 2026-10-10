@@ -1083,6 +1083,33 @@ public class CompanionGameTests implements FabricGameTest {
 		});
 	}
 
+	/**
+	 * Standing in a lava pool (fire resistance on, so the test is about getting out, not
+	 * surviving): it wades to the edge and climbs out, though path finding sees only lava around.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 200, batchId = "lava_escape")
+	public void wadesOutOfLava(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtEmber");
+		flatArena(ctx, 9);
+		for (int x = 0; x < 9; x++) {
+			for (int z = 0; z < 9; z++) {
+				boolean pool = x >= 1 && x <= 4 && z >= 1 && z <= 4;
+				ctx.setBlockState(x, 1, z, pool ? Blocks.LAVA : Blocks.STONE);
+			}
+		}
+		ctx.assertTrue(m.spawn("GtEmber", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 2.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtEmber");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE, 400));
+		ctx.runAtTick(3, () -> ctx.assertTrue(c.player().isInLava(), "didn't start in the lava"));
+		ctx.runAtTick(120, () -> {
+			ctx.assertTrue(c.player().isAlive() && !c.player().isInLava(), "still in lava at " + c.player().getBlockPos() + "; " + c.describeActivity());
+			cleanup(m, "GtEmber");
+			ctx.complete();
+		});
+	}
+
 	/** Dying in water: it comes back at home, on dry ground, alive (not stuck in a death animation). */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 400, batchId = "respawn_safe")
 	public void respawnsSafelyAtHome(TestContext ctx) {

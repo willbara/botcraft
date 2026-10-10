@@ -23,6 +23,9 @@ import java.util.Map;
  * solid ceiling) and swims that route itself, block by block: up, down, along. No pathfinding
  * (that's what gets lost in flooded tunnels). With no air within reach it swims straight up.
  * Done once the head is out and the air bar is back.
+ *
+ * <p>The same goes for lava: path finding treats every block around us as deadly there and gives
+ * up, so we search out through the lava to the nearest dry footing and wade straight to it.
  */
 public class BreatheTask extends Task {
 	/** How far (in swimming distance) to look for air. */
@@ -35,6 +38,7 @@ public class BreatheTask extends Task {
 	private int outTicks;
 	private int stuckTicks;
 	private double lastDist = Double.MAX_VALUE;
+	private boolean lava;
 
 	public BreatheTask(Companion c) {
 		super(c);
@@ -43,11 +47,6 @@ public class BreatheTask extends Task {
 	@Override
 	public String name() {
 		return "breathe";
-	}
-
-	@Override
-	public String describe() {
-		return "coming up for air";
 	}
 
 	@Override
@@ -61,8 +60,23 @@ public class BreatheTask extends Task {
 		plan();
 	}
 
+	@Override
+	public String describe() {
+		return lava ? "getting out of the lava" : "coming up for air";
+	}
+
 	private void plan() {
 		CompanionPlayer p = c.player();
+		lava = p.isInLava();
+		if (lava) {
+			route = routeOutOfLava(p);
+			next = 0;
+			stuckTicks = 0;
+			lastDist = Double.MAX_VALUE;
+			AiLog.log(c.name(), "in lava, {}", route.isEmpty() ? "no way out in reach, jumping"
+				: "wading " + route.size() + " blocks out to " + route.get(route.size() - 1).toShortString());
+			return;
+		}
 		route = routeToAir(p);
 		next = 0;
 		stuckTicks = 0;
@@ -74,6 +88,9 @@ public class BreatheTask extends Task {
 	@Override
 	protected Status onTick() {
 		CompanionPlayer p = c.player();
+		if (lava || p.isInLava()) {
+			return lavaTick(p);
+		}
 		if (!p.isSubmergedInWater()) {
 			// Head out: hold position a moment while the air bar refills.
 			if (++outTicks > 20 && p.getAir() >= p.getMaxAir() - 20) {
@@ -114,6 +131,76 @@ public class BreatheTask extends Task {
 			plan();
 		}
 		return Status.RUNNING;
+	}
+
+	private Status lavaTick(CompanionPlayer p) {
+		if (!lava) {
+			plan(); // fell in while coming up for air
+		}
+		if (!p.isInLava()) {
+			return p.isOnGround() || ++outTicks > 20 ? Status.SUCCESS : Status.RUNNING;
+		}
+		outTicks = 0;
+		c.actions().holdJump(); // keeps the head up and climbs the step out
+		if (route.isEmpty()) {
+			if (ticks() % 20 == 0) {
+				plan();
+			}
+			return Status.RUNNING;
+		}
+		BlockPos feet = com.botcraft.nav.Navigator.feet(p);
+		while (next < route.size() - 1 && feet.equals(route.get(next))) {
+			next++;
+		}
+		Vec3d target = Vec3d.ofBottomCenter(route.get(next));
+		c.actions().moveTo(target);
+		c.actions().sprint(true);
+		double dist = p.getPos().squaredDistanceTo(target);
+		if (dist < lastDist - 0.01) {
+			lastDist = dist;
+			stuckTicks = 0;
+		} else if (++stuckTicks > 20) {
+			plan();
+		}
+		return Status.RUNNING;
+	}
+
+	/**
+	 * Breadth-first from the feet through lava (and open air) to the nearest block we can stand in
+	 * out of the lava: body room, no lava, something solid or water underneath. The route is the
+	 * feet blocks, ending at that spot; empty if there's none within 10 blocks.
+	 */
+	static List<BlockPos> routeOutOfLava(CompanionPlayer p) {
+		var world = p.getServerWorld();
+		BlockPos start = com.botcraft.nav.Navigator.feet(p);
+		ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+		Map<BlockPos, BlockPos> parent = new HashMap<>();
+		queue.add(start);
+		parent.put(start, start);
+		Direction[] order = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP};
+		while (!queue.isEmpty() && parent.size() < 4000) {
+			BlockPos cur = queue.poll();
+			for (Direction d : order) {
+				BlockPos n = cur.offset(d);
+				if (n.getSquaredDistance(start) > 10 * 10 || parent.containsKey(n) || !open(world, n)) {
+					continue;
+				}
+				parent.put(n, cur);
+				boolean dry = !world.getFluidState(n).isIn(FluidTags.LAVA) && !world.getFluidState(n.up()).isIn(FluidTags.LAVA);
+				var below = world.getBlockState(n.down());
+				if (dry && open(world, n.up()) && (!below.getCollisionShape(world, n.down()).isEmpty()
+					|| below.getFluidState().isIn(FluidTags.WATER))) {
+					return trace(parent, start, n);
+				}
+				queue.add(n);
+			}
+		}
+		return List.of();
+	}
+
+	/** Nothing solid in the way (lava, water and air all are). */
+	private static boolean open(net.minecraft.server.world.ServerWorld world, BlockPos pos) {
+		return world.getBlockState(pos).getCollisionShape(world, pos).isEmpty();
 	}
 
 	private static boolean reached(CompanionPlayer p, BlockPos wp) {

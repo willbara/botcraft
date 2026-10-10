@@ -167,7 +167,8 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] Ore set into a cave wall at an angle is mined without "can't get at … in this vein".
 
 ### 18. Unattended running
-- [ ] `./gradlew runSoak -PsoakMinutes=30 -PsoakCompanions=6` finishes on its own and writes `run/soak/soak-report.md`. Compare deaths per companion-hour, stalls and failed jobs between versions.
+- [ ] `./gradlew runSoak -PsoakMinutes=30 -PsoakCompanions=6` finishes on its own and writes `run/soak/soak-report.md`. Compare deaths per companion-hour, stalls and failed jobs between versions. The Navigation section shows how long companions waited on path searches, what got them stuck, and how often a path was re-planned because the world changed.
+- [ ] `./gradlew runGametest -PbotcraftOff=lavaEscape` fails `lava_escape`. The `-Dbotcraft.off=name,...` switch (see `util/Experiments`) turns a feature off, to check that a test really covers it or to compare soaks with and without it.
 - [ ] Let a companion die with items on it (not in lava or water). After respawning it says it's going back for its stuff and collects it.
 - [ ] Watch for "watchdog: no progress on …" in the log. Each one is a bug worth a look.
 

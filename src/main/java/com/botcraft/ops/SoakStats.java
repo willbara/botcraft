@@ -29,6 +29,23 @@ public final class SoakStats {
 	static long tickNanos;
 	static long maxTickNanos;
 	static long ticksOverBudget;
+	static double budgetSum;
+	static double serverMsSum;
+	static long serverSlowTicks;
+
+	// Navigation: path searches, how long they took to finish (in ticks, so a starved shared
+	// budget shows up), how many nodes they cost, and what went wrong while following them.
+	static final Map<String, Integer> searches = new TreeMap<>();
+	static final Map<String, Integer> stuck = new TreeMap<>();
+	static final Map<String, Integer> navFails = new TreeMap<>();
+	/** Other navigation events: paths planned ahead and taken up, replans because the world changed. */
+	static final Map<String, Integer> navEvents = new TreeMap<>();
+	static final java.util.List<Integer> searchTicks = new java.util.ArrayList<>();
+	static long searchNodes;
+	static long searchNanos;
+	/** Ticks a companion had a search waiting but got no node expansions (budget used up by others). */
+	static long starvedTicks;
+	static long searchingTicks;
 
 	private SoakStats() {
 	}
@@ -92,11 +109,66 @@ public final class SoakStats {
 		}
 	}
 
+	public static void search(String outcome, int nodes, long ticks, boolean escape) {
+		if (active) {
+			searches.merge(outcome + (escape ? " (escape)" : ""), 1, Integer::sum);
+			searchNodes += nodes;
+			searchTicks.add((int) ticks);
+		}
+	}
+
+	/** One tick of a waiting search: how many nodes it got and how long that took. */
+	public static void searchTick(int expandedThisTick, long nanos) {
+		if (active) {
+			searchingTicks++;
+			searchNanos += nanos;
+			if (expandedThisTick == 0) {
+				starvedTicks++;
+			}
+		}
+	}
+
+	/** Search work done while walking (planning ahead): CPU only, nobody is waiting on it. */
+	public static void searchCpu(long nanos) {
+		if (active) {
+			searchNanos += nanos;
+		}
+	}
+
+	/** The server's own (smoothed) tick time, sampled each tick. */
+	public static void serverTick(float ms) {
+		if (active) {
+			serverMsSum += ms;
+			if (ms > 50) {
+				serverSlowTicks++;
+			}
+		}
+	}
+
+	public static void stuck(String why) {
+		if (active) {
+			stuck.merge(why.replaceAll("-?\\d+, -?\\d+, -?\\d+", "<pos>"), 1, Integer::sum);
+		}
+	}
+
+	public static void navEvent(String what) {
+		if (active) {
+			navEvents.merge(what, 1, Integer::sum);
+		}
+	}
+
+	public static void navFailed(String why) {
+		if (active) {
+			navFails.merge(why.replaceAll("-?\\d+, -?\\d+, -?\\d+", "<pos>"), 1, Integer::sum);
+		}
+	}
+
 	/** Time spent in the companion tick (all companions together) this server tick. */
 	public static void tickTime(long nanos, double budgetMs) {
 		if (!active) {
 			return;
 		}
+		budgetSum += budgetMs;
 		ticks++;
 		tickNanos += nanos;
 		maxTickNanos = Math.max(maxTickNanos, nanos);

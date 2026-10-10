@@ -36,6 +36,8 @@ loom {
 			server()
 			name = 'Game Test'
 			vmArg '-Dfabric-api.gametest'
+			// -PbotcraftOff=name,name turns features off (see util/Experiments), to check a test fails without them.
+			vmArg "-Dbotcraft.off=${project.findProperty('botcraftOff') ?: ''}"
 			vmArg "-Dfabric-api.gametest.report-file=${project.layout.buildDirectory.get()}/gametest/junit.xml"
 			runDir = 'build/gametest'
 		}

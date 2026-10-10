@@ -10,9 +10,9 @@ import java.util.List;
  * One node of a path. {@code pos} is the block the feet occupy; {@code floorY} is the exact
  * height the feet rest at (e.g. pos.y - 0.5 when standing on a bottom slab below).
  * {@code breaks} are blocks to mine (in order) before the move, {@code place} a block to place
- * (bridge/pillar support).
+ * (bridge/pillar support). {@code cost} is what the planner expected the step to take, in ticks.
  */
-public record PathStep(BlockPos pos, MoveType type, double floorY, @Nullable BlockPos place, List<BlockPos> breaks) {
+public record PathStep(BlockPos pos, MoveType type, double floorY, @Nullable BlockPos place, List<BlockPos> breaks, double cost) {
 	public Vec3d center() {
 		return new Vec3d(pos.getX() + 0.5, floorY, pos.getZ() + 0.5);
 	}

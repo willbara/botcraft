@@ -6,6 +6,7 @@ import com.botcraft.action.Inventories;
 import com.botcraft.config.CompanionConfig;
 import com.botcraft.entity.CompanionPlayer;
 import com.botcraft.util.AiLog;
+import com.botcraft.util.Experiments;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.DoorBlock;
@@ -43,6 +44,14 @@ public class Navigator {
 	private static final int NO_PROGRESS_TICKS = 30;
 	private static final int MAX_STUCK = 5;
 	private static final int SEARCH_RANGE = 96;
+	/**
+	 * Baritone's primary timeout: a search still going after this long (or this many nodes)
+	 * hands over the best partial path if it gets at least EARLY_PROGRESS blocks closer, and we
+	 * walk it while planning on, instead of standing still until the search finishes.
+	 */
+	private static final int EARLY_TICKS = (int) Experiments.num("earlyTicks", 20);
+	private static final int EARLY_NODES = (int) Experiments.num("earlyNodes", 4000);
+	private static final double EARLY_PROGRESS = 8.0;
 
 	private final Companion companion;
 	private final ActionController actions;
@@ -53,6 +62,11 @@ public class Navigator {
 	private Goal goal;
 	@Nullable
 	private PathFinder finder;
+	/** Planning on from the end of the partial path we're walking, so there's no stop there. */
+	@Nullable
+	private PathFinder ahead;
+	@Nullable
+	private BlockPos aheadFrom;
 	@Nullable
 	private List<PathStep> path;
 	private boolean partial;
@@ -79,9 +93,17 @@ public class Navigator {
 	private Vec3d recoveryDir = Vec3d.ZERO;
 	private int pathTicks;
 	private int pathTimeLimit;
+	/** Ticks on the current step, against what the planner expected it to take. */
+	private int stepTicks;
+	private int stepIndex = -1;
+	/** Replans because the world changed ahead of us, and bridges we couldn't place, since moveTo. */
+	private int changedReplans;
+	private int bridgeFails;
 	private int doorWait;
 	private int pillarStage;
 	private int placeRefusals;
+	/** When the current search started (for the soak report's search latency). */
+	private long searchStartedAt;
 	private final LongOpenHashSet avoid = new LongOpenHashSet();
 	private final List<BlockPos> openedDoors = new ArrayList<>();
 
@@ -141,6 +163,8 @@ public class Navigator {
 		this.escape = false;
 		this.avoid.clear();
 		this.allowPlace = CompanionConfig.get().allowBridging;
+		this.changedReplans = 0;
+		this.bridgeFails = 0;
 		plan();
 	}
 
@@ -162,6 +186,7 @@ public class Navigator {
 		state = State.IDLE;
 		goal = null;
 		finder = null;
+		ahead = null;
 		path = null;
 		escape = false;
 		actions.sneak(false);
@@ -176,6 +201,7 @@ public class Navigator {
 		if (p == null || goal == null) {
 			return;
 		}
+		ahead = null;
 		BlockPos start = feet(p);
 		boolean dig = digMode || escape;
 		Terrain terrain = new Terrain(p.getServerWorld(), dig, p.getInventory());
@@ -197,6 +223,7 @@ public class Navigator {
 		boolean place = (allowPlace || escape) && blocks > 0;
 		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, 3);
 		finder = new PathFinder(terrain, start, goal, opts, avoid).startAir(p.getAir(), p.isSubmergedInWater());
+		searchStartedAt = companion.now();
 		path = null;
 		state = State.SEARCHING;
 	}
@@ -239,7 +266,19 @@ public class Navigator {
 			state = State.FAILED;
 			return;
 		}
+		int before = finder.expanded();
+		long t0 = System.nanoTime();
 		PathFinder.Status s = finder.step(CompanionConfig.get().pathNodesPerTick);
+		String outcome = s.name().toLowerCase(java.util.Locale.ROOT);
+		if (s == PathFinder.Status.SEARCHING && Experiments.on("earlyPartial")
+			&& (companion.now() - searchStartedAt >= EARLY_TICKS || finder.expanded() >= EARLY_NODES) && finder.settle(EARLY_PROGRESS)) {
+			s = PathFinder.Status.PARTIAL;
+			outcome = "partial, taken early";
+		}
+		com.botcraft.ops.SoakStats.searchTick(finder.expanded() - before, System.nanoTime() - t0);
+		if (s != PathFinder.Status.SEARCHING) {
+			com.botcraft.ops.SoakStats.search(outcome, finder.expanded(), companion.now() - searchStartedAt, escape);
+		}
 		boolean poor = s == PathFinder.Status.FAILED || (s == PathFinder.Status.PARTIAL && finder.progress() < 3);
 		if (poor && !escape && !digMode) {
 			boolean under = boxedIn(p);
@@ -267,6 +306,7 @@ public class Navigator {
 					return;
 				}
 				index = 0;
+				stepIndex = -1;
 				pathTicks = 0;
 				pathTimeLimit = 100;
 				for (PathStep st : path) {
@@ -289,6 +329,7 @@ public class Navigator {
 				finder = null;
 				failReason = "no path";
 				state = State.FAILED;
+				com.botcraft.ops.SoakStats.navFailed("no path");
 			}
 			default -> {
 			}
@@ -328,16 +369,19 @@ public class Navigator {
 			if (t.kind(head) == Terrain.LAVA || t.kind(head) == Terrain.WATER || t.kind(head.up()) == Terrain.LAVA) {
 				break;
 			}
-			steps.add(new PathStep(feetAt.toImmutable(), MoveType.PILLAR, feetAt.getY(), feetAt.down().toImmutable(), breaks));
+			steps.add(new PathStep(feetAt.toImmutable(), MoveType.PILLAR, feetAt.getY(), feetAt.down().toImmutable(), breaks,
+				PathFinder.JUMP + PathFinder.PLACE + (breaks.isEmpty() ? 0 : t.breakCost(head))));
 		}
 		if (steps.size() < 3) {
 			return false;
 		}
 		AiLog.log(companion.name(), "digging straight up ({} blocks) to get out", steps.size());
+		com.botcraft.ops.SoakStats.search("shaft up", 0, 0, true);
 		finder = null;
 		path = steps;
 		partial = true;
 		index = 0;
+		stepIndex = -1;
 		pathTicks = 0;
 		pathTimeLimit = 100 + steps.size() * 110;
 		pillarStage = 0;
@@ -366,6 +410,31 @@ public class Navigator {
 			stuck(p, "path timeout");
 			return;
 		}
+		if (stepIndex != index) {
+			stepIndex = index;
+			stepTicks = 0;
+		}
+		if (index < path.size() && Experiments.on("stepTimeout")) {
+			// Like Baritone: a step that takes far longer than planned has gone wrong (mining
+			// something we can't reach, pushing against a mob); plan again rather than keep at it.
+			PathStep cur = path.get(index);
+			if (++stepTicks > cur.cost() * 2 + 100 + (cur.type() == MoveType.PILLAR ? 40 : 0)) {
+				stuck(p, "step took too long (" + cur.type() + ")");
+				return;
+			}
+		}
+		if (pathTicks % 5 == 0 && changedReplans < 8 && Experiments.on("checkAhead")) {
+			String changed = blockedAhead(p);
+			if (changed != null) {
+				// Someone dug out the floor, placed a block, or lava flowed in: plan again now
+				// instead of walking up to it and getting stuck.
+				changedReplans++;
+				AiLog.log(companion.name(), "path blocked ahead ({}), replanning", changed);
+				com.botcraft.ops.SoakStats.navEvent("replanned: " + changed.replaceAll(" at .*", ""));
+				plan();
+				return;
+			}
+		}
 
 		// Skip ahead if we're already at (or past) upcoming steps.
 		for (int i = Math.min(path.size() - 1, index + 4); i >= index; i--) {
@@ -376,8 +445,21 @@ public class Navigator {
 				break;
 			}
 		}
+		if (partial && Experiments.on("planAhead")) {
+			planAhead(p);
+		}
 		if (index >= path.size()) {
-			if (partial) {
+			if (partial && ahead != null && feet(p).equals(aheadFrom)) {
+				// Carry on with what was planned while we walked (finished or not).
+				AiLog.log(companion.name(), "end of partial path, carrying on with the path planned ahead ({} nodes so far)", ahead.expanded());
+				com.botcraft.ops.SoakStats.navEvent(ahead.status() == PathFinder.Status.SEARCHING
+					? "partial path ended, path planned ahead still searching" : "partial path ended, path planned ahead ready");
+				finder = ahead;
+				ahead = null;
+				searchStartedAt = companion.now();
+				state = State.SEARCHING;
+				tickSearch(p);
+			} else if (partial) {
 				AiLog.log(companion.name(), "end of partial path, replanning");
 				plan();
 			} else if (goal.isGoal(here)) {
@@ -390,6 +472,7 @@ public class Navigator {
 			} else {
 				state = State.FAILED;
 				failReason = "path ended short of goal";
+				com.botcraft.ops.SoakStats.navFailed("path ended short of goal");
 			}
 			return;
 		}
@@ -462,6 +545,84 @@ public class Navigator {
 			actions.jump();
 		}
 		progress(p, hd + Math.abs(rise) * 0.5, step);
+	}
+
+	/** Ticks before the end of a partial path to start planning the next stretch (Baritone: planningTickLookahead). */
+	private static final double PLAN_AHEAD_TICKS = 150;
+
+	/**
+	 * Walking a partial path: once its end is close, start searching on from there, a share of
+	 * the node budget each tick, so the next stretch is (mostly) ready when we get there.
+	 */
+	private void planAhead(CompanionPlayer p) {
+		if (path == null || goal == null || path.isEmpty()) {
+			return;
+		}
+		if (ahead != null) {
+			if (ahead.status() == PathFinder.Status.SEARCHING) {
+				long t0 = System.nanoTime();
+				ahead.step(CompanionConfig.get().pathNodesPerTick);
+				com.botcraft.ops.SoakStats.searchCpu(System.nanoTime() - t0);
+			}
+			return;
+		}
+		double left = 0;
+		for (int i = index; i < path.size(); i++) {
+			left += path.get(i).cost();
+		}
+		if (left > PLAN_AHEAD_TICKS) {
+			return;
+		}
+		PathStep last = path.get(path.size() - 1);
+		if (goal.isGoal(last.pos())) {
+			return;
+		}
+		int blocks = Inventories.count(p.getInventory(), Inventories::isThrowaway);
+		for (int i = index; i < path.size(); i++) {
+			if (path.get(i).place() != null) {
+				blocks--; // still to be placed on the way there
+			}
+		}
+		blocks = Math.max(0, blocks);
+		boolean place = (allowPlace || escape) && blocks > 0;
+		Terrain terrain = new Terrain(p.getServerWorld(), digMode || escape, p.getInventory());
+		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, 3);
+		aheadFrom = last.pos();
+		ahead = new PathFinder(terrain, aheadFrom, goal, opts, avoid);
+	}
+
+	/**
+	 * Re-check the next few steps against the world as it is now. Returns what changed, or null
+	 * if they still look walkable. Steps that mine or place are checked for fluids only.
+	 */
+	@Nullable
+	private String blockedAhead(CompanionPlayer p) {
+		if (path == null) {
+			return null;
+		}
+		Terrain t = new Terrain(p.getServerWorld(), digMode || escape, p.getInventory());
+		for (int i = index + 1; i < Math.min(path.size(), index + 6); i++) {
+			PathStep s = path.get(i);
+			BlockPos at = s.pos();
+			if (t.isLava(at) || t.isLava(at.up())) {
+				return "lava at " + at.toShortString();
+			}
+			if (!s.breaks().isEmpty() || s.place() != null || s.type() == MoveType.PILLAR) {
+				for (BlockPos b : s.breaks()) {
+					if (t.isLava(b) || t.isWater(b)) {
+						return "fluid in a block to mine at " + b.toShortString();
+					}
+				}
+				continue;
+			}
+			if (!t.passable(at) || !t.passable(at.up())) {
+				return "blocked at " + at.toShortString();
+			}
+			if (!t.standable(at) && s.type() != MoveType.PARKOUR && s.type() != MoveType.FALL) {
+				return "floor gone at " + at.toShortString();
+			}
+		}
+		return null;
 	}
 
 	private void progress(CompanionPlayer p, double dist, PathStep step) {
@@ -639,10 +800,14 @@ public class Navigator {
 		}
 		if (actions.canReachBlock(under) && p.getPos().squaredDistanceTo(Vec3d.ofBottomCenter(step.pos())) < 1.6 * 1.6) {
 			if (!actions.placeBlock(under, Inventories::isThrowaway)) {
-				if (Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0) {
+				// Twice on one trip is enough: something about where we stand stops us placing (it
+				// was once seven minutes of retrying). Find a way round without bridges.
+				if (Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0
+					|| (++bridgeFails >= 2 && Experiments.on("bridgeGiveUp"))) {
 					allowPlace = false;
 				}
-				stuck(p, "could not place bridge block");
+				avoid.add(step.pos().asLong());
+				stuck(p, "could not place bridge block (" + actions.lastPlaceProblem() + ")");
 			}
 		}
 		resetProgress();
@@ -725,6 +890,7 @@ public class Navigator {
 	private void stuck(CompanionPlayer p, String why) {
 		stuckCount++;
 		AiLog.log(companion.name(), "stuck ({}/{}): {}", stuckCount, MAX_STUCK, why);
+		com.botcraft.ops.SoakStats.stuck(why);
 		actions.abortMining();
 		miningForPath = false;
 		actions.sneak(false);
@@ -733,10 +899,11 @@ public class Navigator {
 		if (stuckCount >= MAX_STUCK) {
 			failReason = why;
 			state = State.FAILED;
+			com.botcraft.ops.SoakStats.navFailed("stuck: " + why);
 			return;
 		}
 		if (stuckCount == 1 && !why.startsWith("may not") && !why.startsWith("could not") && !why.startsWith("out of")
-			&& !why.startsWith("someone")) {
+			&& !why.startsWith("someone") && !why.startsWith("path timeout") && !why.startsWith("step took")) {
 			// Wiggle: jump and strafe a little in a random direction, then carry on.
 			float angle = random.nextFloat() * MathHelper.TAU;
 			recoveryDir = new Vec3d(MathHelper.cos(angle), 0, MathHelper.sin(angle));

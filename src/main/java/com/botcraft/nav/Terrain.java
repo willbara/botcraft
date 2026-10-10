@@ -1,6 +1,6 @@
 package com.botcraft.nav;
 
-import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2DoubleOpenHashMap;
 import net.minecraft.block.AbstractFireBlock;
 import net.minecraft.block.Block;
@@ -16,11 +16,15 @@ import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.ChunkSectionPos;
+import net.minecraft.world.chunk.WorldChunk;
+import org.jetbrains.annotations.Nullable;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.shape.VoxelShape;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -44,7 +48,20 @@ public class Terrain {
 	public static final double BREAK_EXTRA = 2.0;
 
 	private final ServerWorld world;
-	private final Long2ByteOpenHashMap kinds = new Long2ByteOpenHashMap();
+	/**
+	 * Block kinds, one array per 16x16x16 section (-1 = not looked at yet). Searches ask about
+	 * the same few sections over and over, so this is a hash lookup per section change rather
+	 * than per block, which used to be the biggest single cost of path finding.
+	 */
+	private final Long2ObjectOpenHashMap<byte[]> kindSections = new Long2ObjectOpenHashMap<>();
+	private long lastSectionKey = Long.MIN_VALUE;
+	private byte[] lastSection;
+	/** Loaded chunks by position (null value = not loaded), so each block read skips the chunk manager. */
+	private final Long2ObjectOpenHashMap<WorldChunk> chunks = new Long2ObjectOpenHashMap<>();
+	private long lastChunkKey = Long.MIN_VALUE;
+	@Nullable
+	private WorldChunk lastChunk;
+	private final Long2DoubleOpenHashMap hazards = new Long2DoubleOpenHashMap();
 	private final Long2DoubleOpenHashMap tops = new Long2DoubleOpenHashMap();
 	private final Long2DoubleOpenHashMap breaks = new Long2DoubleOpenHashMap();
 	private final BlockPos.Mutable mutable = new BlockPos.Mutable();
@@ -66,7 +83,7 @@ public class Terrain {
 	public Terrain(ServerWorld world, boolean dig, PlayerInventory inventory) {
 		this.world = world;
 		this.dig = dig;
-		kinds.defaultReturnValue((byte) -1);
+		hazards.defaultReturnValue(Double.NaN);
 		tops.defaultReturnValue(Double.NaN);
 		breaks.defaultReturnValue(Double.NaN);
 		if (inventory != null) {
@@ -87,20 +104,56 @@ public class Terrain {
 		return dig;
 	}
 
+	@Nullable
+	private WorldChunk chunk(BlockPos pos) {
+		int cx = pos.getX() >> 4;
+		int cz = pos.getZ() >> 4;
+		long key = ChunkPos.toLong(cx, cz);
+		if (key == lastChunkKey) {
+			return lastChunk;
+		}
+		WorldChunk c = chunks.get(key);
+		if (c == null && !chunks.containsKey(key)) {
+			c = world.getChunkManager().getWorldChunk(cx, cz); // null if not loaded; never loads
+			chunks.put(key, c);
+		}
+		lastChunkKey = key;
+		lastChunk = c;
+		return c;
+	}
+
 	public boolean isLoaded(BlockPos pos) {
-		return world.isChunkLoaded(ChunkSectionPos.getSectionCoord(pos.getX()), ChunkSectionPos.getSectionCoord(pos.getZ()));
+		return chunk(pos) != null;
 	}
 
 	public BlockState state(BlockPos pos) {
-		return world.getBlockState(pos);
+		WorldChunk c = chunk(pos);
+		return c == null ? Blocks.VOID_AIR.getDefaultState() : c.getBlockState(pos);
 	}
 
 	public byte kind(BlockPos pos) {
-		long key = pos.asLong();
-		byte k = kinds.get(key);
+		int x = pos.getX();
+		int y = pos.getY();
+		int z = pos.getZ();
+		long sk = ChunkSectionPos.asLong(x >> 4, y >> 4, z >> 4);
+		byte[] sec;
+		if (sk == lastSectionKey) {
+			sec = lastSection;
+		} else {
+			sec = kindSections.get(sk);
+			if (sec == null) {
+				sec = new byte[4096];
+				Arrays.fill(sec, (byte) -1);
+				kindSections.put(sk, sec);
+			}
+			lastSectionKey = sk;
+			lastSection = sec;
+		}
+		int i = (y & 15) << 8 | (z & 15) << 4 | (x & 15);
+		byte k = sec[i];
 		if (k < 0) {
 			k = classify(pos);
-			kinds.put(key, k);
+			sec[i] = k;
 		}
 		return k;
 	}
@@ -112,7 +165,7 @@ public class Terrain {
 		if (!isLoaded(pos)) {
 			return UNLOADED;
 		}
-		BlockState state = world.getBlockState(pos);
+		BlockState state = state(pos);
 		FluidState fluid = state.getFluidState();
 		if (fluid.isIn(FluidTags.LAVA)) {
 			return LAVA;
@@ -148,7 +201,7 @@ public class Terrain {
 			if (k == UNLOADED || k == CLIMBABLE) {
 				t = 0;
 			} else {
-				VoxelShape shape = world.getBlockState(pos).getCollisionShape(world, pos);
+				VoxelShape shape = state(pos).getCollisionShape(world, pos);
 				t = shape.isEmpty() ? 0 : shape.getMax(Direction.Axis.Y);
 			}
 			tops.put(key, t);
@@ -193,7 +246,7 @@ public class Terrain {
 		if (kind(pos) != WATER) {
 			return false;
 		}
-		var f = world.getFluidState(pos);
+		var f = state(pos).getFluidState();
 		return !f.isStill() && f.contains(net.minecraft.fluid.FlowableFluid.FALLING) && f.get(net.minecraft.fluid.FlowableFluid.FALLING);
 	}
 
@@ -224,7 +277,7 @@ public class Terrain {
 
 	/** Sand, gravel, concrete powder...: falls into a hole when its support is mined. */
 	public boolean isFalling(BlockPos pos) {
-		return kind(pos) == SOLID && world.getBlockState(pos).getBlock() instanceof FallingBlock;
+		return kind(pos) == SOLID && state(pos).getBlock() instanceof FallingBlock;
 	}
 
 	/** Feet can rest here: body clear and something under it, swimming, or holding a ladder. */
@@ -248,6 +301,17 @@ public class Terrain {
 
 	/** Extra cost for nearby dangers (in ticks). */
 	public double hazard(BlockPos feet) {
+		long key = feet.asLong();
+		double cached = hazards.get(key);
+		if (!Double.isNaN(cached)) {
+			return cached;
+		}
+		double cost = computeHazard(feet);
+		hazards.put(key, cost);
+		return cost;
+	}
+
+	private double computeHazard(BlockPos feet) {
 		double cost = 0;
 		for (Direction d : Direction.Type.HORIZONTAL) {
 			BlockPos n = feet.offset(d);
@@ -269,7 +333,7 @@ public class Terrain {
 			if (kind(feet.up()) == WATER) {
 				cost += 30;
 			}
-			if (!world.getFluidState(feet).isStill()) {
+			if (!state(feet).getFluidState().isStill()) {
 				cost += 10;
 			}
 		}
@@ -293,7 +357,7 @@ public class Terrain {
 		} else if (k != SOLID) {
 			c = Double.POSITIVE_INFINITY;
 		} else {
-			BlockState s = world.getBlockState(pos);
+			BlockState s = state(pos);
 			if (!BreakPolicy.canBreakForNav(world, mutable.set(pos), s, dig)) {
 				c = Double.POSITIVE_INFINITY;
 			} else {
@@ -328,21 +392,35 @@ public class Terrain {
 		return passable(pos) || (kind(pos) == SOLID && breakCost(pos) < Double.POSITIVE_INFINITY);
 	}
 
-	/** A full-face solid block we can click to place against. */
+	/**
+	 * A full-face solid block we can click to place against. Placing needs solid faces, not just
+	 * a full collision box: leaves have one but no faces to place on (they used to get bridges
+	 * planned off them from tree tops, which could then never be built).
+	 */
 	public boolean placeableAgainst(BlockPos pos) {
-		return kind(pos) == SOLID && Block.isShapeFullCube(world.getBlockState(pos).getCollisionShape(world, pos));
+		if (kind(pos) != SOLID) {
+			return false;
+		}
+		BlockState s = state(pos);
+		return Block.isShapeFullCube(s.getCollisionShape(world, pos)) && s.isSideSolidFullSquare(world, pos, Direction.UP)
+			&& s.isSideSolidFullSquare(world, pos, Direction.NORTH);
 	}
 
 	/** Air (or replaceable plants/water) where a block could be placed. */
 	public boolean replaceable(BlockPos pos) {
 		byte k = kind(pos);
-		return (k == AIR || k == WATER) && world.getBlockState(pos).isReplaceable();
+		return (k == AIR || k == WATER) && state(pos).isReplaceable();
 	}
 
 	/** Forget cached info (the world changed). */
 	public void invalidate(BlockPos pos) {
+		hazards.clear();
 		for (int dy = -1; dy <= 1; dy++) {
-			kinds.remove(pos.up(dy).asLong());
+			BlockPos p = pos.up(dy);
+			byte[] sec = kindSections.get(ChunkSectionPos.asLong(p.getX() >> 4, p.getY() >> 4, p.getZ() >> 4));
+			if (sec != null) {
+				sec[(p.getY() & 15) << 8 | (p.getZ() & 15) << 4 | (p.getX() & 15)] = -1;
+			}
 			tops.remove(pos.up(dy).asLong());
 			breaks.remove(pos.up(dy).asLong());
 		}

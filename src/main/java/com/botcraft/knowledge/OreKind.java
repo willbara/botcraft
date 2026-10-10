@@ -60,6 +60,28 @@ public enum OreKind {
 		return s -> s.isIn(tag);
 	}
 
+	private static final java.util.IdentityHashMap<Block, OreKind> ORE_OF = new java.util.IdentityHashMap<>();
+
+	/**
+	 * The ore (not plain stone) a block is, or null, looked up once per block type: the
+	 * surroundings scan asks this for every block around every companion.
+	 */
+	@Nullable
+	public static OreKind ore(BlockState s) {
+		Block b = s.getBlock();
+		OreKind k = ORE_OF.get(b);
+		if (k == null && !ORE_OF.containsKey(b)) {
+			for (OreKind o : values()) {
+				if (o != STONE && o.blocks().test(s)) {
+					k = o;
+					break;
+				}
+			}
+			ORE_OF.put(b, k);
+		}
+		return k;
+	}
+
 	public BlockState sample() {
 		return sample.getDefaultState();
 	}

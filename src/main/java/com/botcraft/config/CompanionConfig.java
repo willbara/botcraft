@@ -25,8 +25,16 @@ public class CompanionConfig {
 	public int maxCompanions = 0;
 	/** Brain (drive scoring / task selection) runs every N ticks. Body control runs every tick. */
 	public int aiTickInterval = 5;
-	/** Total time (milliseconds) all companions may spend on AI work per server tick. */
+	/**
+	 * Time (milliseconds) all companions together may always spend on heavy AI work (path
+	 * search, block scans) per server tick. More is used when the server has time to spare.
+	 */
 	public double tickBudgetMs = 2.0;
+	/**
+	 * Most time per tick the AI may take when the rest of the server is light: the budget grows
+	 * from tickBudgetMs up to this while a whole tick stays under 35 ms (of the 50 ms there are).
+	 */
+	public double maxTickBudgetMs = 8.0;
 	/** A* node expansions allowed per companion per tick (also bounded by tickBudgetMs). */
 	public int pathNodesPerTick = 600;
 	/** Abort a path search after this many expanded nodes. */
@@ -113,6 +121,7 @@ public class CompanionConfig {
 		maxCompanions = Math.max(0, maxCompanions);
 		aiTickInterval = Math.max(1, Math.min(40, aiTickInterval));
 		tickBudgetMs = Math.max(0.2, Math.min(20.0, tickBudgetMs));
+		maxTickBudgetMs = Math.max(tickBudgetMs, Math.min(30.0, maxTickBudgetMs));
 		pathNodesPerTick = Math.max(10, pathNodesPerTick);
 		maxPathNodes = Math.max(200, maxPathNodes);
 		followDistance = Math.max(1.5, followDistance);

@@ -316,7 +316,8 @@ public final class CompanionManager {
 			return;
 		}
 		tickCount++;
-		TickBudget.begin(CompanionConfig.get().tickBudgetMs);
+		double budget = budgetMs();
+		TickBudget.begin(budget);
 		// Rotate the starting companion so a shared, exhausted budget doesn't always starve the same one.
 		List<Companion> order = new ArrayList<>(companions.values());
 		if (!order.isEmpty()) {
@@ -330,7 +331,10 @@ public final class CompanionManager {
 				Botcraft.LOG.error("Error ticking companion {}", c.name(), e);
 			}
 		}
-		com.botcraft.ops.SoakStats.tickTime(System.nanoTime() - started, CompanionConfig.get().tickBudgetMs);
+		long took = System.nanoTime() - started;
+		aiMs = aiMs * 0.8 + took / 1e6 * 0.2;
+		com.botcraft.ops.SoakStats.tickTime(took, budget);
+		com.botcraft.ops.SoakStats.serverTick(server.getTickTime());
 		com.botcraft.ops.Soak.tick(server);
 		com.botcraft.chat.Social.tick(companions.values(), tickCount);
 		if (tickCount % 100 == 0) {
@@ -343,6 +347,25 @@ public final class CompanionManager {
 		if (tickCount % AUTOSAVE_TICKS == 0) {
 			save();
 		}
+	}
+
+	/** Smoothed time the companions took per tick (ms), like the server's own tick time. */
+	private double aiMs;
+	/** A whole server tick should stay under this (of 50 ms), leaving room for spikes. */
+	private static final double TARGET_TICK_MS = 35.0;
+
+	/**
+	 * How long companions may think this tick: the configured floor, plus whatever the rest of
+	 * the server leaves spare under {@link #TARGET_TICK_MS}, up to maxTickBudgetMs. A quiet
+	 * server gets quick path finding; a busy one is never slowed down by it.
+	 */
+	private double budgetMs() {
+		CompanionConfig cfg = CompanionConfig.get();
+		if (!com.botcraft.util.Experiments.on("adaptiveBudget")) {
+			return cfg.tickBudgetMs;
+		}
+		double others = Math.max(0, server.getTickTime() - aiMs);
+		return Math.max(cfg.tickBudgetMs, Math.min(cfg.maxTickBudgetMs, TARGET_TICK_MS - others));
 	}
 
 	private void tickCompanion(Companion c) {

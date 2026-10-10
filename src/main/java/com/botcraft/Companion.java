@@ -462,7 +462,7 @@ public class Companion {
 	/** Brain callback when an interrupt (fight, flee, eat...) starts. */
 	public void onInterruptStarted(Objective objective, Task task) {
 		com.botcraft.ops.SoakStats.interrupt(objective.name());
-		if (objective == Objective.BREATHE && brain.job() != null) {
+		if (objective == Objective.BREATHE && brain.job() != null && player != null && !player.isInLava()) {
 			// Up for air, back down, up for air...: whatever the job is after is underwater.
 			if (brain.job() == breathJob) {
 				breathCount++;
