@@ -55,6 +55,9 @@ public final class BreakPolicy {
 		if (state.getBlock() instanceof LeavesBlock) {
 			return !state.get(LeavesBlock.PERSISTENT) || CompanionConfig.get().griefing;
 		}
+		if (placedByCompanion(world, pos, state)) {
+			return true; // a bridge, pillar or shelter roof one of us left: ours to take down
+		}
 		if (dig && isNaturalTerrain(state)) {
 			return true;
 		}
@@ -62,6 +65,21 @@ public final class BreakPolicy {
 			return false;
 		}
 		return !state.isIn(BlockTags.DOORS) && !state.isIn(BlockTags.BEDS) && !state.isIn(BlockTags.FENCE_GATES);
+	}
+
+	/** A throwaway block (dirt, cobblestone...) that a companion put down here. */
+	public static boolean placedByCompanion(ServerWorld world, BlockPos pos, BlockState state) {
+		var colony = com.botcraft.colony.Colony.get();
+		return colony != null && com.botcraft.util.Experiments.on("placedLedger") && com.botcraft.action.Inventories.isThrowaway(new net.minecraft.item.ItemStack(state.getBlock().asItem()))
+			&& colony.placedByCompanion(world.getRegistryKey().getValue().toString(), pos);
+	}
+
+	/** Remember a throwaway block we just put down (see {@link #placedByCompanion}). */
+	public static void recordPlaced(ServerWorld world, BlockPos pos) {
+		var colony = com.botcraft.colony.Colony.get();
+		if (colony != null) {
+			colony.recordPlaced(world.getRegistryKey().getValue().toString(), pos.toImmutable());
+		}
 	}
 
 	private static boolean touchesFluid(ServerWorld world, BlockPos pos) {

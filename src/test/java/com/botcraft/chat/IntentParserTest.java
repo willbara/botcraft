@@ -236,6 +236,22 @@ class IntentParserTest {
 	}
 
 	@Test
+	void gearOrders() {
+		var steps = IntentParser.parse("bob go mine diamonds, make diamond armor, and then come home", List.of("bob")).intents();
+		assertEquals(3, steps.size(), steps.toString());
+		assertEquals(Intent.Type.MINE, steps.get(0).type());
+		assertEquals("diamonds", steps.get(0).item());
+		assertEquals(Intent.Type.CRAFT, steps.get(1).type());
+		assertEquals("diamond armor", steps.get(1).item());
+		assertEquals(Intent.Type.HOME_GO, steps.get(2).type());
+		var armour = IntentParser.parse("bob make a full set of iron armour", List.of("bob")).intents();
+		assertEquals(Intent.Type.CRAFT, armour.get(0).type());
+		assertEquals("full set of iron armour", armour.get(0).item());
+		var gear = IntentParser.parse("bob get diamond gear", List.of("bob")).intents();
+		assertEquals("diamond gear", gear.get(0).item());
+	}
+
+	@Test
 	void flexibleOrders() {
 		assertEquals(Intent.Type.STATUS, type("zob what's your task"));
 		assertEquals(Intent.Type.STATUS, type("dog what you doing"));

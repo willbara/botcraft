@@ -138,7 +138,8 @@ public class HuntTask extends Task {
 					if (herd != null) {
 						triedHerds.add(herd);
 					}
-					search.start(c, herd);
+					// Underground, animals "over there" are up on the surface: get out first.
+					search.start(c, com.botcraft.util.Experiments.on("surfaceGoal") && SearchTrips.underground(p.getServerWorld(), p.getBlockPos()) ? null : herd);
 				}
 				return Status.RUNNING;
 			}

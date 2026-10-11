@@ -86,7 +86,7 @@ public final class Leftovers {
 	}
 
 	private boolean ours(ItemEntity e) {
-		if (!e.isAlive() || e.getStack().isEmpty() || givenUp.containsKey(e.getUuid())) {
+		if (!e.isAlive() || e.getStack().isEmpty() || givenUp.containsKey(e.getUuid()) || Blackboard.claimedByOther(c, e)) {
 			return false;
 		}
 		Entity thrower = e.getOwner();

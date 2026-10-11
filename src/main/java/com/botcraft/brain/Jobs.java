@@ -85,6 +85,10 @@ public final class Jobs {
 						ItemNames.plural(label(w[1]), num(w, 2, 1)))
 						: new com.botcraft.brain.task.DepositTask(c);
 				}
+				case "gear" -> {
+					Item it = ItemNames.resolve(w[1].replace('_', ' '));
+					return it == null ? null : new com.botcraft.brain.task.GearTask(c, it);
+				}
 				case "withdraw" -> {
 					String what = w.length > 1 ? w[1] : "food";
 					return new com.botcraft.brain.task.WithdrawTask(c, deliverable(what), label(what), num(w, 2, 1));
@@ -144,6 +148,7 @@ public final class Jobs {
 			case "dance" -> "dance";
 			case "light" -> "light up the base";
 			case "withdraw" -> "get " + label(w.length > 1 ? w[1] : "food") + " from the chests";
+			case "gear" -> "get " + (w.length > 1 ? "a " + w[1].replace('_', ' ') : "gear");
 			case "smelt" -> {
 				String what = w.length > 1 ? w[1].replace('_', ' ') : "food";
 				int n = num(w, 2, 1);
@@ -223,6 +228,25 @@ public final class Jobs {
 		}
 		int have = colony.count(which);
 		return have > 0 ? "withdraw " + key + " " + Math.min(n, have) : null;
+	}
+
+	/**
+	 * Withdraw jobs for base-chest gear that beats what we have (see {@link com.botcraft.knowledge.Gear#fromStock}).
+	 * Empty unless we live at the base (our home is there) and it's close enough to fetch from:
+	 * the chests' gear is for the colony, not for any companion passing by.
+	 */
+	public static java.util.List<String> gearFromStock(Companion c, @Nullable java.util.Set<String> kinds, boolean armour) {
+		com.botcraft.colony.Colony colony = com.botcraft.colony.Colony.get();
+		Memory.Place home = c.memory().place("home");
+		if (!canFetch(c) || home == null || colony.world() == null || !com.botcraft.util.Experiments.on("gearFromStock")
+			|| !colony.near(colony.world(), home.pos(), com.botcraft.colony.Colony.BASE_RADIUS)
+			|| !home.dim.equals(colony.world().getRegistryKey().getValue().toString())) {
+			return java.util.List.of();
+		}
+		java.util.List<String> out = new java.util.ArrayList<>();
+		com.botcraft.knowledge.Gear.fromStock(c.player(), colony.stock(), kinds, armour)
+			.forEach((it, n) -> out.add("withdraw " + ItemNames.id(it) + " " + n));
+		return out;
 	}
 
 	/** The base chests are worth going to: there's a base, it's close enough, and we can get there. */

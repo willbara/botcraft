@@ -385,7 +385,8 @@ public class MineTask extends Task {
 		BlockPos from = p.getBlockPos();
 		// Leave veins someone else is already working alone (unless that's all there is).
 		ServerWorld world = p.getServerWorld();
-		List<BlockPos> safe = candidates.stream().filter(b -> !floods(world, b)).toList();
+		var colony = com.botcraft.colony.Colony.get();
+		List<BlockPos> safe = candidates.stream().filter(b -> !floods(world, b) && (colony == null || !colony.protectsGround(world, b))).toList();
 		if (safe.isEmpty()) {
 			blacklist.addAll(candidates);
 			setPhase(Phase.EXPLORE); // all of it under water: look elsewhere
@@ -651,6 +652,7 @@ public class MineTask extends Task {
 
 	private void collectVein(ServerWorld world) {
 		vein.clear();
+		var colony = com.botcraft.colony.Colony.get();
 		List<BlockPos> out = new ArrayList<>();
 		Set<BlockPos> seen = new HashSet<>();
 		Deque<BlockPos> queue = new ArrayDeque<>();
@@ -663,7 +665,7 @@ public class MineTask extends Task {
 			// Veins connect diagonally too (that's how they look in the wall).
 			for (BlockPos n : BlockPos.iterate(cur.add(-1, -1, -1), cur.add(1, 1, 1))) {
 				if (seen.add(n.toImmutable()) && kind.blocks().test(world.getBlockState(n)) && !blacklist.contains(n) && !nextToLava(world, n)
-					&& !floods(world, n)) {
+					&& !floods(world, n) && (colony == null || !colony.protectsGround(world, n))) {
 					queue.add(n.toImmutable());
 				}
 			}
@@ -677,7 +679,8 @@ public class MineTask extends Task {
 	@Nullable
 	private ItemEntity nearestDrop(CompanionPlayer p) {
 		Box box = p.getBoundingBox().expand(6.0, 3.0, 6.0);
-		List<ItemEntity> items = p.getServerWorld().getEntitiesByClass(ItemEntity.class, box, e -> e.isAlive() && kind.isDrop(e.getStack()) && !pickup.ignored(e));
+		List<ItemEntity> items = p.getServerWorld().getEntitiesByClass(ItemEntity.class, box, e -> e.isAlive() && kind.isDrop(e.getStack()) && !pickup.ignored(e)
+			&& !com.botcraft.brain.Blackboard.claimedByOther(c, e));
 		items.sort(Comparator.comparingDouble(e -> e.squaredDistanceTo(p)));
 		return items.isEmpty() ? null : items.get(0);
 	}

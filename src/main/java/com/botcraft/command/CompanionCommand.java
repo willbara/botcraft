@@ -80,7 +80,16 @@ public final class CompanionCommand {
 						.suggests((ctx, b) -> CommandSource.suggestMatching(com.botcraft.colony.StockTargets.DEFAULTS.stream()
 							.map(com.botcraft.colony.StockTargets.StockTarget::key), b))
 						.then(CommandManager.argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 100000))
-							.executes(CompanionCommand::colonyWant)))))
+							.executes(CompanionCommand::colonyWant))))
+				.then(CommandManager.literal("zone")
+					.then(CommandManager.argument("kind", StringArgumentType.word())
+						.suggests((ctx, b) -> CommandSource.suggestMatching(com.botcraft.colony.Zones.KINDS, b))
+						.then(CommandManager.literal("here")
+							.executes(ctx -> colonyZone(ctx, -1))
+							.then(CommandManager.argument("size", com.mojang.brigadier.arguments.IntegerArgumentType.integer(3, 31))
+								.executes(ctx -> colonyZone(ctx, com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "size")))))
+						.then(CommandManager.literal("clear")
+							.executes(CompanionCommand::colonyZoneClear)))))
 			.then(CommandManager.literal("why")
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
@@ -239,6 +248,14 @@ public final class CompanionCommand {
 		for (String line : colony.describeChests()) {
 			ctx.getSource().sendFeedback(() -> Text.literal("  chest " + line).formatted(Formatting.GRAY), false);
 		}
+		if (colony.zones().isEmpty()) {
+			ctx.getSource().sendFeedback(() -> Text.literal("Zones: not planned yet (the base map needs a few seconds).").formatted(Formatting.GRAY), false);
+		} else {
+			ctx.getSource().sendFeedback(() -> Text.literal("Zones (/companion colony zone <kind> here|clear):").formatted(Formatting.AQUA), false);
+			for (var z : colony.zones()) {
+				ctx.getSource().sendFeedback(() -> Text.literal("  " + z).formatted(Formatting.GRAY), false);
+			}
+		}
 		var stock = new java.util.ArrayList<>(colony.stock().entrySet());
 		stock.sort((a, b) -> b.getValue() - a.getValue());
 		if (stock.isEmpty()) {
@@ -250,6 +267,18 @@ public final class CompanionCommand {
 		}
 		if (stock.size() > 20) {
 			ctx.getSource().sendFeedback(() -> Text.literal("  ... and " + (stock.size() - 20) + " more").formatted(Formatting.GRAY), false);
+		}
+		// Who's where doing what (what the companions see of each other).
+		var m = com.botcraft.CompanionManager.get();
+		var everyone = com.botcraft.brain.Blackboard.all(m == null ? 0 : m.tickCount());
+		if (!everyone.isEmpty()) {
+			ctx.getSource().sendFeedback(() -> Text.literal("Companions:").formatted(Formatting.AQUA), false);
+			for (var e : everyone) {
+				int d = (int) Math.round(Math.sqrt(e.feet().getSquaredDistance(base)));
+				String line = e.name() + ": " + e.doing() + " (" + (e.dim().equals(colony.world().getRegistryKey().getValue().toString())
+					? d + " blocks from the base" : "in " + e.dim().replace("minecraft:", "")) + ")";
+				ctx.getSource().sendFeedback(() -> Text.literal("  " + line).formatted(Formatting.GRAY), false);
+			}
 		}
 		// What the base should keep, and the board: who's getting what, and why them.
 		ctx.getSource().sendFeedback(() -> Text.literal("Stock targets (/companion colony want <item> <count>):").formatted(Formatting.AQUA), false);
@@ -273,6 +302,51 @@ public final class CompanionCommand {
 				}
 			}
 		}
+		return 1;
+	}
+
+	/**
+	 * /companion colony zone <kind> here [size]: set a base zone by hand, centred where the player
+	 * stands (a square; the bed row is two deep along the way the player faces). Planning never
+	 * replaces it.
+	 */
+	private static int colonyZone(CommandContext<ServerCommandSource> ctx, int size) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		var colony = com.botcraft.colony.Colony.get();
+		String kind = StringArgumentType.getString(ctx, "kind");
+		if (colony == null || !colony.hasBase()) {
+			ctx.getSource().sendError(Text.literal("No base yet. Stand somewhere and say \"everyone, this is home\"."));
+			return 0;
+		}
+		if (!com.botcraft.colony.Zones.KINDS.contains(kind)) {
+			ctx.getSource().sendError(Text.literal("Zones are " + String.join(", ", com.botcraft.colony.Zones.KINDS)));
+			return 0;
+		}
+		ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+		net.minecraft.util.math.BlockPos at = player.getBlockPos();
+		int n = size > 0 ? size : kind.equals(com.botcraft.colony.Zones.CORE) ? 7 : kind.equals(com.botcraft.colony.Zones.BEDS) ? 11 : 9;
+		int h = n / 2;
+		com.botcraft.colony.Colony.Zone z;
+		if (kind.equals(com.botcraft.colony.Zones.BEDS)) {
+			boolean alongX = player.getHorizontalFacing().getAxis() == net.minecraft.util.math.Direction.Axis.X;
+			z = alongX ? new com.botcraft.colony.Colony.Zone(kind, at.getX() - h, at.getZ(), at.getX() + h, at.getZ() + 1, at.getY(), true)
+				: new com.botcraft.colony.Colony.Zone(kind, at.getX(), at.getZ() - h, at.getX() + 1, at.getZ() + h, at.getY(), true);
+		} else {
+			z = new com.botcraft.colony.Colony.Zone(kind, at.getX() - h, at.getZ() - h, at.getX() + h, at.getZ() + h, at.getY(), true);
+		}
+		colony.setZone(z);
+		ctx.getSource().sendFeedback(() -> Text.literal("Zone set: " + z), true);
+		return 1;
+	}
+
+	/** /companion colony zone <kind> clear: back to being planned. */
+	private static int colonyZoneClear(CommandContext<ServerCommandSource> ctx) {
+		var colony = com.botcraft.colony.Colony.get();
+		String kind = StringArgumentType.getString(ctx, "kind");
+		if (colony == null) {
+			return 0;
+		}
+		colony.clearZone(kind);
+		ctx.getSource().sendFeedback(() -> Text.literal("Zone " + kind + " cleared; it will be planned again."), true);
 		return 1;
 	}
 

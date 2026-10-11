@@ -459,13 +459,32 @@ public final class ChatRouter {
 			int count = n < 0 ? 8 : n;
 			out.add("mine " + k.word + " " + count);
 			deliver = "deliver " + k.word + " " + count;
+		} else if (com.botcraft.knowledge.Gear.group(phrase) != null) {
+			// "diamond armour", "iron tools": every piece we don't already have (as good or better),
+			// each got the way free mode would get it.
+			List<Item> pieces = com.botcraft.knowledge.Gear.group(phrase);
+			boolean bring = intent.type() == Intent.Type.BRING;
+			List<Item> todo = bring ? pieces : pieces.stream().filter(it -> !com.botcraft.knowledge.Gear.hasAtLeast(c.player(), it)).toList();
+			if (todo.isEmpty()) {
+				return "I already have " + com.botcraft.knowledge.Gear.describe(phrase);
+			}
+			List<String> delivers = new ArrayList<>();
+			for (Item it : todo) {
+				out.add("gear " + ItemNames.id(it)); // planned when its turn comes, with what we have by then
+				delivers.add("deliver " + ItemNames.id(it) + " 1");
+			}
+			if (bring) {
+				out.addAll(delivers);
+			}
+			return null;
 		} else {
 			Item item = ItemNames.resolve(phrase);
 			if (item == null) {
 				return "I don't know what " + phrase + " is";
 			}
 			int count = n < 0 ? 1 : n;
-			String spec = Jobs.sourceSpec(c, item, count);
+			boolean gear = intent.type() != Intent.Type.BRING && count == 1 && com.botcraft.knowledge.Gear.isGear(item);
+			String spec = gear ? "gear " + ItemNames.id(item) : Jobs.sourceSpec(c, item, count);
 			if (spec == null) {
 				return "I don't know how to get " + ItemNames.display(item) + " yet";
 			}

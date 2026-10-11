@@ -269,7 +269,7 @@ public final class IntentParser {
 		"stone", "cobblestone", "pickaxe", "sword", "shovel", "torch", "torches", "furnace", "crafting", "table", "chest", "food",
 		"copper", "redstone", "emerald", "emeralds", "planks", "sticks", "helmet", "chestplate", "leggings", "boots", "shield",
 		"please", "thanks", "everyone", "creeper", "zombie", "skeleton", "spider", "favorite", "favourite", "around", "something",
-		"store", "stash", "deposit", "chest", "chests", "storage", "unload");
+		"store", "stash", "deposit", "chest", "chests", "storage", "unload", "armor", "armour", "gear", "tools", "golden", "leather");
 
 	static String correctTypos(String clause, Collection<String> names) {
 		StringBuilder sb = new StringBuilder();

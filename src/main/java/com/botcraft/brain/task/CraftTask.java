@@ -446,7 +446,27 @@ public class CraftTask extends Task {
 				best = place.pos();
 			}
 		}
+		if (best == null) {
+			best = atBaseFeature(p, com.botcraft.colony.BaseMap.Feature.CRAFTING_TABLE,
+				b -> !badTables.contains(b) && p.getWorld().getBlockState(b).isOf(Blocks.CRAFTING_TABLE));
+		}
 		return best;
+	}
+
+	/**
+	 * At the base: the base's own one of these (from the shared base map), so companions use the
+	 * table or furnace that's already there instead of putting down another.
+	 */
+	@org.jetbrains.annotations.Nullable
+	static BlockPos atBaseFeature(CompanionPlayer p, com.botcraft.colony.BaseMap.Feature f, java.util.function.Predicate<BlockPos> ok) {
+		var colony = com.botcraft.colony.Colony.get();
+		var map = com.botcraft.colony.BaseMap.get();
+		if (colony == null || map == null || !colony.near(p.getServerWorld(), p.getBlockPos(), com.botcraft.colony.Colony.BASE_RADIUS)
+			|| !com.botcraft.util.Experiments.on("baseMapReuse")) {
+			return null;
+		}
+		BlockPos near = map.nearest(f, p.getBlockPos(), 24);
+		return near != null && ok.test(near) ? near : null;
 	}
 
 }

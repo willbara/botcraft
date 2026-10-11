@@ -533,7 +533,7 @@ public class GatherLogsTask extends Task {
 	@Nullable
 	private ItemEntity nearestItem(CompanionPlayer p, java.util.function.Predicate<net.minecraft.item.ItemStack> which, double r) {
 		List<ItemEntity> items = p.getServerWorld().getEntitiesByClass(ItemEntity.class, p.getBoundingBox().expand(r, 3.0, r),
-			e -> e.isAlive() && which.test(e.getStack()) && !pickup.ignored(e));
+			e -> e.isAlive() && which.test(e.getStack()) && !pickup.ignored(e) && !com.botcraft.brain.Blackboard.claimedByOther(c, e));
 		items.sort(Comparator.comparingDouble(e -> e.squaredDistanceTo(p)));
 		return items.isEmpty() ? null : items.get(0);
 	}

@@ -199,6 +199,14 @@ public final class Planner {
 		if (fromChests) {
 			cost += travelToBase() + 4;
 		}
+		// Valuable materials used up count too: a chestplate made from 8 diamonds isn't "3 seconds"
+		// when one is waiting in a chest. Half of what mining them again would take.
+		for (Map.Entry<Item, Integer> e : com.botcraft.util.Experiments.on("craftMaterialCost") ? plan.used().entrySet() : Map.<Item, Integer>of().entrySet()) {
+			OreKind ore = oreBehind(e.getKey());
+			if (ore != null && ore != OreKind.STONE) {
+				cost += 0.5 * e.getValue() * MethodStats.secondsPerUnit(c, "mine " + ore.word, orePrior(ore));
+			}
+		}
 		// Whatever's still missing, get it the best way we can.
 		for (Map.Entry<Item, Integer> e : plan.missing().entrySet()) {
 			Option sub = best(e.getKey(), e.getValue(), depth + 1);
@@ -249,7 +257,17 @@ public final class Planner {
 			cost += tool.cost();
 			steps.addAll(tool.steps());
 		}
-		double prior = switch (ore) {
+		double perUnit = MethodStats.secondsPerUnit(c, method, orePrior(ore));
+		double travel = ore == OreKind.STONE ? 0 : Math.min(nearest(ore.word, 128), nearest("cave", 128)) / BLOCKS_PER_SECOND;
+		cost += (perUnit * need + travel) * risk(method, false) * (ore.deep() ? 1.4 : 1.0);
+		steps.add("mine " + ore.word + " " + need);
+		return new Option("mine", cost, steps, "about " + Math.round(perUnit) + "s each" + (MethodStats.attempts(c, method) > 0
+			? ", " + Math.round(MethodStats.successRate(c, method) * 100) + "% of tries worked" : ""));
+	}
+
+	/** Seconds to mine one, before we've learned better. */
+	private static double orePrior(OreKind ore) {
+		return switch (ore) {
 			case STONE -> 4;
 			case COAL -> 25;
 			case COPPER, IRON -> 45;
@@ -257,12 +275,21 @@ public final class Planner {
 			case DIAMOND -> 240;
 			case EMERALD -> 400;
 		};
-		double perUnit = MethodStats.secondsPerUnit(c, method, prior);
-		double travel = ore == OreKind.STONE ? 0 : Math.min(nearest(ore.word, 128), nearest("cave", 128)) / BLOCKS_PER_SECOND;
-		cost += (perUnit * need + travel) * risk(method, false) * (ore.deep() ? 1.4 : 1.0);
-		steps.add("mine " + ore.word + " " + need);
-		return new Option("mine", cost, steps, "about " + Math.round(perUnit) + "s each" + (MethodStats.attempts(c, method) > 0
-			? ", " + Math.round(MethodStats.successRate(c, method) * 100) + "% of tries worked" : ""));
+	}
+
+	/** The ore an item comes from: its drop (diamond, raw iron) or the ingot smelted from it. */
+	@org.jetbrains.annotations.Nullable
+	private static OreKind oreBehind(Item item) {
+		if (item == Items.IRON_INGOT) {
+			return OreKind.IRON;
+		}
+		if (item == Items.GOLD_INGOT) {
+			return OreKind.GOLD;
+		}
+		if (item == Items.COPPER_INGOT) {
+			return OreKind.COPPER;
+		}
+		return OreKind.byDrop(item);
 	}
 
 	// ---- beliefs -----------------------------------------------------------------------------------

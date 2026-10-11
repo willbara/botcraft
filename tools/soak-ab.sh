@@ -18,8 +18,10 @@ args="$root/build/loom-cache/argFiles/runSoak"
 dir="$root/run/ab/$name"
 rm -rf "$dir"
 mkdir -p "$dir/classes" "$dir/config"
-cp -r "$root/build/classes/java/main" "$dir/classes/main"
-cp -r "$root/build/resources/main" "$dir/classes/resources"
+# CLASSES_FROM=<another checkout> runs that checkout's build instead (e.g. an older version).
+from=${CLASSES_FROM:-$root}
+cp -r "$from/build/classes/java/main" "$dir/classes/main"
+cp -r "$from/build/resources/main" "$dir/classes/resources"
 sed -e "s#$root/build/classes/java/main#$dir/classes/main#" \
 	-e "s#$root/build/resources/main#$dir/classes/resources#" "$args" > "$dir/argfile"
 

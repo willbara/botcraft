@@ -22,6 +22,24 @@ import java.util.List;
  */
 public class FleeTask extends Task {
 	public static final double SAFE_DISTANCE = 12.0;
+	/** From something that shoots, safe means out of its sight, or this far. */
+	public static final double RANGED_SAFE_DISTANCE = 24.0;
+
+	/** Mobs that hurt from a distance: running 12 blocks off doesn't get us out of their reach. */
+	public static boolean ranged(MobEntity m) {
+		return m instanceof net.minecraft.entity.mob.AbstractSkeletonEntity || m instanceof net.minecraft.entity.mob.PillagerEntity
+			|| m instanceof net.minecraft.entity.mob.WitchEntity || m instanceof net.minecraft.entity.mob.BlazeEntity
+			|| m instanceof net.minecraft.entity.mob.GhastEntity;
+	}
+
+	/** Still in danger from this mob: close, or (for one that shoots) within range and in sight. */
+	public static boolean dangerous(MobEntity m, CompanionPlayer p) {
+		double d = m.distanceTo(p);
+		if (ranged(m) && com.botcraft.util.Experiments.on("lowHealthCaution")) {
+			return d <= RANGED_SAFE_DISTANCE && m.canSee(p);
+		}
+		return d <= SAFE_DISTANCE;
+	}
 	private final boolean retreat;
 	private int replanIn;
 
@@ -55,7 +73,7 @@ public class FleeTask extends Task {
 		CompanionPlayer p = c.player();
 		List<MobEntity> threats = c.perception().threats();
 		MobEntity nearest = threats.isEmpty() ? null : threats.get(0);
-		if (nearest == null || nearest.distanceTo(p) > SAFE_DISTANCE) {
+		if (nearest == null || threats.stream().noneMatch(m -> dangerous(m, p))) {
 			return Status.SUCCESS;
 		}
 		Vec3d away = Vec3d.ZERO;
@@ -81,7 +99,7 @@ public class FleeTask extends Task {
 
 		if (--replanIn <= 0 || c.nav().state() == Navigator.State.ARRIVED || c.nav().state() == Navigator.State.FAILED) {
 			replanIn = 30;
-			BlockPos spot = findSpot(p, away);
+			BlockPos spot = findSpot(p, away, threats);
 			if (spot != null) {
 				c.nav().moveTo(Goal.near(spot, 2.0), true);
 			} else {
@@ -106,8 +124,32 @@ public class FleeTask extends Task {
 		return Status.RUNNING;
 	}
 
+	/**
+	 * Somewhere to run to that way: out of sight of anything that shoots if there's such a spot,
+	 * else just away.
+	 */
 	@Nullable
-	private BlockPos findSpot(CompanionPlayer p, Vec3d dir) {
+	private BlockPos findSpot(CompanionPlayer p, Vec3d dir, List<MobEntity> threats) {
+		List<MobEntity> shooters = threats.stream().filter(FleeTask::ranged).toList();
+		if (!shooters.isEmpty() && com.botcraft.util.Experiments.on("lowHealthCaution")) {
+			BlockPos hidden = findSpot(p, dir, cand -> shooters.stream().noneMatch(m -> sees(p, m, cand)));
+			if (hidden != null) {
+				return hidden;
+			}
+		}
+		return findSpot(p, dir, cand -> true);
+	}
+
+	/** Whether the mob would have a clear line to someone standing at the spot. */
+	private static boolean sees(CompanionPlayer p, MobEntity m, BlockPos spot) {
+		Vec3d eye = new Vec3d(spot.getX() + 0.5, spot.getY() + 1.5, spot.getZ() + 0.5);
+		var hit = p.getWorld().raycast(new net.minecraft.world.RaycastContext(m.getEyePos(), eye, net.minecraft.world.RaycastContext.ShapeType.COLLIDER,
+			net.minecraft.world.RaycastContext.FluidHandling.NONE, m));
+		return hit.getType() == net.minecraft.util.hit.HitResult.Type.MISS;
+	}
+
+	@Nullable
+	private BlockPos findSpot(CompanionPlayer p, Vec3d dir, java.util.function.Predicate<BlockPos> ok) {
 		Terrain t = new Terrain(p.getServerWorld());
 		for (double dist = 12; dist >= 5; dist -= 3.5) {
 			for (int turn = 0; turn < 5; turn++) {
@@ -117,7 +159,7 @@ public class FleeTask extends Task {
 				for (int dy = 0; dy <= 6; dy++) {
 					for (int sign : new int[]{1, -1}) {
 						BlockPos cand = base.up(dy * sign);
-						if (t.standable(cand) && !t.isWater(cand) && t.hazard(cand) == 0) {
+						if (t.standable(cand) && !t.isWater(cand) && t.hazard(cand) == 0 && ok.test(cand)) {
 							return cand;
 						}
 					}

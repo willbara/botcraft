@@ -66,6 +66,8 @@ public class Terrain {
 	private final Long2DoubleOpenHashMap breaks = new Long2DoubleOpenHashMap();
 	private final BlockPos.Mutable mutable = new BlockPos.Mutable();
 	private final boolean dig;
+	/** Digging for a mining job (not escaping): the base's ground is off limits. */
+	private boolean spareBase;
 	private final List<ItemStack> tools = new ArrayList<>();
 
 	public Terrain(ServerWorld world) {
@@ -98,6 +100,12 @@ public class Terrain {
 
 	public ServerWorld world() {
 		return world;
+	}
+
+	/** Mining-job digging: leave the ground the base stands on alone (see Colony#protectsGround). */
+	public Terrain spareBase() {
+		this.spareBase = true;
+		return this;
 	}
 
 	public boolean digMode() {
@@ -358,7 +366,9 @@ public class Terrain {
 			c = Double.POSITIVE_INFINITY;
 		} else {
 			BlockState s = state(pos);
-			if (!BreakPolicy.canBreakForNav(world, mutable.set(pos), s, dig)) {
+			var colony = spareBase ? com.botcraft.colony.Colony.get() : null;
+			if (!BreakPolicy.canBreakForNav(world, mutable.set(pos), s, dig)
+				|| (colony != null && !BreakPolicy.placedByCompanion(world, pos, s) && colony.protectsGround(world, pos))) {
 				c = Double.POSITIVE_INFINITY;
 			} else {
 				c = miningTicks(s, pos) + BREAK_EXTRA;

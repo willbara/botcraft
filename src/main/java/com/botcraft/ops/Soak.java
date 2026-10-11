@@ -77,7 +77,8 @@ public final class Soak {
 		CompanionManager m = CompanionManager.get();
 		ServerWorld world = server.getOverworld();
 		BlockPos top = world.getTopPosition(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, world.getSpawnPos());
-		BlockPos home = SafeSpot.near(world, top, 8);
+		BlockPos home = groundNear(world, world.getSpawnPos(), 32);
+		home = home != null ? home : SafeSpot.near(world, top, 8);
 		if (home == null) {
 			home = top;
 		}
@@ -104,6 +105,29 @@ public final class Soak {
 			statsAtStart.put(name, new HashMap<>(c.memory().stats));
 		}
 		Botcraft.LOG.info("Soak: {} companions in free mode for {} minutes, home {}", names.size(), minutes, home.toShortString());
+	}
+
+	/**
+	 * Somewhere to put the base on real ground, nearest the given spot: natural terrain underfoot
+	 * (the top of the spawn column can be a tree, which then gets chopped away from under the base).
+	 */
+	@Nullable
+	private static BlockPos groundNear(ServerWorld world, BlockPos center, int radius) {
+		BlockPos best = null;
+		double bestD = Double.MAX_VALUE;
+		for (int dx = -radius; dx <= radius; dx++) {
+			for (int dz = -radius; dz <= radius; dz++) {
+				int x = center.getX() + dx;
+				int z = center.getZ() + dz;
+				BlockPos feet = new BlockPos(x, world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+				var ground = world.getBlockState(feet.down());
+				if (dx * dx + dz * dz < bestD && com.botcraft.nav.BreakPolicy.isNaturalTerrain(ground) && SafeSpot.ok(world, feet)) {
+					bestD = dx * dx + dz * dz;
+					best = feet;
+				}
+			}
+		}
+		return best;
 	}
 
 	/** Called every server tick. */

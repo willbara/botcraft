@@ -41,6 +41,7 @@ A companion only responds when you say its name ("Bob, follow me") or address al
 | get / gather / chop / grab 10 logs | Fell whole trees until it has that many logs. |
 | mine 8 coal / mine for iron / find diamonds / look for coal | Mine the ore (or stone), making the right pickaxe first if needed. |
 | craft a wooden pickaxe / make 4 torches / make yourself a sword | Craft it, including intermediate items, a crafting table, missing materials and smelting. |
+| make diamond armor / get iron tools / make a full set of iron armour / get diamond gear | Every piece it doesn't already have (as good or better), each planned the way free mode plans it, when its turn comes: a stored piece from the chests, otherwise crafted, mining what's missing. Armour is helmet, chestplate, leggings and boots; tools are pickaxe, sword, axe and shovel; gear is the armour plus pickaxe, sword and axe. Plain "armour" means iron. |
 | smelt 5 iron / cook the beef / cook some food | Smelt or cook in a furnace (a free one, or one it places). |
 | hunt some cows / kill 2 pigs / get some food / get leather | Hunt fair game. "Food" also means cooking it. |
 | bring me 10 logs / I need some iron / I want an iron pickaxe | Get it if necessary, then walk over and hand it to you. |
@@ -66,7 +67,8 @@ Item names are resolved against the game's own item list:
 - wood words mean chopping;
 - ores and stone mean mining;
 - leather, feathers, wool and raw meat mean hunting the right animal;
-- anything with a crafting recipe means crafting (for example, "get me sticks" crafts sticks).
+- anything with a crafting recipe means crafting (for example, "get me sticks" crafts sticks);
+- a single piece of armour or a tool ("make a diamond chestplate") is planned like a gear group, so a spare in the chests is taken instead of crafting a new one.
 
 ### Questions and small talk
 
@@ -131,7 +133,7 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
   - **Breath:** a path may stay with the head under water for at most 14 blocks in a row, fewer when the companion is already short of air. Longer underwater stretches cost more the longer they get. It never routes through a flooded tunnel longer than a breath lasts.
 - **Getting unstuck.**
   - **Stuck while walking:** it wiggles, then re-plans around the spot that stopped it.
-  - **No normal path:** escape mode digs through natural terrain and pillars.
+  - **No normal path:** escape mode digs through natural terrain and pillars. It may also jump down more than 3 blocks, like a player stuck on a pillar would, as long as the fall leaves it at least 3 hearts.
   - **Underground with the goal above:** it digs straight up like a player, breaking the block overhead, jumping and placing a block underneath. It stops before fluids, sand and gravel, and anything that isn't natural terrain.
   - **Short or failed searches:** a path that ends just short of the goal re-plans, and a search that fails almost at once is retried after a moment.
   - **Long searches:** after about a second, a search hands over the best partial path if it gets at least 8 blocks closer. The companion walks it and plans the next stretch on the way, so it is usually ready on arrival.
@@ -152,7 +154,7 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
 
 - **Whole trees.** Once a companion starts a tree it finishes it. For high logs it pillars up on dirt it digs nearby, then digs the pillar back down.
 - **Tree choice.** It prefers trees about the size it needs. All candidates go into one path goal; A* reaches the cheapest to get to, and the companion locks onto it.
-- **Searching.** With no trees in range it goes to a remembered wood. If it's underground it climbs to the surface first; otherwise it walks about 48 blocks in one direction (away from where others are working) and looks again, up to 5 trips.
+- **Searching.** With no trees in range it goes to a remembered wood. If it's underground it heads out to open sky first, whichever way that is (a cave mouth, or digging up); otherwise it walks about 48 blocks in one direction (away from where others are working) and looks again, up to 5 trips. Underground means no sky in sight anywhere around it, so standing under an overhang or at the foot of a cliff doesn't count. Hunting searches the same way, and from underground it heads out before going after animals it noticed up on the surface.
 
 ### Mining
 
@@ -167,6 +169,7 @@ When asked for an ore, a companion looks in this order:
 While mining:
 - **Whole veins.** It mines every block of a vein, including blocks joined only at the corners, and steps over to reach the rest. It finishes the vein even past the requested count.
 - **Ore on the way.** Any of the target ore it passes within reach while walking, exploring or heading for a cave gets mined.
+- **The base's ground.** Mining leaves the ground within 12 blocks of the base alone (from 4 blocks below it upwards), including when digging a staircase or strip mine; it walks out of that area first. Soaks showed stone jobs digging out the base until its chests and furnaces stood on one-block pillars.
 - **Wet and dangerous ore.** Ore that would let liquid in when mined (liquid directly above it, or a liquid source beside it, as in Baritone) is never mined, including when following a vein. Other ore next to water is chosen only when there's no dry ore. Ore next to lava is left alone.
 - **Time limit.** It keeps at it for up to 15 minutes, or 25 for deep ores.
 
@@ -208,7 +211,7 @@ While mining:
 
 - **Fighting.** With at least 4 melee damage it fights any hostile mob, creepers included, backing off while a creeper hisses.
 - **Mobs under water** (drowned, guardians) aren't chased into the water. It only hits back when one is right on top of it.
-- **Fleeing.** Unarmed, it runs (never off a cliff). At low health it retreats from monsters that are close. Hurt with no food, it can't heal (natural healing needs a nearly full hunger bar), so it asks a friend for food or hunts.
+- **Fleeing.** Unarmed, it runs (never off a cliff). At low health it retreats from monsters that are close, and from anything that shoots (skeletons, pillagers, witches, blazes) that can see it within 16 blocks; from those, safe means out of their sight or 24 blocks off, and it prefers somewhere they can't see. Too hurt to fight, it only hits back when a mob is right on it. Hurt with no food, it can't heal (natural healing needs a nearly full hunger bar), so it asks a friend for food or hunts.
 - **Armour.** It wears the best armour it has.
 - **Protecting others.** Companions defend each other: a mob going after a nearby companion counts as a threat. With "defend me", it also attacks mobs targeting you.
 
@@ -237,7 +240,18 @@ While mining:
   - **Smelting** takes inputs and fuel (coal, else logs) from the chests.
   - **A hungry companion** takes food from the chests before hunting, and free mode keeps its food reserve topped up from there.
   - **Range:** this applies within about 96 blocks of the base. If the chests turn out to have less than expected, a companion takes what's there and gets the rest the usual way.
-- **Base stations.** A crafting table or furnace put down at the base stays there for everyone, instead of being picked back up.
+- **Base stations.** A crafting table or furnace put down at the base stays there for everyone, instead of being picked back up. Companions at the base use the base's own table and furnace (from the base map, up to 24 blocks away) before putting down another.
+- **Gear in the chests.** Armour, tools and weapons in the base chests that beat what a companion wears or carries get taken and worn: in free mode as soon as it's near the base, and before an ordered mining, chopping or hunting job that starts at the base. Only companions whose home is the base do this. A piece about to be put on isn't stored again.
+- **The base map.** The ground within 40 blocks of the base is read a few columns per tick (a full refresh every few seconds): ground height and kind in each column, and where the chests, furnaces, crafting tables, beds and torches are. It's shared by everyone.
+- **Zones.** Once the base map has seen the whole area, the base is laid out and saved in `colony.json`:
+  - **core:** 7x7 around the home spot, for chests, furnaces and the crafting table; new chests go here first;
+  - **beds:** a row of bed slots (11 long, 2 deep) on the flattest side just outside the core; beds put down at home go into the next free slot, heads toward the core;
+  - **farm:** a flat 9x9, soil preferred, near water if there is some, 10-28 blocks out;
+  - **pen:** another flat 9x9, clear of the farm;
+  - **paths** from the core to the farm and the pen.
+
+  Nothing but what a zone is for gets put down on the bed row, the farm, the pen or a path. `/companion colony` lists the zones. `/companion colony zone <kind> here [size]` sets one by hand, centred where you stand (the bed row runs along the way you face); planning never replaces it. `/companion colony zone <kind> clear` hands it back to the planner. Moving the base plans the zones again (except hand-set ones).
+- **Blocks companions put down to get around** (bridges, pillars, shelter roofs) are remembered in `colony.json`. Navigation may break those again, so nobody gets walled in by a roof or pillar another companion left behind.
 - **Night chores.** An armed companion at the base at night (with no bed) stores its things, cooks raw meat, smelts raw iron and crafts iron gear from carried and stored materials. It doesn't leave the base for anything after dark.
 
 ### Torches
@@ -253,6 +267,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
 ### Working together
 
 - **Spreading out.** Each companion claims the tree, ore, cave or animal it's working on. When choosing, spots near someone else's claim, or near any player or companion standing there, are avoided while there's another choice.
+- **Seeing each other.** A few times a second each companion publishes where it is, what it's doing and the next four blocks of its path. Path searches treat the blocks others stand in or are about to step into as busy (passable, but avoided when there's a way round), and a dropped item someone is going for is left to them for 10 seconds. `/companion colony` lists everyone and what they're doing.
 - **Base stock and the request board.** The base keeps a stockpile, with these defaults:
   - 32 cooked food;
   - 32 coal;

@@ -117,7 +117,9 @@ public class ShelterTask extends Task {
 					return Status.RUNNING;
 				}
 				c.actions().lookAt(net.minecraft.util.math.Vec3d.ofCenter(roof));
-				c.actions().placeBlock(roof, Inventories::isThrowaway);
+				if (c.actions().placeBlock(roof, Inventories::isThrowaway)) {
+					BreakPolicy.recordPlaced(world, roof);
+				}
 			}
 			case WAIT -> {
 				// Sit tight. Fights still happen (interrupts) if something gets in.

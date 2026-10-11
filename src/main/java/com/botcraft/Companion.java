@@ -188,6 +188,9 @@ public class Companion {
 		if (serverTick % 20 == 7) {
 			lighting.tick(this, serverTick);
 		}
+		if (serverTick % 5 == 0) {
+			com.botcraft.brain.Blackboard.publish(this);
+		}
 		if (serverTick % 20 == 0) {
 			Memory.Place home = memory.place("home");
 			String why = failsafe.check(this, serverTick, home != null && dimension().equals(home.dim) ? home.pos() : null);
