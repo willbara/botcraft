@@ -74,6 +74,11 @@ public final class Drives {
 			out.propose(Objective.FLEE, 0.97F, "creeper about to blow");
 			return;
 		}
+		float hp = p.getHealth() / p.getMaxHealth();
+		boolean weak = hp < 0.4F - b.personality().bravery() * 0.15F;
+		if (armed && weak && d > 2.5 && com.botcraft.util.Experiments.on("lowHealthCaution")) {
+			return; // too hurt to go looking for a fight; only hit back when cornered (the health drive retreats)
+		}
 		if (armed) {
 			float urgency = d < 6 ? 0.9F : d < 10 ? 0.8F : 0.65F;
 			String why = threats.isEmpty() ? "defending owner from " + what : String.format("%s %.1f away, armed", what, d);
@@ -103,6 +108,17 @@ public final class Drives {
 		MobEntity near = c.perception().nearestThreat();
 		if (hp < threshold && near != null && near.distanceTo(p) < com.botcraft.brain.task.FleeTask.SAFE_DISTANCE - 1) {
 			out.propose(Objective.RETREAT, 0.93F, String.format("health %.0f%%", hp * 100));
+			return;
+		}
+		// Something shooting at us from further off: walking back into its arrows to fight it at
+		// this health is how retreats used to end. Get out of its sight instead.
+		if (hp < threshold && com.botcraft.util.Experiments.on("lowHealthCaution")) {
+			for (MobEntity m : c.perception().threats()) {
+				if (com.botcraft.brain.task.FleeTask.ranged(m) && com.botcraft.brain.task.FleeTask.dangerous(m, p)) {
+					out.propose(Objective.RETREAT, 0.93F, String.format("health %.0f%%, %s shooting", hp * 100, m.getType().getUntranslatedName()));
+					return;
+				}
+			}
 		}
 	}
 

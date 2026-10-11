@@ -37,6 +37,27 @@ public interface Goal {
 		return new AnyOf(java.util.List.copyOf(goals));
 	}
 
+	/**
+	 * Anywhere under open sky: the way out of a cave, whichever way it is. The heuristic is the
+	 * height still to climb, so a companion boxed in digs straight up (Navigator's shaft).
+	 */
+	static Goal openSky(net.minecraft.world.WorldView world) {
+		return new OpenSky(world);
+	}
+
+	record OpenSky(net.minecraft.world.WorldView world) implements Goal {
+		@Override
+		public boolean isGoal(BlockPos feet) {
+			return world.isSkyVisible(feet.up());
+		}
+
+		@Override
+		public double heuristic(BlockPos feet) {
+			int top = world.getTopY(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, feet.getX(), feet.getZ());
+			return Math.max(0, top - feet.getY()) * 0.5;
+		}
+	}
+
 	/** For composite goals: the index of the sub-goal satisfied at this spot, or -1. */
 	default int which(BlockPos feet) {
 		return isGoal(feet) ? 0 : -1;

@@ -154,6 +154,9 @@ public class Life {
 		}
 	}
 
+	/** Goals that all mean going hunting. */
+	private static final java.util.Set<String> HUNTING = java.util.Set.of("hunt", "stock_food");
+
 	/** A job from a life goal failed: leave that goal alone for a while. */
 	public void failed(long now) {
 		if (lastGoal != null) {
@@ -164,6 +167,10 @@ public class Life {
 				boardRest = true;
 			} else {
 				backoff.put(lastGoal, now + FAIL_BACKOFF);
+				if (HUNTING.contains(lastGoal) && com.botcraft.util.Experiments.on("huntBackoff")) {
+					// No animals to be found: that's true whichever reason sent us hunting.
+					HUNTING.forEach(g -> backoff.put(g, now + FAIL_BACKOFF));
+				}
 				AiLog.log("life", "backing off goal {}", lastGoal);
 			}
 			lastGoal = null;
@@ -253,6 +260,12 @@ public class Life {
 			String fetch = Jobs.withdrawSpec(c, "food", Inventories::isGoodFood, 8);
 			goals.add(fetch != null ? new Goal("fetch_food", List.of(fetch), "there's food at home")
 				: new Goal("hunt", List.of("hunt meat 4", "smelt food 4"), "I'm getting hungry"));
+		}
+		// Better armour, tools or weapons lying in the chests (someone made spares, or died and
+		// got them back): wear and carry the best there is before making anything new.
+		List<String> spare = Jobs.gearFromStock(c, null, true);
+		if (!spare.isEmpty()) {
+			goals.add(new Goal("gear_from_stock", spare, "there's better gear in the chests"));
 		}
 		// 3. Tool progression, then iron gear.
 		Goal tools = chooseTools(inv, now);

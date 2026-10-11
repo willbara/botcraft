@@ -159,11 +159,11 @@ public final class Kit {
 			working.addAll(slots);
 			keepUpTo(inv, slots, w.getValue(), out);
 		}
-		// Everything else gets stored.
+		// Everything else gets stored, except armour better than what's worn (it's about to go on).
 		for (int i = 0; i < inv.main.size(); i++) {
 			ItemStack s = inv.getStack(i);
 			if (s.isEmpty() || out.containsKey(i) || toolKind(s) != null || food.contains(i) || blocks.contains(i) || torches.contains(i)
-				|| working.contains(i)) {
+				|| working.contains(i) || betterArmour(inv, s)) {
 				continue;
 			}
 			out.put(i, s.getCount());
@@ -197,6 +197,11 @@ public final class Kit {
 				out.put(i, n - kept);
 			}
 		}
+	}
+
+	private static boolean betterArmour(PlayerInventory inv, ItemStack s) {
+		return s.getItem() instanceof net.minecraft.item.ArmorItem a
+			&& a.getProtection() > com.botcraft.knowledge.Gear.protection(inv.player.getEquippedStack(a.getSlotType()));
 	}
 
 	/** Tools and gear kept one per kind; null for anything else. */

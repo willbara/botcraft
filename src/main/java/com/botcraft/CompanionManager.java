@@ -331,6 +331,13 @@ public final class CompanionManager {
 				Botcraft.LOG.error("Error ticking companion {}", c.name(), e);
 			}
 		}
+		var colony = com.botcraft.colony.Colony.get();
+		if (colony != null) {
+			com.botcraft.colony.BaseMap.tick(colony);
+			if (tickCount % 100 == 50) {
+				com.botcraft.colony.Zones.plan(colony, com.botcraft.colony.BaseMap.get());
+			}
+		}
 		long took = System.nanoTime() - started;
 		aiMs = aiMs * 0.8 + took / 1e6 * 0.2;
 		com.botcraft.ops.SoakStats.tickTime(took, budget);

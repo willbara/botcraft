@@ -132,6 +132,25 @@ public class CompanionGameTests implements FabricGameTest {
 		ctx.complete();
 	}
 
+	/** Cells another companion stands in or is about to walk through: the path steps round them. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "nav_busy")
+	public void pathStepsRoundOthers(TestContext ctx) {
+		flatArena(ctx, 10);
+		Terrain terrain = new Terrain(ctx.getWorld());
+		BlockPos start = ctx.getAbsolutePos(new BlockPos(5, 1, 0));
+		BlockPos end = ctx.getAbsolutePos(new BlockPos(5, 1, 9));
+		LongOpenHashSet busy = new LongOpenHashSet();
+		for (int z = 3; z <= 6; z++) {
+			busy.add(ctx.getAbsolutePos(new BlockPos(5, 1, z)).asLong());
+		}
+		PathFinder pf = new PathFinder(terrain, start, Goal.near(end, 0.5), PathFinder.Options.basic(5000, 64), new LongOpenHashSet()).busy(busy);
+		TickBudget.begin(1000);
+		ctx.assertTrue(pf.step(100000) == PathFinder.Status.FOUND, "no path");
+		ctx.assertTrue(pf.result().stream().noneMatch(st -> busy.contains(st.pos().asLong())), "walked through someone: " + pf.result().stream()
+			.map(st -> st.pos().toShortString()).toList());
+		ctx.complete();
+	}
+
 	/** Milestone 2 (end to end): a companion follows its owner over the step and through a closed door. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "nav_follow")
 	public void followThroughDoor(TestContext ctx) {
@@ -1212,12 +1231,32 @@ public class CompanionGameTests implements FabricGameTest {
 		com.botcraft.chat.CommandTasks.stay(c);
 		c.player().getInventory().clear();
 		give(c, net.minecraft.item.Items.STONE_SWORD, 1);
-		ctx.assertTrue(com.botcraft.chat.CommandTasks.apply(c, "hunt 1 cow", null) == null, "order");
+		// The test world only keeps a few chunks around each test loaded, and the cows' chunk could
+		// load its entities well after the test began (depending on which tests sat nearby): told
+		// too early, the companion saw no animals and wandered off the loaded area. Keep the strip
+		// loaded, and give the order once the cows can be seen.
+		BlockPos lo = ctx.getAbsolutePos(new BlockPos(-4, 0, -4));
+		BlockPos hi = ctx.getAbsolutePos(new BlockPos(48, 0, 8));
+		java.util.List<net.minecraft.util.math.ChunkPos> forced = new java.util.ArrayList<>();
+		for (int cx = Math.min(lo.getX(), hi.getX()) >> 4; cx <= Math.max(lo.getX(), hi.getX()) >> 4; cx++) {
+			for (int cz = Math.min(lo.getZ(), hi.getZ()) >> 4; cz <= Math.max(lo.getZ(), hi.getZ()) >> 4; cz++) {
+				if (ctx.getWorld().setChunkForced(cx, cz, true)) {
+					forced.add(new net.minecraft.util.math.ChunkPos(cx, cz));
+				}
+			}
+		}
+		boolean[] ordered = {false};
 		ctx.addInstantFinalTask(() -> {
+			if (!ordered[0] && !ctx.getWorld().getEntitiesByClass(net.minecraft.entity.passive.CowEntity.class,
+				c.player().getBoundingBox().expand(64, 16, 64), e -> true).isEmpty()) {
+				ordered[0] = true;
+				ctx.assertTrue(com.botcraft.chat.CommandTasks.apply(c, "hunt 1 cow", null) == null, "order");
+			}
 			ctx.assertTrue(count(c, net.minecraft.item.Items.BEEF) >= 1 || count(c, net.minecraft.item.Items.LEATHER) >= 1,
 				"no cow; at " + c.player().getBlockPos() + " ahead " + ctx.getWorld().getBlockState(c.player().getBlockPos().east())
 					+ "/" + ctx.getWorld().getBlockState(c.player().getBlockPos().east().up()) + " below " + ctx.getWorld().getBlockState(c.player().getBlockPos().down())
 					+ " entities " + ctx.getWorld().getOtherEntities(c.player(), c.player().getBoundingBox().expand(1.5)) + "; " + c.describeActivity());
+			forced.forEach(cp -> ctx.getWorld().setChunkForced(cp.x, cp.z, false));
 			cleanup(m, "GtScout");
 		});
 	}
@@ -1523,6 +1562,235 @@ public class CompanionGameTests implements FabricGameTest {
 			ctx.assertTrue(countIn(ctx, ours, net.minecraft.item.Items.IRON_INGOT) == 0, "didn't use the base iron");
 			colony.clear();
 			cleanup(m, "GtBuilder");
+		});
+	}
+
+	/**
+	 * "make diamond armor": the four pieces, each got the way free mode would get it. The
+	 * chestplate waiting in a base chest is taken, the rest crafted from the diamonds on hand,
+	 * and all of it ends up worn.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "gear_order")
+	public void makesArmourFromOrder(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtArmourer");
+		flatArena(ctx, 12);
+		var colony = colony(ctx, new BlockPos(6, 1, 6));
+		BlockPos chest = new BlockPos(9, 1, 6);
+		ctx.setBlockState(chest, Blocks.CHEST);
+		colony.addChest(ctx.getAbsolutePos(chest));
+		com.botcraft.colony.Colony.inventory(ctx.getWorld(), ctx.getAbsolutePos(chest))
+			.setStack(0, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_CHESTPLATE));
+		colony.touched();
+		ctx.assertTrue(m.spawn("GtArmourer", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(5.5, 1, 5.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtArmourer");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.memory().setPlace("home", ctx.getAbsolutePos(new BlockPos(6, 1, 6)), c.dimension(), ctx.getWorld().getTime());
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.CRAFTING_TABLE, 1);
+		give(c, net.minecraft.item.Items.DIAMOND, 16);
+		ctx.assertTrue(com.botcraft.chat.CommandTasks.apply(c, "make diamond armor", null) == null, "order not understood");
+		ctx.addInstantFinalTask(() -> {
+			var p = c.player();
+			for (var slot : new net.minecraft.entity.EquipmentSlot[]{net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
+				net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
+				ctx.assertTrue(p.getEquippedStack(slot).getItem() instanceof net.minecraft.item.ArmorItem a
+					&& a.getMaterial() == net.minecraft.item.ArmorMaterials.DIAMOND, "no diamond " + slot.getName() + "; " + c.describeActivity()
+					+ "; queued " + c.jobs().pending());
+			}
+			ctx.assertTrue(countIn(ctx, chest, net.minecraft.item.Items.DIAMOND_CHESTPLATE) == 0, "made a chestplate instead of taking the stored one");
+			colony.clear();
+			cleanup(m, "GtArmourer");
+		});
+	}
+
+	/** Heading out to work from the base: better armour and a better pickaxe in the chests come along. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "gear_from_stock")
+	public void takesBetterGearFromChests(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtOutfitter");
+		flatArena(ctx, 12);
+		var colony = colony(ctx, new BlockPos(6, 1, 6));
+		BlockPos chest = new BlockPos(9, 1, 6);
+		ctx.setBlockState(chest, Blocks.CHEST);
+		colony.addChest(ctx.getAbsolutePos(chest));
+		var inv = com.botcraft.colony.Colony.inventory(ctx.getWorld(), ctx.getAbsolutePos(chest));
+		inv.setStack(0, new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_CHESTPLATE));
+		inv.setStack(1, new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_PICKAXE));
+		inv.setStack(2, new net.minecraft.item.ItemStack(net.minecraft.item.Items.LEATHER_HELMET)); // nothing on the head yet: take it too
+		colony.touched();
+		ctx.assertTrue(m.spawn("GtOutfitter", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(5.5, 1, 5.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtOutfitter");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.memory().setPlace("home", ctx.getAbsolutePos(new BlockPos(6, 1, 6)), c.dimension(), ctx.getWorld().getTime());
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		ctx.assertTrue(com.botcraft.chat.CommandTasks.apply(c, "mine 2 stone", null) == null, "order not understood");
+		ctx.addInstantFinalTask(() -> {
+			var p = c.player();
+			ctx.assertTrue(p.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST).isOf(net.minecraft.item.Items.IRON_CHESTPLATE),
+				"not wearing the iron chestplate; " + c.describeActivity() + "; queued " + c.jobs().pending());
+			ctx.assertTrue(p.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD).isOf(net.minecraft.item.Items.LEATHER_HELMET), "no helmet");
+			ctx.assertTrue(count(c, net.minecraft.item.Items.IRON_PICKAXE) == 1, "didn't take the iron pickaxe");
+			colony.clear();
+			cleanup(m, "GtOutfitter");
+		});
+	}
+
+	/**
+	 * Heading for the surface from a cave goes out the way that's open (a tunnel off to the side),
+	 * not at the rock straight overhead. No pickaxe or blocks, so digging up isn't an option.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 400, batchId = "open_sky")
+	public void walksOutToOpenSky(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtMole");
+		for (int x = 0; x <= 14; x++) {
+			for (int z = 0; z <= 8; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				for (int y = 1; y <= 12; y++) {
+					boolean rock = x <= 10;
+					boolean room = x >= 2 && x <= 4 && z >= 3 && z <= 5 && y <= 2;
+					boolean tunnel = x >= 4 && z == 4 && y <= 2;
+					ctx.setBlockState(x, y, z, rock && !room && !tunnel ? Blocks.STONE : Blocks.AIR);
+				}
+			}
+		}
+		ctx.assertTrue(m.spawn("GtMole", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtMole");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		c.nav().moveTo(com.botcraft.nav.Goal.openSky(ctx.getWorld()), false);
+		ctx.addInstantFinalTask(() -> {
+			c.nav().moveTo(com.botcraft.nav.Goal.openSky(ctx.getWorld()), false);
+			ctx.assertTrue(ctx.getWorld().isSkyVisible(c.player().getBlockPos().up()), "still under rock at " + c.player().getBlockPos()
+				+ "; nav " + c.nav().state() + " " + c.nav().failReason());
+			cleanup(m, "GtMole");
+		});
+	}
+
+	/**
+	 * At the base, crafting uses the base's own table (found on the shared base map) even when
+	 * it's beyond the companion's own look around, instead of putting down another one.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 700, batchId = "base_map")
+	public void usesTheBaseTable(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtTidy");
+		flatArena(ctx, 20);
+		var colony = colony(ctx, new BlockPos(10, 1, 10));
+		BlockPos table = new BlockPos(18, 1, 10);
+		ctx.setBlockState(table, Blocks.CRAFTING_TABLE);
+		ctx.assertTrue(m.spawn("GtTidy", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 10.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtTidy");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.CRAFTING_TABLE, 1);
+		give(c, net.minecraft.item.Items.IRON_INGOT, 3);
+		give(c, net.minecraft.item.Items.STICK, 2);
+		ctx.runAtTick(160, () -> ctx.assertTrue(com.botcraft.chat.CommandTasks.apply(c, "craft an iron pickaxe", null) == null, "order"));
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.IRON_PICKAXE) == 1, "no pickaxe; " + c.describeActivity());
+			ctx.assertTrue(count(c, net.minecraft.item.Items.CRAFTING_TABLE) == 1, "put its own table down instead of using the base's");
+			colony.clear();
+			cleanup(m, "GtTidy");
+		});
+	}
+
+	/**
+	 * Stuck on top of a chest on a tall pillar (base furniture on dug-out ground), nothing to
+	 * dig or build with: it jumps down like a player would, taking the fall damage.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 400, batchId = "pillar_jump")
+	public void jumpsDownFromPillar(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtPerch");
+		flatArena(ctx, 10);
+		for (int y = 1; y <= 7; y++) {
+			ctx.setBlockState(5, y, 5, Blocks.COBBLESTONE);
+		}
+		ctx.setBlockState(5, 8, 5, Blocks.CHEST);
+		ctx.assertTrue(m.spawn("GtPerch", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(5.5, 9, 5.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtPerch");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		BlockPos ground = ctx.getAbsolutePos(new BlockPos(1, 1, 1));
+		c.nav().moveTo(com.botcraft.nav.Goal.near(ground, 1.5), false);
+		ctx.addInstantFinalTask(() -> {
+			c.nav().moveTo(com.botcraft.nav.Goal.near(ground, 1.5), false);
+			ctx.assertTrue(c.player().isAlive() && c.player().getBlockPos().getY() == ground.getY(), "still up at " + c.player().getBlockPos()
+				+ "; nav " + c.nav().state() + " " + c.nav().failReason());
+			cleanup(m, "GtPerch");
+		});
+	}
+
+	/** Mining stone at home leaves the ground the base stands on alone and digs further out. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "base_ground")
+	public void sparesTheBaseGround(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtQuarry");
+		flatArena(ctx, 24);
+		var colony = colony(ctx, new BlockPos(5, 1, 5));
+		ctx.assertTrue(m.spawn("GtQuarry", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(5.5, 1, 5.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtQuarry");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		ctx.assertTrue(com.botcraft.chat.CommandTasks.apply(c, "mine 2 stone", null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			ctx.assertTrue(count(c, net.minecraft.item.Items.COBBLESTONE) >= 2, "no cobblestone; " + c.describeActivity());
+			for (int x = 0; x <= 14; x++) {
+				for (int z = 0; z <= 14; z++) {
+					BlockPos floor = new BlockPos(x, 0, z);
+					if ((x - 5) * (x - 5) + (z - 5) * (z - 5) <= 11 * 11) {
+						ctx.assertTrue(!ctx.getWorld().getBlockState(ctx.getAbsolutePos(floor)).isAir(), "dug the base floor at " + floor);
+					}
+				}
+			}
+			colony.clear();
+			cleanup(m, "GtQuarry");
+		});
+	}
+
+	/**
+	 * Base zones get planned on open ground (core, bed row, farm, pen, apart from each other), and
+	 * a bed put down at home goes into the bed row.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "zones")
+	public void plansZonesAndUsesTheBedRow(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtSettler");
+		flatArena(ctx, 16);
+		var colony = colony(ctx, new BlockPos(8, 1, 8));
+		com.botcraft.colony.BaseMap.clear();
+		ctx.assertTrue(m.spawn("GtSettler", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(8.5, 1, 11.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtSettler");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.WHITE_BED, 1);
+		BlockPos base = ctx.getAbsolutePos(new BlockPos(8, 1, 8));
+		boolean[] ordered = {false};
+		ctx.addInstantFinalTask(() -> {
+			var core = colony.zone(com.botcraft.colony.Zones.CORE);
+			var beds = colony.zone(com.botcraft.colony.Zones.BEDS);
+			ctx.assertTrue(core != null && beds != null, "zones not planned yet: " + colony.zones());
+			if (!ordered[0]) {
+				ordered[0] = true;
+				c.jobs().replace(java.util.List.of("place white_bed " + base.getX() + " " + base.getY() + " " + base.getZ()));
+			}
+			var mine = c.memory().place("bed");
+			ctx.assertTrue(mine != null, "no bed down yet; " + c.describeActivity());
+			ctx.assertTrue(beds.contains(mine.pos()), "bed at " + mine.pos().toShortString() + ", not in the bed row " + beds);
+			var farm = colony.zone(com.botcraft.colony.Zones.FARM);
+			var pen = colony.zone(com.botcraft.colony.Zones.PEN);
+			ctx.assertTrue(farm != null && pen != null, "no farm or pen: " + colony.zones());
+			for (var z : colony.zones()) {
+				for (var o : colony.zones()) {
+					ctx.assertTrue(z == o || !z.overlaps(o, 0), z + " overlaps " + o);
+				}
+			}
+			colony.clear();
+			cleanup(m, "GtSettler");
 		});
 	}
 
@@ -2074,6 +2342,9 @@ public class CompanionGameTests implements FabricGameTest {
 		ctx.addInstantFinalTask(() -> {
 			if (cow.isAlive()) {
 				com.botcraft.action.Inventories.equipBestWeapon(c.player());
+				// Face it: this is about the damage, not the aim (a companion from a neighbouring test
+				// walking by drew glances that kept the aim off).
+				c.player().lookAt(net.minecraft.command.argument.EntityAnchorArgumentType.EntityAnchor.EYES, cow.getBoundingBox().getCenter());
 				if (c.actions().attack(cow)) {
 					hits[0]++;
 				}

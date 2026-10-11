@@ -34,7 +34,7 @@ final class Spots {
 			BlockPos under = spot.down();
 			if (world.getBlockState(spot).isReplaceable() && world.getFluidState(spot).isEmpty() && t.placeableAgainst(under)
 				&& world.getBlockState(under).isSideSolidFullSquare(world, under, net.minecraft.util.math.Direction.UP)
-				&& !exclude.contains(spot) && !p.getBoundingBox().intersects(new Box(spot)) && c.actions().canReachBlock(spot)
+				&& !exclude.contains(spot) && !p.getBoundingBox().intersects(new Box(spot)) && !reserved(world, spot) && c.actions().canReachBlock(spot)
 				&& c.actions().placement(spot) != null
 				// Anyone standing there (another companion, a sheep...) blocks placement.
 				&& world.getEntitiesByClass(net.minecraft.entity.LivingEntity.class, new Box(spot), e -> e.isAlive()).isEmpty()) {
@@ -47,6 +47,12 @@ final class Spots {
 			}
 		}
 		return best;
+	}
+
+	/** Part of the base kept clear (bed row, farm, pen, paths): nothing gets put down there. */
+	private static boolean reserved(ServerWorld world, BlockPos spot) {
+		var colony = com.botcraft.colony.Colony.get();
+		return colony != null && com.botcraft.colony.Zones.reserved(colony, world, spot);
 	}
 
 	/**

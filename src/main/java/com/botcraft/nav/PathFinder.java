@@ -94,6 +94,8 @@ public class PathFinder {
 		int placed;
 		/** Steps in a row with the head under water (0 = can breathe here). */
 		int under;
+		/** Fall damage taken on the way here (big drops in escape mode), in health points. */
+		int damage;
 		boolean closed;
 
 		Node(BlockPos pos, double g, double h) {
@@ -112,6 +114,8 @@ public class PathFinder {
 	private final PriorityQueue<Node> open = new PriorityQueue<>((a, b) -> Double.compare(a.f, b.f));
 	private final Long2ObjectOpenHashMap<Node> nodes = new Long2ObjectOpenHashMap<>();
 	private final Node startNode;
+	/** Fall damage of the move being added (set around the add() call of a big drop). */
+	private int damageNext;
 	private Node best;
 	private int expanded;
 	private Status status = Status.SEARCHING;
@@ -145,6 +149,30 @@ public class PathFinder {
 		if (submerged) {
 			startNode.under = MAX_UNDER - (int) Math.floor(MAX_UNDER * Math.max(0, Math.min(300, air)) / 300.0);
 		}
+		return this;
+	}
+
+	/** Extra cost of a cell another companion stands in or is about to step into. */
+	public static final double BUSY_COST = 12.0;
+	private it.unimi.dsi.fastutil.longs.LongSet busy = it.unimi.dsi.fastutil.longs.LongSets.EMPTY_SET;
+
+	/** Cells others are in or about to walk through (see Blackboard): passable, but better avoided. */
+	public PathFinder busy(it.unimi.dsi.fastutil.longs.LongSet cells) {
+		this.busy = cells;
+		return this;
+	}
+
+	/**
+	 * Health points the whole path may lose to falls (0: no fall damage at all). Each drop past 3
+	 * blocks spends from it, so two big drops in a row can't add up to a deadly one.
+	 */
+	private int fallBudget;
+	/** Health we have now: a parkour jump whose miss would fall further than this allows isn't taken. */
+	private float health = 20;
+
+	public PathFinder fallBudget(int hp, float health) {
+		this.fallBudget = Math.max(0, hp);
+		this.health = health;
 		return this;
 	}
 
@@ -395,7 +423,13 @@ public class PathFinder {
 				if (k > 1 && !breaks.isEmpty()) {
 					return; // only dig into a one-block step down
 				}
-				add(cur, below, cost + WALK_OFF + fallTicks(k) + CENTER + terrain.hazard(below), MoveType.FALL, null, breaks);
+				int dmg = soft ? 0 : Math.max(0, k - 3);
+				if (dmg > 0 && cur.damage + dmg > fallBudget) {
+					return; // the falls on this path would add up to too much
+				}
+				damageNext = dmg;
+				add(cur, below, cost + WALK_OFF + fallTicks(k) + CENTER + terrain.hazard(below) + dmg * 10, MoveType.FALL, null, breaks);
+				damageNext = 0;
 				return;
 			}
 			if (!terrain.passable(below)) {
@@ -412,12 +446,12 @@ public class PathFinder {
 		if (!usable(first) || terrain.support(first.down()) || !terrain.clearBody(first) || terrain.isWater(first.down())) {
 			return; // not a gap
 		}
-		if (missDrop(first) > PARKOUR_MAX_MISS_DROP) {
+		if (missDrop(first) > parkourMaxMissDrop()) {
 			return; // a missed jump here would be a bad fall (cliffs, ravines): go round
 		}
 		for (int dist = 2; dist <= 3; dist++) {
 			BlockPos gap = p.offset(d, dist - 1);
-			if (!terrain.clearBody(gap) || !terrain.passable(gap.up(2)) || terrain.support(gap.down()) || missDrop(gap) > PARKOUR_MAX_MISS_DROP) {
+			if (!terrain.clearBody(gap) || !terrain.passable(gap.up(2)) || terrain.support(gap.down()) || missDrop(gap) > parkourMaxMissDrop()) {
 				return;
 			}
 			BlockPos land = p.offset(d, dist);
@@ -437,6 +471,14 @@ public class PathFinder {
 	 * drops (cliff edges, ravines) we go round. Baritone keeps parkour off altogether by default.
 	 */
 	private static final int PARKOUR_MAX_MISS_DROP = 10;
+
+	/** Deepest gap worth jumping right now: a miss must leave us at least 3 hearts. */
+	private int parkourMaxMissDrop() {
+		if (!com.botcraft.util.Experiments.on("parkourHealth")) {
+			return PARKOUR_MAX_MISS_DROP;
+		}
+		return Math.min(PARKOUR_MAX_MISS_DROP, 3 + (int) Math.floor(health - 6));
+	}
 
 	/** How far a missed jump over this gap column would fall (water at the bottom is a soft landing). */
 	private int missDrop(BlockPos gap) {
@@ -533,6 +575,9 @@ public class PathFinder {
 		if (under > 0) {
 			cost += 0.5 * under;
 		}
+		if (!busy.isEmpty() && busy.contains(key)) {
+			cost += BUSY_COST;
+		}
 		double g = from.g + cost;
 		Node n = nodes.get(key);
 		if (n == null) {
@@ -550,6 +595,7 @@ public class PathFinder {
 		n.breaks = breaks;
 		n.placed = from.placed + (place != null ? 1 : 0);
 		n.under = under;
+		n.damage = from.damage + damageNext;
 		open.add(n); // duplicates are skipped later via the closed flag
 	}
 }

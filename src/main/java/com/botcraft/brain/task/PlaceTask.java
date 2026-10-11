@@ -23,6 +23,11 @@ public class PlaceTask extends Task {
 	private boolean placed;
 	/** Spots that didn't work (a bed's other half had no room). */
 	private final java.util.Set<BlockPos> tried = new java.util.HashSet<>();
+	/** A bed going into the base's bed row: its slot, and failed tries at it. */
+	@org.jetbrains.annotations.Nullable
+	private com.botcraft.colony.Zones.BedSlot slot;
+	private boolean slotChecked;
+	private int slotTries;
 
 	public PlaceTask(Companion c, Item item, BlockPos near) {
 		super(c);
@@ -49,11 +54,60 @@ public class PlaceTask extends Task {
 		return 20 * 90;
 	}
 
+	/**
+	 * Put the bed in its slot in the bed row: stand within reach of the foot block, face the way
+	 * the bed should point, place. Null to fall back to anywhere near (the slot didn't work out).
+	 */
+	@org.jetbrains.annotations.Nullable
+	private Status placeInSlot(CompanionPlayer p) {
+		var world = p.getServerWorld();
+		if (!world.getBlockState(slot.foot()).isReplaceable() || !world.getBlockState(slot.head()).isReplaceable() || slotTries > 12) {
+			AiLog.log(c.name(), "bed slot at {} didn't work out, putting the bed anywhere near", slot.foot().toShortString());
+			slot = null;
+			return null;
+		}
+		if (!c.actions().canReachBlock(slot.foot().down()) || p.getBlockPos().equals(slot.foot()) || p.getBlockPos().equals(slot.head())) {
+			// Stand beside the foot, not in the slot itself.
+			c.nav().moveTo(Goal.reach(slot.foot(), 3.5), false);
+			if (c.nav().state() == Navigator.State.FAILED) {
+				slotTries += 4;
+			}
+			return Status.RUNNING;
+		}
+		c.nav().stop();
+		p.setYaw(slot.facing().asRotation());
+		if (c.actions().placeBlock(slot.foot(), s -> s.isOf(item))) {
+			placed = true;
+			var state = world.getBlockState(slot.head());
+			if (state.isIn(BlockTags.BEDS)) {
+				c.memory().setPlace("bed", slot.head(), c.dimension(), world.getTime());
+			}
+			AiLog.log(c.name(), "placed {} in the bed row at {}", ItemNames.id(item), slot.foot().toShortString());
+			return Status.SUCCESS;
+		}
+		slotTries++;
+		return Status.RUNNING;
+	}
+
 	@Override
 	protected Status onTick() {
 		CompanionPlayer p = c.player();
 		if (Inventories.count(p.getInventory(), s -> s.isOf(item)) == 0) {
 			return placed ? Status.SUCCESS : fail("I don't have a " + ItemNames.display(item));
+		}
+		if (!slotChecked) {
+			slotChecked = true;
+			var colony = com.botcraft.colony.Colony.get();
+			if (colony != null && com.botcraft.util.Experiments.on("zonePlacement") && new net.minecraft.item.ItemStack(item).isIn(net.minecraft.registry.tag.ItemTags.BEDS)
+				&& colony.near(p.getServerWorld(), near, com.botcraft.colony.Colony.BASE_RADIUS)) {
+				slot = com.botcraft.colony.Zones.freeBedSlot(colony, p.getServerWorld(), p.getBlockPos());
+			}
+		}
+		if (slot != null) {
+			Status s = placeInSlot(p);
+			if (s != null) {
+				return s;
+			}
 		}
 		if (p.getBlockPos().getSquaredDistance(near) > 3 * 3) {
 			c.nav().moveTo(Goal.near(near, 2.0), false);

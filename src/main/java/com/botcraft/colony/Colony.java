@@ -58,7 +58,61 @@ public final class Colony {
 		Map<String, String> purposes = new HashMap<>();
 		/** Stock target key -> how many the base should keep (overrides the defaults; 0 = don't collect). */
 		Map<String, Integer> wants = new java.util.LinkedHashMap<>();
+		/** Dimension -> throwaway blocks companions put down (BlockPos longs, oldest first). */
+		Map<String, long[]> placed = new HashMap<>();
+		/** The base's areas: core, beds, farm, pen (see {@link Zones}). */
+		List<Zone> zones = new ArrayList<>();
 	}
+
+	/**
+	 * A rectangle of the base set aside for something (x1..x2, z1..z2 inclusive, ground at y-1).
+	 * Planned ones are replaced when the base moves; ones the player set ({@code manual}) stay.
+	 */
+	public static final class Zone {
+		public String kind;
+		public int x1;
+		public int z1;
+		public int x2;
+		public int z2;
+		public int y;
+		public boolean manual;
+
+		public Zone(String kind, int x1, int z1, int x2, int z2, int y, boolean manual) {
+			this.kind = kind;
+			this.x1 = Math.min(x1, x2);
+			this.z1 = Math.min(z1, z2);
+			this.x2 = Math.max(x1, x2);
+			this.z2 = Math.max(z1, z2);
+			this.y = y;
+			this.manual = manual;
+		}
+
+		public boolean contains(int x, int z) {
+			return x >= x1 && x <= x2 && z >= z1 && z <= z2;
+		}
+
+		public boolean contains(BlockPos p) {
+			return contains(p.getX(), p.getZ());
+		}
+
+		public BlockPos center() {
+			return new BlockPos((x1 + x2) / 2, y, (z1 + z2) / 2);
+		}
+
+		public boolean overlaps(Zone o, int gap) {
+			return x1 - gap <= o.x2 && o.x1 - gap <= x2 && z1 - gap <= o.z2 && o.z1 - gap <= z2;
+		}
+
+		@Override
+		public String toString() {
+			return kind + " " + x1 + "," + z1 + " to " + x2 + "," + z2 + " (" + (x2 - x1 + 1) + "x" + (z2 - z1 + 1) + (manual ? ", set by hand" : "") + ")";
+		}
+	}
+
+	/** Most remembered throwaway blocks per dimension; the oldest are forgotten first. */
+	private static final int MAX_PLACED = 8192;
+	/** {@link Data#placed} while running, in insertion order. */
+	private final Map<String, java.util.LinkedHashSet<Long>> placed = new HashMap<>();
 
 	private final MinecraftServer server;
 	private Data data = new Data();
@@ -89,6 +143,18 @@ public final class Colony {
 					if (c.data.wants == null) {
 						c.data.wants = new java.util.LinkedHashMap<>();
 					}
+					if (c.data.zones == null) {
+						c.data.zones = new ArrayList<>();
+					}
+					if (c.data.placed != null) {
+						c.data.placed.forEach((dim, longs) -> {
+							var set = new java.util.LinkedHashSet<Long>();
+							for (long l : longs) {
+								set.add(l);
+							}
+							c.placed.put(dim, set);
+						});
+					}
 				}
 			} catch (IOException | JsonParseException e) {
 				Botcraft.LOG.error("Could not read {}", f, e);
@@ -114,6 +180,8 @@ public final class Colony {
 			return;
 		}
 		Path f = file(server);
+		data.placed = new HashMap<>();
+		placed.forEach((dim, set) -> data.placed.put(dim, set.stream().mapToLong(Long::longValue).toArray()));
 		try {
 			Files.createDirectories(f.getParent());
 			Path tmp = f.resolveSibling("colony.json.tmp");
@@ -151,8 +219,12 @@ public final class Colony {
 	}
 
 	public void setBase(BlockPos pos, String dim) {
+		BlockPos old = base();
 		data.base = new int[]{pos.getX(), pos.getY(), pos.getZ()};
 		data.dim = dim;
+		if (old == null || !old.equals(pos)) {
+			data.zones.removeIf(z -> !z.manual); // planned for the old spot: plan again
+		}
 		dirty = true;
 		Botcraft.LOG.info("Colony base set to {} in {}", pos.toShortString(), dim);
 	}
@@ -161,6 +233,24 @@ public final class Colony {
 	public boolean near(ServerWorld world, BlockPos pos, double radius) {
 		BlockPos b = base();
 		return b != null && world == world() && b.getSquaredDistance(pos) <= radius * radius;
+	}
+
+	/** How far around the base its ground is left alone by mining. */
+	public static final int PROTECTED_RADIUS = 12;
+
+	/**
+	 * Part of the ground the base stands on: mining leaves it alone. (Soaks showed mining jobs
+	 * digging the stone right under the base until its chests and furnaces stood on one-block
+	 * pillars high above the new ground.)
+	 */
+	public boolean protectsGround(ServerWorld w, BlockPos pos) {
+		BlockPos b = base();
+		if (b == null || w != world() || !com.botcraft.util.Experiments.on("spareBase")) {
+			return false;
+		}
+		int dx = pos.getX() - b.getX();
+		int dz = pos.getZ() - b.getZ();
+		return dx * dx + dz * dz <= PROTECTED_RADIUS * PROTECTED_RADIUS && pos.getY() >= b.getY() - 4 && pos.getY() <= b.getY() + 8;
 	}
 
 	// ---- chests ---------------------------------------------------------------------------------
@@ -405,6 +495,17 @@ public final class Colony {
 			return null;
 		}
 		this.exclude = exclude;
+		// In the core first (the base's planned middle), so chests end up together.
+		Zone core = com.botcraft.util.Experiments.on("zonePlacement") ? zone(Zones.CORE) : null;
+		if (core != null) {
+			coreOnly = core;
+			BlockPos inCore = chestSpot(w, b, false, 8, 3);
+			inCore = inCore != null ? inCore : chestSpot(w, b, true, 8, 3);
+			coreOnly = null;
+			if (inCore != null) {
+				return inCore;
+			}
+		}
 		// First choice: a spot of its own. On cramped ground (a hilltop), next to another chest
 		// is fine too: two singles just become a double chest.
 		BlockPos spot = chestSpot(w, b, false, 8, 3);
@@ -415,6 +516,9 @@ public final class Colony {
 	}
 
 	private java.util.Set<BlockPos> exclude = java.util.Set.of();
+	/** While looking in the core only. */
+	@Nullable
+	private Zone coreOnly;
 
 	@Nullable
 	private BlockPos chestSpot(ServerWorld w, BlockPos b, boolean mayTouch, int across, int updown) {
@@ -423,7 +527,7 @@ public final class Colony {
 		for (BlockPos p : BlockPos.iterate(b.add(-across, -updown, -across), b.add(across, updown, across))) {
 			if (p.getSquaredDistance(b) < 4 || !w.getBlockState(p).isReplaceable() || !w.getBlockState(p.up()).isReplaceable()
 				|| !w.getFluidState(p).isEmpty() || !w.getBlockState(p.down()).isSideSolidFullSquare(w, p.down(), Direction.UP)
-				|| exclude.contains(p)) {
+				|| exclude.contains(p) || (coreOnly != null && !coreOnly.contains(p)) || (coreOnly == null && Zones.reserved(this, w, p))) {
 				continue;
 			}
 			// Someone standing there (companions gather at the base) would block the chest.
@@ -448,6 +552,68 @@ public final class Colony {
 			}
 		}
 		return best;
+	}
+
+	// ---- zones ------------------------------------------------------------------------------------
+
+	public List<Zone> zones() {
+		return java.util.Collections.unmodifiableList(data.zones);
+	}
+
+	@Nullable
+	public Zone zone(String kind) {
+		for (Zone z : data.zones) {
+			if (z.kind.equals(kind)) {
+				return z;
+			}
+		}
+		return null;
+	}
+
+	/** Set (or replace) the zone of this kind. */
+	public void setZone(Zone zone) {
+		data.zones.removeIf(z -> z.kind.equals(zone.kind));
+		data.zones.add(zone);
+		dirty = true;
+	}
+
+	/** Forget a zone (a planned one is planned again; a hand-set one goes back to being planned). */
+	public void clearZone(String kind) {
+		if (data.zones.removeIf(z -> z.kind.equals(kind))) {
+			dirty = true;
+		}
+	}
+
+	// ---- blocks companions put down -------------------------------------------------------------
+
+	/**
+	 * Remember a throwaway block a companion put down to get somewhere (a bridge, a pillar, a
+	 * shelter roof). Vanilla doesn't record who placed what, and navigation never breaks built
+	 * blocks; these it may, so nobody gets walled in by a roof another companion left behind.
+	 */
+	public void recordPlaced(String dim, BlockPos pos) {
+		var set = placed.computeIfAbsent(dim, d -> new java.util.LinkedHashSet<>());
+		set.remove(pos.asLong()); // re-adding moves it to the newest end
+		set.add(pos.asLong());
+		if (set.size() > MAX_PLACED) {
+			var it = set.iterator();
+			it.next();
+			it.remove();
+		}
+		dirty = true;
+	}
+
+	/** A companion put a throwaway block down here (it may since have been replaced: check the block too). */
+	public boolean placedByCompanion(String dim, BlockPos pos) {
+		var set = placed.get(dim);
+		return set != null && set.contains(pos.asLong());
+	}
+
+	public void forgetPlaced(String dim, BlockPos pos) {
+		var set = placed.get(dim);
+		if (set != null && set.remove(pos.asLong())) {
+			dirty = true;
+		}
 	}
 
 	// ---- stock targets ---------------------------------------------------------------------------
@@ -476,6 +642,7 @@ public final class Colony {
 	/** For tests: no base, no chests. */
 	public void clear() {
 		data = new Data();
+		placed.clear();
 		stockAt = -1000;
 		dirty = true;
 	}

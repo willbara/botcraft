@@ -27,6 +27,8 @@ final class SearchTrips {
 	private Direction dir;
 	@Nullable
 	private BlockPos goal;
+	/** On the way out to open sky (instead of to {@link #goal}). */
+	private boolean surfacing;
 	private int ticks;
 	private int quickFails;
 
@@ -41,7 +43,7 @@ final class SearchTrips {
 	}
 
 	boolean travelling() {
-		return goal != null;
+		return goal != null || surfacing;
 	}
 
 	int trips() {
@@ -49,8 +51,9 @@ final class SearchTrips {
 	}
 
 	void cancel(Companion c) {
-		if (goal != null) {
+		if (goal != null || surfacing) {
 			goal = null;
+			surfacing = false;
 			c.nav().stop();
 		}
 	}
@@ -65,10 +68,18 @@ final class SearchTrips {
 		if (remembered != null) {
 			goal = remembered;
 			AiLog.log(c.name(), "{}: none in sight, going to a remembered spot {} (trip {}/{})", what, remembered.toShortString(), trips, maxTrips);
-		} else if (underground(world, here)) {
+		} else if (underground(world, here) && !com.botcraft.util.Experiments.on("surfaceGoal")) {
 			int y = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, here.getX(), here.getZ());
 			goal = new BlockPos(here.getX(), y, here.getZ());
 			AiLog.log(c.name(), "{}: none down here, heading up to the surface (trip {}/{})", what, trips, maxTrips);
+		} else if (underground(world, here)) {
+			// Out to open sky, whichever way that is (a cave mouth, or digging up): not to the spot
+			// straight overhead, which on a mountainside is inside the rock.
+			goal = null;
+			surfacing = true;
+			AiLog.log(c.name(), "{}: none down here, heading up to the surface (trip {}/{})", what, trips, maxTrips);
+			c.nav().moveTo(Goal.openSky(world), true);
+			return;
 		} else {
 			if (dir == null) {
 				Direction best = Direction.Type.HORIZONTAL.random(p.getRandom());
@@ -107,6 +118,20 @@ final class SearchTrips {
 
 	/** Keep travelling. @return true while still on the way */
 	boolean tick(Companion c) {
+		if (surfacing) {
+			ticks++;
+			Navigator.State s = c.nav().state();
+			if (s == Navigator.State.ARRIVED || s == Navigator.State.FAILED || ticks > 20 * 90
+				|| c.player().getServerWorld().isSkyVisible(c.player().getBlockPos().up())) {
+				surfacing = false;
+				c.nav().stop();
+				return false;
+			}
+			if (!c.nav().isBusy()) {
+				c.nav().moveTo(Goal.openSky(c.player().getServerWorld()), true);
+			}
+			return true;
+		}
 		if (goal == null) {
 			return false;
 		}
@@ -135,7 +160,24 @@ final class SearchTrips {
 		return true;
 	}
 
+	/**
+	 * Really underground: well below the surface here, and no open sky in sight around us either.
+	 * Under an overhang or at a cliff foot (rock high overhead, sky a step away) isn't.
+	 */
 	static boolean underground(ServerWorld world, BlockPos here) {
-		return here.getY() < world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, here.getX(), here.getZ()) - 6;
+		if (here.getY() >= world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, here.getX(), here.getZ()) - 6) {
+			return false;
+		}
+		if (!com.botcraft.util.Experiments.on("surfaceGoal")) {
+			return true;
+		}
+		for (int dx = -4; dx <= 4; dx += 2) {
+			for (int dz = -4; dz <= 4; dz += 2) {
+				if (world.isSkyVisible(here.add(dx, 1, dz))) {
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 }

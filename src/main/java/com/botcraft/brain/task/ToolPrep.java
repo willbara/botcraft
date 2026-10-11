@@ -14,9 +14,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.item.PickaxeItem;
 import net.minecraft.item.SwordItem;
-import net.minecraft.item.ToolItem;
-import net.minecraft.item.ToolMaterial;
-import net.minecraft.item.ToolMaterials;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -87,6 +84,23 @@ public final class ToolPrep {
 					case "iron_pickaxe" -> 3;
 					default -> 1;
 				};
+			}
+		}
+		// At the base with better gear in the chests (armour, or the tool this job wants): take it
+		// along, whoever asked for the job.
+		var colony = com.botcraft.colony.Colony.get();
+		if (colony != null && colony.near(p.getServerWorld(), p.getBlockPos(), com.botcraft.colony.Colony.BASE_RADIUS)) {
+			String toolKind = switch (kind) {
+				case AXE -> "axe";
+				case PICKAXE -> "pickaxe";
+				case SWORD -> "sword";
+			};
+			List<String> fromStock = new ArrayList<>();
+			for (String w : com.botcraft.brain.Jobs.gearFromStock(c, java.util.Set.of(toolKind, "sword"), true)) {
+				fromStock.add("?" + w);
+			}
+			if (!fromStock.isEmpty()) {
+				return fromStock;
 			}
 		}
 		PlayerInventory inv = p.getInventory();
@@ -160,22 +174,6 @@ public final class ToolPrep {
 	}
 
 	static int tier(ItemStack s) {
-		if (!(s.getItem() instanceof ToolItem t)) {
-			return 0;
-		}
-		ToolMaterial m = t.getMaterial();
-		if (m == ToolMaterials.NETHERITE) {
-			return 5;
-		}
-		if (m == ToolMaterials.DIAMOND) {
-			return 4;
-		}
-		if (m == ToolMaterials.IRON) {
-			return 3;
-		}
-		if (m == ToolMaterials.STONE) {
-			return 2;
-		}
-		return 1; // wood, gold
+		return com.botcraft.knowledge.Gear.tier(s);
 	}
 }

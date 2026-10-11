@@ -40,6 +40,7 @@ final class Pickup {
 			pathing = false;
 		}
 		CompanionPlayer p = c.player();
+		com.botcraft.brain.Blackboard.claimItem(c, item); // others leave it to us
 		if (!item.isAlive() || ++ticks > GIVE_UP_TICKS) {
 			ignored.add(item.getUuid());
 			c.nav().stop();

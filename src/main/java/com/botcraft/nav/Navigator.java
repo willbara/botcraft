@@ -149,6 +149,24 @@ public class Navigator {
 		return null;
 	}
 
+	/** Where the next {@code n} steps of the path we're walking are (empty when not moving). */
+	public List<BlockPos> upcoming(int n) {
+		if (state != State.MOVING || path == null) {
+			return List.of();
+		}
+		List<BlockPos> out = new ArrayList<>(n);
+		for (int i = index; i < Math.min(path.size(), index + n); i++) {
+			out.add(path.get(i).pos());
+		}
+		return out;
+	}
+
+	/** Cells other companions stand in or are about to walk through: our searches steer round them. */
+	private it.unimi.dsi.fastutil.longs.LongOpenHashSet busyCells(BlockPos from) {
+		return Experiments.on("avoidOthers") ? com.botcraft.brain.Blackboard.busyCells(companion, from, 32)
+			: new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
+	}
+
 	/** Start (or keep) navigating to the goal. Re-issuing an equal goal keeps the current path. */
 	public void moveTo(Goal newGoal, boolean sprint) {
 		this.sprint = sprint;
@@ -205,6 +223,9 @@ public class Navigator {
 		BlockPos start = feet(p);
 		boolean dig = digMode || escape;
 		Terrain terrain = new Terrain(p.getServerWorld(), dig, p.getInventory());
+		if (digMode && !escape) {
+			terrain.spareBase();
+		}
 		// If we're standing somewhere odd (half in a block, mid-air) start from the nearest standable spot.
 		if (!terrain.standable(start) && terrain.standable(start.up())) {
 			start = start.up();
@@ -221,11 +242,29 @@ public class Navigator {
 		}
 		int blocks = Inventories.count(p.getInventory(), Inventories::isThrowaway);
 		boolean place = (allowPlace || escape) && blocks > 0;
-		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, 3);
-		finder = new PathFinder(terrain, start, goal, opts, avoid).startAir(p.getAir(), p.isSubmergedInWater());
+		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, maxFall(p));
+		finder = new PathFinder(terrain, start, goal, opts, avoid).startAir(p.getAir(), p.isSubmergedInWater()).busy(busyCells(start))
+			.fallBudget(fallBudget(p), p.getHealth());
 		searchStartedAt = companion.now();
 		path = null;
 		state = State.SEARCHING;
+	}
+
+	/**
+	 * Highest drop a path may take. Normally 3 (no damage). Escaping, like a player stuck on a
+	 * pillar would, it may jump down further as long as the landing leaves at least 3 hearts
+	 * (fall damage is half a heart per block past 3).
+	 */
+	private int maxFall(CompanionPlayer p) {
+		if (!escape || !Experiments.on("escapeFall")) {
+			return 3;
+		}
+		return Math.max(3, Math.min(12, 3 + (int) Math.floor(p.getHealth() - 6)));
+	}
+
+	/** Health points a path may lose to falls: none normally; escaping, all but 3 hearts. */
+	private int fallBudget(CompanionPlayer p) {
+		return escape && Experiments.on("escapeFall") ? (int) Math.floor(p.getHealth() - 6) : 0;
 	}
 
 	/** Block the feet are in, robust to slabs/carpets (see PathStep#floorY). */
@@ -449,7 +488,7 @@ public class Navigator {
 			planAhead(p);
 		}
 		if (index >= path.size()) {
-			if (partial && ahead != null && feet(p).equals(aheadFrom)) {
+			if (partial && ahead != null && feet(p).equals(aheadFrom) && ahead.status() != PathFinder.Status.FAILED) {
 				// Carry on with what was planned while we walked (finished or not).
 				AiLog.log(companion.name(), "end of partial path, carrying on with the path planned ahead ({} nodes so far)", ahead.expanded());
 				com.botcraft.ops.SoakStats.navEvent(ahead.status() == PathFinder.Status.SEARCHING
@@ -586,9 +625,12 @@ public class Navigator {
 		blocks = Math.max(0, blocks);
 		boolean place = (allowPlace || escape) && blocks > 0;
 		Terrain terrain = new Terrain(p.getServerWorld(), digMode || escape, p.getInventory());
-		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, 3);
+		if (digMode && !escape) {
+			terrain.spareBase();
+		}
+		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, maxFall(p));
 		aheadFrom = last.pos();
-		ahead = new PathFinder(terrain, aheadFrom, goal, opts, avoid);
+		ahead = new PathFinder(terrain, aheadFrom, goal, opts, avoid).busy(busyCells(aheadFrom)).fallBudget(fallBudget(p), p.getHealth());
 	}
 
 	/**
@@ -799,7 +841,9 @@ public class Navigator {
 			return true;
 		}
 		if (actions.canReachBlock(under) && p.getPos().squaredDistanceTo(Vec3d.ofBottomCenter(step.pos())) < 1.6 * 1.6) {
-			if (!actions.placeBlock(under, Inventories::isThrowaway)) {
+			if (actions.placeBlock(under, Inventories::isThrowaway)) {
+				BreakPolicy.recordPlaced(world, under);
+			} else {
 				// Twice on one trip is enough: something about where we stand stops us placing (it
 				// was once seven minutes of retrying). Find a way round without bridges.
 				if (Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0
@@ -839,6 +883,7 @@ public class Navigator {
 			}
 		} else if (p.getY() >= place.getY() + 1.02) {
 			if (actions.placeBlock(place, Inventories::isThrowaway)) {
+				BreakPolicy.recordPlaced(p.getServerWorld(), place);
 				pillarStage = 0;
 				placeRefusals = 0;
 			} else if (Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0) {

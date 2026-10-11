@@ -214,7 +214,8 @@ public class SmeltTask extends Task {
 			&& p.getWorld().getBlockState(mem.pos()).isOf(Blocks.FURNACE) && usable(mem.pos())) {
 			return mem.pos();
 		}
-		return null;
+		return CraftTask.atBaseFeature(p, com.botcraft.colony.BaseMap.Feature.FURNACE,
+			b -> p.getWorld().getBlockState(b).isOf(Blocks.FURNACE) && usable(b));
 	}
 
 	private boolean usable(BlockPos pos) {
