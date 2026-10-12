@@ -111,6 +111,7 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
 
 - **Real player entities.** Each companion joins through the vanilla login path, so it has a name tag, a tab-list entry, join and leave messages, survival physics, hunger, fall damage, armour, stats and advancements. Its inventory, health and position are saved in normal playerdata.
 - **Human-like control.** Looking turns smoothly with slight aim jitter, reactions have a short delay, and movement uses the same inputs a client sends (walk, sprint, jump, sneak).
+- **Inventory.** Right-click a companion to open its inventory as a chest screen (no client mod needed): rows 1–3 are the main inventory, row 4 the hotbar, row 5 helmet, chestplate, leggings, boots and off hand. Take, give and move items as in a chest; shift-click armour from your inventory to put it on the companion. Armour slots only take armour that fits, and Curse of Binding keeps armour on as it does for players. Anyone within 8 blocks can open it. A job counting on something you took notices the next time it checks and plans again.
 - **No player slots used.** A world full of companions never turns a real player away with "server is full".
 - **Personality.** Chattiness, bravery, curiosity and helpfulness are random but stable per name. They shape how often a companion speaks, whether it fights or flees, how much it wanders, and how readily it works.
 

@@ -5,7 +5,7 @@
 | Command | What it covers |
 |---|---|
 | `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
-| `./gradlew runGametest` | Headless server, 87 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/botcraft.json` to see AI traces. |
+| `./gradlew runGametest` | Headless server, 88 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/botcraft.json` to see AI traces. |
 
 | GameTest | Milestone | Passes when |
 |---|---|---|
@@ -112,6 +112,7 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] "Bob, follow me" through a dense oak forest. He stays on the ground, breaking leaves at head height as he walks, cuts diagonally between trunks, and doesn't climb onto the canopy, pillar or dig up. While you keep walking he keeps to one way round each tree.
 
 ### 10. Mechanics
+- [ ] Right-click Bob. A chest screen titled "Bob's inventory" shows his items (hotbar in row 4, armour and off hand in row 5). Take an item, give him one, shift-click a helmet onto him; dirt won't go into an armour slot. Walk more than 8 blocks away and the screen closes.
 - [ ] "Bob, craft an iron pickaxe" from nothing. He gets wood, makes tools, mines stone and iron, crafts and places a furnace, smelts, then crafts the pickaxe.
 - [ ] "Bob, get us some food" with cows nearby. He hunts and cooks. Named, leashed or fenced animals are left alone.
 

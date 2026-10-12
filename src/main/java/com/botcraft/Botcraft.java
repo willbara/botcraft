@@ -51,6 +51,7 @@ public class Botcraft implements ModInitializer {
 				}
 			}
 		});
+		net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register(com.botcraft.entity.InventoryView::onUseEntity);
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> CompanionCommand.register(dispatcher));
 		LOG.info("Botcraft initialized (max companions {}, chat {}, griefing {})",
 			CompanionConfig.get().maxCompanions == 0 ? "unlimited" : CompanionConfig.get().maxCompanions, CompanionConfig.get().chatEnabled, CompanionConfig.get().griefing);

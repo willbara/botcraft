@@ -27,6 +27,8 @@ everyone, do your own thing                 free mode: they live and progress on
 
 In free mode a companion keeps itself fed, makes its tools, sleeps in its own bed, works up from stone tools to diamond gear, and fills the base's stockpile through a request board that sends each job to whoever is best placed for it. `/companion colony` shows the base and the board, and `/companion why Bob` shows what Bob is doing and why.
 
+Right-click a companion to open its inventory and take or give items.
+
 A companion only listens when you say its name or "everyone". Only its owner can give it orders, but anyone can ask it questions ("Bob, where are you?", "what's in the chests?").
 
 ## Commands
