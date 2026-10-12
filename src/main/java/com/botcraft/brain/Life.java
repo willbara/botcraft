@@ -321,7 +321,7 @@ public class Life {
 			}
 		}
 		// 5. Whatever suits where we are (like a player would): wood in a forest, ore in a cave.
-		boolean underground = !p.getWorld().isSkyVisible(p.getBlockPos().up());
+		boolean underground = !com.botcraft.nav.Terrain.openSky(p.getWorld(), p.getBlockPos().up());
 		boolean caveNear = underground || !c.memory().sightings("cave", p.getBlockPos(), c.dimension(), 40).isEmpty();
 		int coal = Inventories.count(inv, s -> s.isOf(Items.COAL) || s.isOf(Items.CHARCOAL));
 		int iron = rawIron + Inventories.count(inv, s -> s.isOf(Items.IRON_INGOT));
@@ -462,7 +462,7 @@ public class Life {
 		var p = c.player();
 		return c.brain().job() instanceof com.botcraft.brain.task.MineTask && colony != null
 			&& colony.near(p.getServerWorld(), p.getBlockPos(), com.botcraft.colony.Colony.BASE_RADIUS)
-			&& p.getServerWorld().isSkyVisible(p.getBlockPos().up());
+			&& com.botcraft.nav.Terrain.openSky(p.getServerWorld(), p.getBlockPos().up());
 	}
 
 	/** Put things in the base chests: when we're there with plenty to store, or when we're nearly full. */

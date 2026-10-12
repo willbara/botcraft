@@ -117,14 +117,16 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
 ### Moving around
 
 - **Pathfinding (Baritone-style).** A* is weighted in game-tick costs and spread over ticks within a time budget, which grows when the server has time to spare. The moves are:
-  - walk, diagonal step, jump up one block, drop down;
+  - walk, diagonal step (also past one blocked corner, sliding round it, as in Baritone), jump up one block, drop down;
   - dig through and dig down (natural terrain only);
   - pillar up and bridge gaps with throwaway blocks;
   - climb ladders and vines;
-  - parkour across 1–2 block gaps, but never over a drop deeper than 10 blocks (a missed jump there could kill), so cliff edges and ravines are walked round;
+  - parkour across 1–2 block gaps, but never over a drop deeper than 10 blocks (a missed jump there could kill), so cliff edges and ravines are walked round, and never from or onto leaves;
   - swim;
   - open doors and fence gates.
-- **Smooth walking.** On open ground it walks straight at the furthest reachable step instead of zig-zagging from node to node.
+- **Smooth walking.** On open ground it walks straight at the furthest reachable step instead of zig-zagging from node to node. Flat, clear ground is costed at sprint speed when the companion will sprint it. It keeps walking up to a block it is breaking on a level step (a leaf at head height) instead of standing still for each one.
+- **Forests.** Standing on leaves costs extra, so paths keep to the forest floor and break leaves at head height rather than climb onto the canopy and cross the treetops. Under trees counts as outdoors, not underground (the leaves are ignored), so a forest doesn't trigger escape mode, digging straight up or torch placing.
+- **Following a moving goal.** When the goal moves (an owner walking on), the companion keeps its current path if that still ends in the new goal, or for a partial path, still gets it at least 2 blocks closer. Otherwise it re-plans, and the new search costs the old path's remaining cells at half, so it keeps to the same way round obstacles instead of switching sides each time (Baritone does both).
 - **Avoiding hazards.**
   - **Lava** and fire are strongly avoided. A companion that ends up in lava anyway wades straight to the nearest dry footing within 10 blocks (path finding can't help there, since every block around counts as deadly).
   - **Water:** swimming costs extra, being fully underwater costs much more, and currents (rivers, waterfalls) cost more still. Paths go around water whenever a dry route exists.
@@ -136,7 +138,8 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
   - **No normal path:** escape mode digs through natural terrain and pillars. It may also jump down more than 3 blocks, like a player stuck on a pillar would, as long as the fall leaves it at least 3 hearts.
   - **Underground with the goal above:** it digs straight up like a player, breaking the block overhead, jumping and placing a block underneath. It stops before fluids, sand and gravel, and anything that isn't natural terrain.
   - **Short or failed searches:** a path that ends just short of the goal re-plans, and a search that fails almost at once is retried after a moment.
-  - **Long searches:** after about a second, a search hands over the best partial path if it gets at least 8 blocks closer. The companion walks it and plans the next stretch on the way, so it is usually ready on arrival.
+  - **Standing on an edge:** when the middle of the companion is over a drop, the search starts from the block it is actually standing on.
+  - **Long searches:** after about a second, a search hands over the best partial path if it gets at least 8 blocks closer. As in Baritone, the partial path ends at the best node by distance left plus cost so far (cost divided by 1.5, 2, … 10, the first that ends more than 5 blocks from the start), not just the node nearest the goal, which could be a costly dead end. The companion walks it and plans the next stretch on the way, so it is usually ready on arrival.
   - **The world changing ahead:** four times a second it re-checks the next five steps. If a block appeared, the floor was dug out or lava flowed in, it re-plans at once.
   - **Slow steps:** a step that takes more than twice what the planner expected, plus 5 seconds, counts as stuck.
   - **Bridges:** after two bridge blocks it couldn't place, it looks for a way round without bridging. Bridges are only planned off blocks with solid faces (not leaves).

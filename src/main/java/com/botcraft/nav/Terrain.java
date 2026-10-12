@@ -9,6 +9,7 @@ import net.minecraft.block.Blocks;
 import net.minecraft.block.DoorBlock;
 import net.minecraft.block.FallingBlock;
 import net.minecraft.block.FenceGateBlock;
+import net.minecraft.block.LeavesBlock;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.item.ItemStack;
@@ -43,6 +44,8 @@ public class Terrain {
 	public static final byte DANGER = 5;   // fire, berry bush, cobweb, powder snow, ...
 	public static final byte UNLOADED = 6;
 	public static final byte CLIMBABLE = 7; // ladders, vines, scaffolding
+	/** Stored next to the kind in the section cache: the block is leaves (kind SOLID). */
+	private static final byte LEAF_FLAG = 0x40;
 
 	/** Extra cost per broken block on top of mining time (Baritone: breakBlockAdditionalCost). */
 	public static final double BREAK_EXTRA = 2.0;
@@ -130,6 +133,18 @@ public class Terrain {
 		return c;
 	}
 
+	/**
+	 * Out under the sky, not counting leaves: the forest floor is outdoors, not underground.
+	 * (isSkyVisible is false under a tree, which used to send companions into escape mode and
+	 * up into the canopy.)
+	 */
+	public static boolean openSky(net.minecraft.world.WorldView world, BlockPos pos) {
+		if (!com.botcraft.util.Experiments.on("leafSky")) {
+			return world.isSkyVisible(pos);
+		}
+		return pos.getY() >= world.getTopY(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, pos.getX(), pos.getZ());
+	}
+
 	public boolean isLoaded(BlockPos pos) {
 		return chunk(pos) != null;
 	}
@@ -140,6 +155,15 @@ public class Terrain {
 	}
 
 	public byte kind(BlockPos pos) {
+		return (byte) (raw(pos) & ~LEAF_FLAG);
+	}
+
+	/** Leaves: solid to walk on, but nothing a player would make a road of. */
+	public boolean isLeaves(BlockPos pos) {
+		return (raw(pos) & LEAF_FLAG) != 0;
+	}
+
+	private byte raw(BlockPos pos) {
 		int x = pos.getX();
 		int y = pos.getY();
 		int z = pos.getZ();
@@ -192,7 +216,7 @@ public class Terrain {
 		}
 		VoxelShape shape = state.getCollisionShape(world, pos);
 		if (!shape.isEmpty()) {
-			return SOLID;
+			return b instanceof LeavesBlock ? (byte) (SOLID | LEAF_FLAG) : SOLID;
 		}
 		if (fluid.isIn(FluidTags.WATER)) {
 			return WATER;

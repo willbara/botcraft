@@ -167,12 +167,22 @@ public class Navigator {
 			: new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
 	}
 
-	/** Start (or keep) navigating to the goal. Re-issuing an equal goal keeps the current path. */
+	/**
+	 * Start (or keep) navigating to the goal. Re-issuing an equal goal keeps the current path, and
+	 * so does a new goal the path still serves (see {@link #keepPath}).
+	 */
 	public void moveTo(Goal newGoal, boolean sprint) {
 		this.sprint = sprint;
 		if (newGoal.equals(goal) && (isBusy() || state == State.ARRIVED)) {
 			return;
 		}
+		if (keepPath(newGoal)) {
+			goal = newGoal;
+			ahead = null; // it was planning toward the old goal
+			com.botcraft.ops.SoakStats.navEvent("kept path on goal change");
+			return;
+		}
+		favored = state == State.MOVING && path != null && Experiments.on("favorPrevious") ? cells(path, index) : null;
 		this.goal = newGoal;
 		this.stuckCount = 0;
 		this.endReplans = 0;
@@ -184,6 +194,36 @@ public class Navigator {
 		this.changedReplans = 0;
 		this.bridgeFails = 0;
 		plan();
+	}
+
+	/** The rest of the path we were walking, favored by the next search (cleared once it starts). */
+	@Nullable
+	private LongOpenHashSet favored;
+
+	/**
+	 * Like Baritone's goal revalidation: when the goal moves (the owner walked on), carry on with
+	 * the path we have if it still ends in the new goal, or, for a partial path, still takes us a
+	 * good way closer. Replanning every few blocks stops us each time and can pick a different
+	 * way round each time.
+	 */
+	private boolean keepPath(Goal newGoal) {
+		CompanionPlayer p = companion.player();
+		if (!Experiments.on("keepPath") || state != State.MOVING || path == null || index >= path.size() || p == null) {
+			return false;
+		}
+		BlockPos end = path.get(path.size() - 1).pos();
+		if (!partial) {
+			return newGoal.isGoal(end);
+		}
+		return newGoal.heuristic(end) < newGoal.heuristic(feet(p)) - 2;
+	}
+
+	private static LongOpenHashSet cells(List<PathStep> steps, int from) {
+		LongOpenHashSet out = new LongOpenHashSet();
+		for (int i = Math.max(0, from); i < steps.size(); i++) {
+			out.add(steps.get(i).pos().asLong());
+		}
+		return out;
 	}
 
 	/** Allow digging through natural terrain (set by mining jobs, cleared by them on stop). */
@@ -226,6 +266,15 @@ public class Navigator {
 		if (digMode && !escape) {
 			terrain.spareBase();
 		}
+		// On the very edge of a block, the middle of us is over the drop: start from the block we're
+		// actually standing on. (From the cell over the drop, stepping back looked like a jump, and
+		// with leaves overhead a companion once found no path at all for 13 minutes.)
+		if (!terrain.standable(start) && p.isOnGround() && Experiments.on("edgeStart")) {
+			BlockPos on = p.getSteppingPos().up();
+			if (terrain.standable(on)) {
+				start = on;
+			}
+		}
 		// If we're standing somewhere odd (half in a block, mid-air) start from the nearest standable spot.
 		if (!terrain.standable(start) && terrain.standable(start.up())) {
 			start = start.up();
@@ -244,10 +293,19 @@ public class Navigator {
 		boolean place = (allowPlace || escape) && blocks > 0;
 		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, maxFall(p));
 		finder = new PathFinder(terrain, start, goal, opts, avoid).startAir(p.getAir(), p.isSubmergedInWater()).busy(busyCells(start))
-			.fallBudget(fallBudget(p), p.getHealth());
+			.fallBudget(fallBudget(p), p.getHealth()).sprint(canSprint(p));
+		if (favored != null) {
+			finder.favor(favored);
+			favored = null;
+		}
 		searchStartedAt = companion.now();
 		path = null;
 		state = State.SEARCHING;
+	}
+
+	/** We'll sprint this path (see tickFollow), so the planner may cost flat ground at sprint speed. */
+	private boolean canSprint(CompanionPlayer p) {
+		return sprint && p.getHungerManager().getFoodLevel() > 6;
 	}
 
 	/**
@@ -290,7 +348,7 @@ public class Navigator {
 	private boolean boxedIn(CompanionPlayer p) {
 		ServerWorld w = p.getServerWorld();
 		BlockPos f = feet(p);
-		return !w.isSkyVisible(f.up()) || !w.isSkyVisible(f.up(3));
+		return !Terrain.openSky(w, f.up()) || !Terrain.openSky(w, f.up(3));
 	}
 
 	private void tickSearch(CompanionPlayer p) {
@@ -394,7 +452,7 @@ public class Navigator {
 		for (int i = 1; i <= 32; i++) {
 			BlockPos feetAt = start.up(i);
 			BlockPos head = feetAt.up();
-			if (world.isSkyVisible(feetAt) || goal.isGoal(feetAt)) {
+			if (Terrain.openSky(world, feetAt) || goal.isGoal(feetAt)) {
 				break;
 			}
 			java.util.List<BlockPos> breaks = new java.util.ArrayList<>(1);
@@ -630,7 +688,8 @@ public class Navigator {
 		}
 		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, maxFall(p));
 		aheadFrom = last.pos();
-		ahead = new PathFinder(terrain, aheadFrom, goal, opts, avoid).busy(busyCells(aheadFrom)).fallBudget(fallBudget(p), p.getHealth());
+		ahead = new PathFinder(terrain, aheadFrom, goal, opts, avoid).busy(busyCells(aheadFrom)).fallBudget(fallBudget(p), p.getHealth())
+			.sprint(canSprint(p));
 	}
 
 	/**
@@ -660,7 +719,7 @@ public class Navigator {
 			if (!t.passable(at) || !t.passable(at.up())) {
 				return "blocked at " + at.toShortString();
 			}
-			if (!t.standable(at) && s.type() != MoveType.PARKOUR && s.type() != MoveType.FALL) {
+			if (!t.standable(at) && s.type() != MoveType.PARKOUR && s.type() != MoveType.FALL && s.type() != MoveType.CLIMB) {
 				return "floor gone at " + at.toShortString();
 			}
 		}
@@ -805,6 +864,9 @@ public class Navigator {
 			}
 			ActionController.MineResult r = actions.mineBlock(pos);
 			miningForPath = r == ActionController.MineResult.IN_PROGRESS;
+			if (miningForPath) {
+				walkWhileBreaking(p, step);
+			}
 			if (r == ActionController.MineResult.DONE && ++breaksThisStep > 12) {
 				avoid.add(step.pos().asLong());
 				stuck(p, "blocks keep falling in at " + pos.toShortString()); // e.g. a gravel column
@@ -818,6 +880,30 @@ public class Navigator {
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Baritone's walkWhileBreaking: on a level step, keep walking up to the block while mining it
+	 * (a leaf at head height takes a few ticks) instead of standing still for each one. Not into
+	 * anything that hurts, and not under sand or gravel that will drop when it's mined.
+	 */
+	private void walkWhileBreaking(CompanionPlayer p, PathStep step) {
+		if (!Experiments.on("walkWhileBreaking") || step.type() != MoveType.WALK || step.place() != null) {
+			return;
+		}
+		Vec3d c = Vec3d.ofBottomCenter(step.pos());
+		if (Math.max(Math.abs(p.getX() - c.x), Math.abs(p.getZ() - c.z)) < 0.83) {
+			return; // already up against it
+		}
+		Terrain t = new Terrain(p.getServerWorld());
+		BlockPos at = step.pos();
+		for (BlockPos b : new BlockPos[]{at, at.up()}) {
+			byte k = t.kind(b);
+			if (k == Terrain.DANGER || k == Terrain.LAVA || t.isFalling(b.up())) {
+				return;
+			}
+		}
+		actions.moveTo(c);
 	}
 
 	/** Bridge: creep to the edge sneaking, look down, place the block under the next step. */

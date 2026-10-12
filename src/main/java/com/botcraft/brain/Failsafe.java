@@ -76,7 +76,7 @@ public final class Failsafe {
 		// Entombed in rock with no pickaxe: punching out a block every 7 s, which keeps the other
 		// checks happy (it moves, it breaks things) while it gets nowhere.
 		boolean handDigging = c.nav().escaping() && Inventories.bestPickaxe(p.getInventory()) == null
-			&& !p.getWorld().isSkyVisible(p.getBlockPos().up());
+			&& !com.botcraft.nav.Terrain.openSky(p.getWorld(), p.getBlockPos().up());
 		if (!handDigging) {
 			handDigSince = -1;
 		} else if (handDigSince < 0) {

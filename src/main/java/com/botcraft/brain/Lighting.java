@@ -36,7 +36,7 @@ public final class Lighting {
 		}
 		ServerWorld world = p.getServerWorld();
 		BlockPos feet = p.getBlockPos();
-		if (world.isSkyVisible(feet.up()) || Inventories.count(p.getInventory(), s -> s.isOf(Items.TORCH)) == 0) {
+		if (com.botcraft.nav.Terrain.openSky(world, feet.up()) || Inventories.count(p.getInventory(), s -> s.isOf(Items.TORCH)) == 0) {
 			return; // only underground, and only if we have torches
 		}
 		if (c.actions().isMining() || !c.perception().threats().isEmpty() || !p.isOnGround()) {

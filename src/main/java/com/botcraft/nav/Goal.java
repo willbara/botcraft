@@ -48,7 +48,7 @@ public interface Goal {
 	record OpenSky(net.minecraft.world.WorldView world) implements Goal {
 		@Override
 		public boolean isGoal(BlockPos feet) {
-			return world.isSkyVisible(feet.up());
+			return Terrain.openSky(world, feet.up());
 		}
 
 		@Override

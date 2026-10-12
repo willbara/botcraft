@@ -47,6 +47,21 @@ public class PathFinder {
 	public static final double DOOR_COST = 8.0;
 	/** Heuristic ticks per block: slightly above sprint cost, i.e. a little greedy. */
 	private static final double H_PER_BLOCK = com.botcraft.util.Experiments.num("hPerBlock", 4.0);
+	/**
+	 * Extra cost of standing on leaves. Without it a forest canopy is cheaper than the forest
+	 * floor (no leaves at head height to break), and companions walked over the treetops.
+	 */
+	public static final double LEAF_FLOOR = com.botcraft.util.Experiments.num("leafFloorCost", 10.0);
+	/** Cost factor for cells on the path we were walking before the goal moved (Baritone: backtrackCostFavoringCoefficient). */
+	public static final double FAVOR = com.botcraft.util.Experiments.num("favorPrevious", 0.5);
+	private static final double SQRT2 = Math.sqrt(2);
+	/**
+	 * Baritone's partial-path pick: the best node by h + g / k for each k, taking the first (most
+	 * cost-aware) one that gets more than {@link #MIN_PARTIAL} blocks from the start. Picking by h
+	 * alone took cheap-looking dead ends, like a spot up on a canopy that is near the goal.
+	 */
+	private static final double[] COEFFICIENTS = {1.5, 2, 2.5, 3, 4, 5, 10};
+	private static final double MIN_PARTIAL = 5;
 
 	private static final double[] FALL_TICKS = new double[64];
 
@@ -117,6 +132,14 @@ public class PathFinder {
 	/** Fall damage of the move being added (set around the add() call of a big drop). */
 	private int damageNext;
 	private Node best;
+	/** Where the partial path we handed over ends. */
+	@Nullable
+	private Node chosen;
+	private final Node[] bestByCoefficient = new Node[COEFFICIENTS.length];
+	private final double[] bestScore = new double[COEFFICIENTS.length];
+	private final boolean coefPartial = com.botcraft.util.Experiments.on("coefPartial");
+	private final boolean leafFloor = com.botcraft.util.Experiments.on("leafFloor");
+	private final boolean edging = com.botcraft.util.Experiments.on("diagonalEdging");
 	private int expanded;
 	private Status status = Status.SEARCHING;
 	@Nullable
@@ -133,6 +156,8 @@ public class PathFinder {
 		nodes.put(this.start.asLong(), startNode);
 		open.add(startNode);
 		best = startNode;
+		java.util.Arrays.fill(bestByCoefficient, startNode);
+		java.util.Arrays.fill(bestScore, startNode.h);
 	}
 
 	/**
@@ -169,6 +194,25 @@ public class PathFinder {
 	private int fallBudget;
 	/** Health we have now: a parkour jump whose miss would fall further than this allows isn't taken. */
 	private float health = 20;
+
+	/** Flat, clear walking is costed at sprint speed (we'll sprint it), like Baritone's canSprint. */
+	private boolean sprint;
+
+	public PathFinder sprint(boolean sprint) {
+		this.sprint = sprint && com.botcraft.util.Experiments.on("sprintCost");
+		return this;
+	}
+
+	private it.unimi.dsi.fastutil.longs.LongSet favored = it.unimi.dsi.fastutil.longs.LongSets.EMPTY_SET;
+
+	/**
+	 * Cells of the path we were on before the goal moved: cheaper, so the new path keeps to the old
+	 * route where it can instead of flipping to the other side of a tree each time.
+	 */
+	public PathFinder favor(it.unimi.dsi.fastutil.longs.LongSet cells) {
+		this.favored = cells;
+		return this;
+	}
 
 	public PathFinder fallBudget(int hp, float health) {
 		this.fallBudget = Math.max(0, hp);
@@ -233,10 +277,12 @@ public class PathFinder {
 		return status;
 	}
 
-	/** Out of nodes: fall back to the path toward the node closest to the goal. */
+	/** Out of nodes: fall back to the path toward the best node so far (see {@link #partialEnd}). */
 	private void finish() {
-		if (best != startNode && best.h < startNode.h - H_PER_BLOCK) {
-			result = build(best);
+		Node end = partialEnd(GOOD_PROGRESS);
+		if (end != startNode && end.h < startNode.h - H_PER_BLOCK) {
+			chosen = end;
+			result = build(end);
 			status = Status.PARTIAL;
 		} else {
 			status = Status.FAILED;
@@ -244,22 +290,50 @@ public class PathFinder {
 	}
 
 	/**
-	 * Stop searching and take the path to the best node so far, if it gets at least
+	 * Stop searching and take a partial path, if the best node so far gets at least
 	 * {@code minProgress} blocks closer (Baritone's primary timeout).
 	 * @return true if the search is now PARTIAL
 	 */
 	public boolean settle(double minProgress) {
-		if (status != Status.SEARCHING || progress() < minProgress) {
+		if (status != Status.SEARCHING || progressOf(best) < minProgress) {
 			return false;
 		}
-		result = build(best);
+		chosen = partialEnd(minProgress);
+		result = build(chosen);
 		status = Status.PARTIAL;
 		return true;
 	}
 
-	/** How much closer the best node got to the goal (blocks), for deciding whether to escape. */
+	/**
+	 * How much closer the partial path gets to the goal (blocks), for deciding whether to escape;
+	 * while still searching, how close the best node so far gets.
+	 */
 	public double progress() {
-		return (startNode.h - best.h) / H_PER_BLOCK;
+		return progressOf(chosen != null ? chosen : best);
+	}
+
+	private double progressOf(Node n) {
+		return (startNode.h - n.h) / H_PER_BLOCK;
+	}
+
+	/** Progress below which Navigator calls a partial path poor (and tries escape mode). */
+	private static final double GOOD_PROGRESS = 3;
+
+	/**
+	 * Where a partial path ends: Baritone's coefficient pick (the most cost-aware node more than
+	 * 5 blocks out) among nodes that still get {@code minProgress} blocks closer, else the node
+	 * nearest the goal. Whether to settle at all is judged by the nearest node, as before, so
+	 * searches aren't left running to the node limit when the cost-aware node is a bit short.
+	 */
+	private Node partialEnd(double minProgress) {
+		if (coefPartial) {
+			for (Node n : bestByCoefficient) {
+				if (n.pos.getSquaredDistance(start) > MIN_PARTIAL * MIN_PARTIAL && progressOf(n) >= minProgress) {
+					return n;
+				}
+			}
+		}
+		return best;
 	}
 
 	private List<PathStep> build(Node end) {
@@ -359,7 +433,8 @@ public class PathFinder {
 			type = MoveType.JUMP;
 			cost += JUMP;
 		}
-		cost += (water || inWater ? WATER_COST : WALK) + door + terrain.hazard(t);
+		double move = water || inWater ? WATER_COST : sprint && type == MoveType.WALK && breaks.isEmpty() && door == 0 ? SPRINT : WALK;
+		cost += move + door + terrain.hazard(t);
 		add(cur, t, cost, type, place, breaks);
 	}
 
@@ -368,15 +443,40 @@ public class PathFinder {
 		if (!usable(t) || !terrain.standable(t) || terrain.isDoor(t) || terrain.isDoor(t.up()) || terrain.isClimbable(t)) {
 			return;
 		}
-		if (!terrain.clearBody(p.add(dx, 0, 0)) || !terrain.clearBody(p.add(0, 0, dz))) {
-			return; // would clip a corner
+		BlockPos a = p.add(dx, 0, 0);
+		BlockPos b = p.add(0, 0, dz);
+		if (terrain.isLava(a.down()) || terrain.isLava(b.down())) {
+			return; // cutting across a lava corner
+		}
+		boolean aClear = sideClear(a);
+		boolean bClear = sideClear(b);
+		boolean water = terrain.isWater(t) || terrain.isWater(p);
+		if (!aClear || !bClear) {
+			// Like Baritone: one side clear is enough, we slide round the corner of the other. Not
+			// past anything that hurts to brush against, and not in water or off a ladder.
+			BlockPos blocked = aClear ? b : a;
+			if (!edging || (!aClear && !bClear) || water || terrain.isClimbable(p) || deadly(blocked) || deadly(blocked.up())) {
+				return;
+			}
 		}
 		double rise = terrain.floorY(t) - terrain.floorY(p);
 		if (rise > 0.6 || rise < -0.6) {
 			return;
 		}
-		double base = terrain.isWater(t) ? WATER_COST : WALK;
-		add(cur, t, base * Math.sqrt(2) + terrain.hazard(t), terrain.isWater(t) ? MoveType.SWIM : MoveType.WALK, null, List.of());
+		double base;
+		if (terrain.isWater(t)) {
+			base = WATER_COST * SQRT2;
+		} else if (!aClear || !bClear) {
+			base = WALK * (SQRT2 - 0.001) * SQRT2; // edging round: about as slow as two straight steps
+		} else {
+			base = (sprint && !water ? SPRINT : WALK) * SQRT2;
+		}
+		add(cur, t, base + terrain.hazard(t), terrain.isWater(t) ? MoveType.SWIM : MoveType.WALK, null, List.of());
+	}
+
+	/** A diagonal's side cell the body can pass through without opening or bumping anything. */
+	private boolean sideClear(BlockPos s) {
+		return terrain.clearBody(s) && !terrain.isDoor(s) && !terrain.isDoor(s.up());
 	}
 
 	private void ascend(Node cur, BlockPos p, Direction d) {
@@ -442,6 +542,9 @@ public class PathFinder {
 		if (!options.allowParkour() || inWater || !(terrain.support(p.down()) || solidBelow(cur)) || !terrain.passable(p.up(2))) {
 			return;
 		}
+		if (leafFloor && terrain.isLeaves(p.down())) {
+			return; // no jumping from treetop to treetop
+		}
 		BlockPos first = p.offset(d);
 		if (!usable(first) || terrain.support(first.down()) || !terrain.clearBody(first) || terrain.isWater(first.down())) {
 			return; // not a gap
@@ -460,6 +563,9 @@ public class PathFinder {
 			}
 			if (terrain.standable(land) && !terrain.isWater(land) && Math.abs(terrain.floorY(land) - terrain.floorY(p)) < 0.1
 				&& terrain.passable(land.up(2))) {
+				if (leafFloor && terrain.isLeaves(land.down())) {
+					return;
+				}
 				add(cur, land, SPRINT * dist + JUMP + JUMP_PENALTY + terrain.hazard(land), MoveType.PARKOUR, null, List.of());
 				return;
 			}
@@ -575,6 +681,12 @@ public class PathFinder {
 		if (under > 0) {
 			cost += 0.5 * under;
 		}
+		if (leafFloor && terrain.isLeaves(pos.down()) && !pos.down().equals(place) && !terrain.isWater(pos) && !terrain.isClimbable(pos)) {
+			cost += LEAF_FLOOR;
+		}
+		if (!favored.isEmpty() && favored.contains(key)) {
+			cost *= FAVOR;
+		}
 		if (!busy.isEmpty() && busy.contains(key)) {
 			cost += BUSY_COST;
 		}
@@ -597,5 +709,14 @@ public class PathFinder {
 		n.under = under;
 		n.damage = from.damage + damageNext;
 		open.add(n); // duplicates are skipped later via the closed flag
+		if (coefPartial) {
+			for (int i = 0; i < COEFFICIENTS.length; i++) {
+				double score = n.h + n.g / COEFFICIENTS[i];
+				if (score < bestScore[i] - 0.01) {
+					bestScore[i] = score;
+					bestByCoefficient[i] = n;
+				}
+			}
+		}
 	}
 }
