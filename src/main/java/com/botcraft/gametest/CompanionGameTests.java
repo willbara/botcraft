@@ -250,6 +250,59 @@ public class CompanionGameTests implements FabricGameTest {
 		ctx.complete();
 	}
 
+	/** Right-click inventory of a companion: chest layout, live contents, take and give, armour slots only take armour. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 100, batchId = "inventory_view")
+	public void inventoryViewTakesAndGives(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtLooker", "GtLooked");
+		flatArena(ctx, 6);
+		ctx.assertTrue(m.spawn("GtLooker", "steve", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(1.5, 1, 1.5)), 0.0F) == null, "viewer spawn");
+		ctx.assertTrue(m.spawn("GtLooked", "alex", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 1.5)), 0.0F) == null, "target spawn");
+		Companion looker = m.byName("GtLooker");
+		Companion looked = m.byName("GtLooked");
+		com.botcraft.chat.CommandTasks.stay(looker);
+		com.botcraft.chat.CommandTasks.stay(looked);
+		var inv = looked.player().getInventory();
+		var mine = looker.player().getInventory();
+		inv.clear();
+		mine.clear();
+		inv.setStack(0, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_SWORD));
+		inv.setStack(9, new net.minecraft.item.ItemStack(net.minecraft.item.Items.COBBLESTONE, 12));
+		inv.setStack(39, new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_HELMET));
+		mine.setStack(0, new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_BOOTS));
+		// Companions don't open each other's inventories through right-clicks.
+		ctx.assertTrue(com.botcraft.entity.InventoryView.onUseEntity(looker.player(), ctx.getWorld(), net.minecraft.util.Hand.MAIN_HAND, looked.player(), null)
+			== net.minecraft.util.ActionResult.PASS, "a companion opened another's inventory");
+		com.botcraft.entity.InventoryView.open(looker.player(), looked.player());
+		ctx.assertTrue(looker.player().currentScreenHandler instanceof com.botcraft.entity.InventoryView.Handler, "no inventory screen open");
+		var h = looker.player().currentScreenHandler;
+		var pickup = net.minecraft.screen.slot.SlotActionType.PICKUP;
+		var shift = net.minecraft.screen.slot.SlotActionType.QUICK_MOVE;
+		ctx.assertTrue(h.getSlot(0).getStack().isOf(net.minecraft.item.Items.COBBLESTONE), "main inventory not in row 1");
+		ctx.assertTrue(h.getSlot(27).getStack().isOf(net.minecraft.item.Items.DIAMOND_SWORD), "hotbar not in row 4");
+		ctx.assertTrue(h.getSlot(36).getStack().isOf(net.minecraft.item.Items.IRON_HELMET), "helmet not in row 5");
+		// Take: shift-click the cobblestone over to the viewer.
+		h.onSlotClick(0, 0, shift, looker.player());
+		ctx.assertTrue(inv.getStack(9).isEmpty() && mine.count(net.minecraft.item.Items.COBBLESTONE) == 12, "shift-click didn't take the cobblestone");
+		// Give: shift-click boots from the viewer's hotbar (slot 45 + 27) onto the companion's feet.
+		h.onSlotClick(45 + 27, 0, shift, looker.player());
+		ctx.assertTrue(inv.getStack(36).isOf(net.minecraft.item.Items.DIAMOND_BOOTS), "boots not worn: " + inv.getStack(36));
+		// Move: pick the sword up and put it down in the main inventory.
+		h.onSlotClick(27, 0, pickup, looker.player());
+		h.onSlotClick(5, 0, pickup, looker.player());
+		ctx.assertTrue(inv.getStack(0).isEmpty() && inv.getStack(14).isOf(net.minecraft.item.Items.DIAMOND_SWORD), "sword not moved");
+		// Armour slots take only armour that fits; filler slots take nothing.
+		var dirt = new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIRT);
+		ctx.assertTrue(!h.getSlot(37).canInsert(dirt) && h.getSlot(37).canInsert(new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_CHESTPLATE))
+			&& !h.getSlot(37).canInsert(new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_BOOTS)), "chest slot takes the wrong things");
+		ctx.assertTrue(h.getSlot(40).canInsert(dirt) && !h.getSlot(41).canInsert(dirt), "off hand or filler slot wrong");
+		inv.setStack(1, new net.minecraft.item.ItemStack(net.minecraft.item.Items.BREAD, 3));
+		ctx.assertTrue(h.getSlot(28).getStack().isOf(net.minecraft.item.Items.BREAD), "view doesn't follow the inventory");
+		looker.player().closeHandledScreen();
+		cleanup(m, "GtLooker", "GtLooked");
+		ctx.complete();
+	}
+
 	/** Milestone 2 (end to end): a companion follows its owner over the step and through a closed door. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "nav_follow")
 	public void followThroughDoor(TestContext ctx) {
