@@ -151,6 +151,105 @@ public class CompanionGameTests implements FabricGameTest {
 		ctx.complete();
 	}
 
+	/**
+	 * A forest with leaves at head height whose canopy steps up like an oak's: the path stays on
+	 * the forest floor (breaking leaves), not up over the treetops.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "nav_forest")
+	public void forestFloorNotCanopy(TestContext ctx) {
+		for (int x = -1; x <= 22; x++) {
+			for (int z = -1; z <= 5; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.STONE);
+				boolean wall = x == -1 || x == 22 || z == -1 || z == 5;
+				for (int y = 1; y <= 7; y++) {
+					ctx.setBlockState(x, y, z, wall ? Blocks.STONE : Blocks.AIR);
+				}
+			}
+		}
+		for (int z = 0; z <= 4; z++) {
+			ctx.setBlockState(3, 1, z, Blocks.OAK_LEAVES); // a low bush: the step up onto the canopy
+		}
+		for (int x = 4; x <= 17; x++) {
+			for (int z = 0; z <= 4; z++) {
+				ctx.setBlockState(x, 2, z, Blocks.OAK_LEAVES);
+				if (x >= 6 && x <= 15) {
+					ctx.setBlockState(x, 3, z, Blocks.OAK_LEAVES);
+				}
+				if (x >= 8 && x <= 13) {
+					ctx.setBlockState(x, 4, z, Blocks.OAK_LEAVES);
+				}
+			}
+		}
+		for (int x : new int[]{6, 10, 14}) {
+			for (int y = 1; y <= 4; y++) {
+				ctx.setBlockState(x, y, 2, Blocks.OAK_LOG);
+			}
+		}
+		Terrain terrain = new Terrain(ctx.getWorld());
+		BlockPos start = ctx.getAbsolutePos(new BlockPos(1, 1, 2));
+		BlockPos end = ctx.getAbsolutePos(new BlockPos(20, 1, 2));
+		PathFinder pf = new PathFinder(terrain, start, Goal.near(end, 0.5), new PathFinder.Options(true, false, true, 0, 20000, 64, 3),
+			new LongOpenHashSet());
+		TickBudget.begin(1000);
+		ctx.assertTrue(pf.step(100000) == PathFinder.Status.FOUND, "no path through the forest");
+		ctx.assertTrue(pf.result().stream().allMatch(st -> st.pos().getY() == start.getY()), "went up into the trees: " + pf.result().stream()
+			.map(st -> st.pos().toShortString()).toList());
+		ctx.complete();
+	}
+
+	/** Diagonal past one blocked corner (Baritone's edging): one step, not two. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "nav_edging")
+	public void diagonalEdgesRoundACorner(TestContext ctx) {
+		flatArena(ctx, 6);
+		ctx.setBlockState(2, 1, 2, Blocks.STONE);
+		ctx.setBlockState(2, 2, 2, Blocks.STONE);
+		Terrain terrain = new Terrain(ctx.getWorld());
+		BlockPos start = ctx.getAbsolutePos(new BlockPos(2, 1, 1));
+		BlockPos end = ctx.getAbsolutePos(new BlockPos(3, 1, 2));
+		PathFinder pf = new PathFinder(terrain, start, Goal.near(end, 0.5), PathFinder.Options.basic(5000, 64), new LongOpenHashSet());
+		TickBudget.begin(1000);
+		ctx.assertTrue(pf.step(100000) == PathFinder.Status.FOUND, "no path");
+		ctx.assertTrue(pf.result().size() == 1, "expected one diagonal step, got " + pf.result().stream().map(st -> st.pos().toShortString()).toList());
+		ctx.complete();
+	}
+
+	/** Replanning after the goal moved keeps to the side of an obstacle the old path went round. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "nav_favor")
+	public void replanKeepsToThePreviousRoute(TestContext ctx) {
+		flatArena(ctx, 11);
+		for (int z = 3; z <= 7; z++) {
+			ctx.setBlockState(5, 1, z, Blocks.STONE);
+			ctx.setBlockState(5, 2, z, Blocks.STONE);
+		}
+		LongOpenHashSet favored = new LongOpenHashSet();
+		for (int x = 0; x <= 10; x++) {
+			for (int z = 6; z <= 10; z++) {
+				favored.add(ctx.getAbsolutePos(new BlockPos(x, 1, z)).asLong());
+			}
+		}
+		Terrain terrain = new Terrain(ctx.getWorld());
+		BlockPos start = ctx.getAbsolutePos(new BlockPos(2, 1, 5));
+		BlockPos end = ctx.getAbsolutePos(new BlockPos(8, 1, 5));
+		PathFinder pf = new PathFinder(terrain, start, Goal.near(end, 0.5), PathFinder.Options.basic(5000, 64), new LongOpenHashSet()).favor(favored);
+		TickBudget.begin(1000);
+		ctx.assertTrue(pf.step(100000) == PathFinder.Status.FOUND, "no path");
+		int minZ = ctx.getAbsolutePos(new BlockPos(0, 1, 5)).getZ();
+		ctx.assertTrue(pf.result().stream().allMatch(st -> st.pos().getZ() >= minZ), "went round the other side: " + pf.result().stream()
+			.map(st -> st.pos().toShortString()).toList());
+		ctx.complete();
+	}
+
+	/** Under leaves is outdoors (no escape mode, no torches), under stone is not. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "nav_leafsky")
+	public void underLeavesIsOutdoors(TestContext ctx) {
+		flatArena(ctx, 6);
+		ctx.setBlockState(1, 4, 1, Blocks.OAK_LEAVES);
+		ctx.setBlockState(4, 4, 4, Blocks.STONE);
+		ctx.assertTrue(Terrain.openSky(ctx.getWorld(), ctx.getAbsolutePos(new BlockPos(1, 2, 1))), "under leaves counted as underground");
+		ctx.assertTrue(!Terrain.openSky(ctx.getWorld(), ctx.getAbsolutePos(new BlockPos(4, 2, 4))), "under stone counted as open sky");
+		ctx.complete();
+	}
+
 	/** Milestone 2 (end to end): a companion follows its owner over the step and through a closed door. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 600, batchId = "nav_follow")
 	public void followThroughDoor(TestContext ctx) {

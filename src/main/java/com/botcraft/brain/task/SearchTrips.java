@@ -122,7 +122,7 @@ final class SearchTrips {
 			ticks++;
 			Navigator.State s = c.nav().state();
 			if (s == Navigator.State.ARRIVED || s == Navigator.State.FAILED || ticks > 20 * 90
-				|| c.player().getServerWorld().isSkyVisible(c.player().getBlockPos().up())) {
+				|| com.botcraft.nav.Terrain.openSky(c.player().getServerWorld(), c.player().getBlockPos().up())) {
 				surfacing = false;
 				c.nav().stop();
 				return false;
@@ -173,7 +173,7 @@ final class SearchTrips {
 		}
 		for (int dx = -4; dx <= 4; dx += 2) {
 			for (int dz = -4; dz <= 4; dz += 2) {
-				if (world.isSkyVisible(here.add(dx, 1, dz))) {
+				if (com.botcraft.nav.Terrain.openSky(world, here.add(dx, 1, dz))) {
 					return false;
 				}
 			}
