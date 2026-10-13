@@ -188,7 +188,7 @@ public class CompanionGameTests implements FabricGameTest {
 		Terrain terrain = new Terrain(ctx.getWorld());
 		BlockPos start = ctx.getAbsolutePos(new BlockPos(1, 1, 2));
 		BlockPos end = ctx.getAbsolutePos(new BlockPos(20, 1, 2));
-		PathFinder pf = new PathFinder(terrain, start, Goal.near(end, 0.5), new PathFinder.Options(true, false, true, 0, 20000, 64, 3),
+		PathFinder pf = new PathFinder(terrain, start, Goal.near(end, 0.5), new PathFinder.Options(true, false, true, 0, 20000, 20000, 64, 3),
 			new LongOpenHashSet());
 		TickBudget.begin(1000);
 		ctx.assertTrue(pf.step(100000) == PathFinder.Status.FOUND, "no path through the forest");
@@ -2101,7 +2101,7 @@ public class CompanionGameTests implements FabricGameTest {
 		}
 		BlockPos start = ctx.getAbsolutePos(new BlockPos(3, 1, 2));
 		BlockPos end = ctx.getAbsolutePos(new BlockPos(9, 1, 2));
-		PathFinder.Options opts = new PathFinder.Options(false, true, false, 16, 20000, 64, 3);
+		PathFinder.Options opts = new PathFinder.Options(false, true, false, 16, 20000, 20000, 64, 3);
 		PathFinder away = new PathFinder(new Terrain(ctx.getWorld()), start, Goal.near(end, 0.5), opts, new LongOpenHashSet());
 		TickBudget.begin(1000);
 		ctx.assertTrue(away.step(100000) == PathFinder.Status.FOUND, "no path away from home");
@@ -2910,6 +2910,222 @@ public class CompanionGameTests implements FabricGameTest {
 			drowned.discard();
 			cleanup(m, "GtShore");
 			ctx.complete();
+		});
+	}
+
+	// ---- pathfinding symptoms (2026-10-13 rework) -------------------------------------------------
+
+	/** Blocks a companion broke while standing more than one cell away from them (see {@link #digsOnlyAlongItsPath}). */
+	static final java.util.Map<String, java.util.List<String>> FAR_BREAKS = new java.util.concurrent.ConcurrentHashMap<>();
+	static final java.util.Map<String, java.util.List<BlockPos>> BREAKS = new java.util.concurrent.ConcurrentHashMap<>();
+	private static boolean watching;
+
+	/** Record what the named companion breaks, and from where. */
+	static synchronized void watchBreaks(String name) {
+		FAR_BREAKS.put(name, new java.util.ArrayList<>());
+		BREAKS.put(name, new java.util.ArrayList<>());
+		if (watching) {
+			return;
+		}
+		watching = true;
+		net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, blockEntity) -> {
+			java.util.List<String> far = FAR_BREAKS.get(player.getGameProfile().getName());
+			if (far == null) {
+				return;
+			}
+			BREAKS.get(player.getGameProfile().getName()).add(pos.toImmutable());
+			BlockPos feet = com.botcraft.nav.Navigator.feet((CompanionPlayer) player);
+			int dx = Math.abs(pos.getX() - feet.getX());
+			int dz = Math.abs(pos.getZ() - feet.getZ());
+			int dy = pos.getY() - feet.getY();
+			if (dx > 1 || dz > 1 || dy < -1 || dy > 2) {
+				far.add(state.getBlock().getName().getString() + " at " + pos.toShortString() + " from " + feet.toShortString());
+			}
+		});
+	}
+
+	/** Stone all through x,z 0..size-1, y 0..height, air above. */
+	static void stoneBlock(TestContext ctx, int size, int height) {
+		for (int x = -1; x <= size; x++) {
+			for (int z = -1; z <= size; z++) {
+				for (int y = 0; y <= height; y++) {
+					ctx.setBlockState(x, y, z, Blocks.STONE);
+				}
+				for (int y = height + 1; y <= height + 3; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Symptom: a companion hops on the spot and never finishes a move under a tree, in a tunnel or
+	 * while mining. Here it follows its owner through a slalom of trunks under a low canopy: it
+	 * must arrive, and it must not jump at all (there is nothing to jump onto; every hop under the
+	 * canopy is a wasted tick, and the old follower hopped whenever it brushed a trunk).
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "nav_no_hop")
+	public void noHoppingUnderTheCanopy(TestContext ctx) {
+		flatArena(ctx, 16);
+		BlockState leaves = Blocks.OAK_LEAVES.getDefaultState().with(net.minecraft.block.LeavesBlock.PERSISTENT, true);
+		for (int x = 0; x <= 15; x++) {
+			for (int z = 0; z <= 15; z++) {
+				ctx.setBlockState(x, 3, z, leaves);
+			}
+		}
+		// Trunks staggered so the way through weaves diagonally past their corners.
+		int[][] trunks = {{4, 4}, {4, 5}, {7, 7}, {7, 8}, {10, 10}, {10, 11}, {6, 3}, {9, 6}, {12, 9}, {5, 8}, {8, 11}};
+		for (int[] t : trunks) {
+			ctx.setBlockState(t[0], 1, t[1], Blocks.OAK_LOG);
+			ctx.setBlockState(t[0], 2, t[1], Blocks.OAK_LOG);
+		}
+		Companion[] c = ownerAndFollower(ctx, "GtTree", "GtWalker", new Vec3d(13.5, 1, 13.5), new Vec3d(2.5, 1, 2.5));
+		ctx.addInstantFinalTask(() -> {
+			double d = c[1].player().distanceTo(c[0].player());
+			int jumps = c[1].actions().jumps;
+			ctx.assertTrue(d < 4.5, "follower " + String.format("%.1f", d) + " from owner after " + jumps + " jumps; " + c[1].describeActivity());
+			ctx.assertTrue(jumps == 0, "hopped " + jumps + " times under the canopy");
+			cleanup(manager(ctx), "GtTree", "GtWalker");
+		});
+	}
+
+	/**
+	 * Symptom: on the way to an ore a companion breaks blocks around it that aren't on its way
+	 * (it mined whatever its line of sight to the ore hit). Coal sits in solid stone above head
+	 * height, 5 blocks off: every block broken must be next to the cell the companion stands in,
+	 * the way a path's own digging is.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "nav_dig_path")
+	public void digsOnlyAlongItsPath(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtTidyDigger");
+		stoneBlock(ctx, 14, 7);
+		for (int x = 1; x <= 3; x++) {
+			for (int z = 3; z <= 5; z++) {
+				ctx.setBlockState(x, 1, z, Blocks.AIR);
+				ctx.setBlockState(x, 2, z, Blocks.AIR);
+			}
+		}
+		for (int z = 3; z <= 5; z++) {
+			ctx.setBlockState(8, 3, z, Blocks.COAL_ORE);
+		}
+		watchBreaks("GtTidyDigger");
+		ctx.assertTrue(m.spawn("GtTidyDigger", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 4.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtTidyDigger");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.data.owner = null;
+		c.data.mode = "follow";
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		c.jobs().replace(java.util.List.of("mine coal 1"));
+		ctx.addInstantFinalTask(() -> {
+			java.util.List<String> far = FAR_BREAKS.get("GtTidyDigger");
+			int coal = count(c, net.minecraft.item.Items.COAL);
+			ctx.assertTrue(coal >= 1 || !far.isEmpty(), "no coal; " + c.describeActivity() + "; broke " + BREAKS.get("GtTidyDigger").size());
+			ctx.assertTrue(far.isEmpty(), "broke blocks away from its path: " + far);
+			cleanup(m, "GtTidyDigger");
+		});
+	}
+
+	/**
+	 * Symptom: it walks past a vein next to it to reach one further away. Coal 4 blocks away
+	 * behind one block of stone, and coal 20 blocks away in an open pocket: the first coal it
+	 * breaks must be the near one.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1600, batchId = "nav_near_vein")
+	public void minesTheNearerVein(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtNearMiner");
+		stoneBlock(ctx, 26, 6);
+		// A 2-high corridor from the companion's room to a pocket at the far end.
+		for (int x = 1; x <= 24; x++) {
+			for (int z = 3; z <= (x <= 3 || x >= 21 ? 5 : 4); z++) {
+				ctx.setBlockState(x, 1, z, Blocks.AIR);
+				ctx.setBlockState(x, 2, z, Blocks.AIR);
+			}
+		}
+		BlockPos near = new BlockPos(2, 1, 7); // behind one block of stone (z = 6; z = 5 is the room)
+		ctx.setBlockState(near, Blocks.COAL_ORE);
+		ctx.setBlockState(near.up(), Blocks.COAL_ORE);
+		BlockPos far = new BlockPos(25, 1, 4); // exposed, in the pocket's end wall
+		ctx.setBlockState(far, Blocks.COAL_ORE);
+		ctx.setBlockState(far.up(), Blocks.COAL_ORE);
+		watchBreaks("GtNearMiner");
+		ctx.assertTrue(m.spawn("GtNearMiner", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtNearMiner");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.data.owner = null;
+		c.data.mode = "follow";
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.STONE_PICKAXE, 1);
+		c.jobs().replace(java.util.List.of("mine coal 1"));
+		BlockPos nearAbs = ctx.getAbsolutePos(near);
+		BlockPos farAbs = ctx.getAbsolutePos(far);
+		ctx.addInstantFinalTask(() -> {
+			java.util.List<BlockPos> broke = BREAKS.get("GtNearMiner");
+			BlockPos firstCoal = broke.stream().filter(b -> b.equals(nearAbs) || b.equals(nearAbs.up()) || b.equals(farAbs) || b.equals(farAbs.up()))
+				.findFirst().orElse(null);
+			ctx.assertTrue(firstCoal != null, "mined no coal; at " + c.player().getBlockPos().toShortString() + "; " + c.describeActivity());
+			ctx.assertTrue(firstCoal.equals(nearAbs) || firstCoal.equals(nearAbs.up()), "went for the far vein first (" + firstCoal.toShortString() + ")");
+			cleanup(m, "GtNearMiner");
+		});
+	}
+
+	/**
+	 * Symptom: search time is inconsistent, some searches run long and others give up early. A
+	 * search must be decided by what it explores, not by how many ticks the server gave it: the
+	 * same search at 600 and at 25 node expansions per tick must end the same way, with the same
+	 * node count and the same path.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1200, batchId = "nav_slicing")
+	public void searchResultDoesNotDependOnTickSlicing(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtSlicer");
+		flatArena(ctx, 36);
+		for (int x = 0; x <= 30; x++) {
+			ctx.setBlockState(x, 1, 18, Blocks.STONE_BRICKS); // a wall across, with the gap at the far end
+			ctx.setBlockState(x, 2, 18, Blocks.STONE_BRICKS);
+		}
+		ctx.assertTrue(m.spawn("GtSlicer", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 2.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtSlicer");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		var cfg = com.botcraft.config.CompanionConfig.get();
+		int before = cfg.pathNodesPerTick;
+		Goal goal = Goal.near(ctx.getAbsolutePos(new BlockPos(2, 1, 34)), 1.0);
+		Vec3d startAt = ctx.getAbsolute(new Vec3d(2.5, 1, 2.5));
+		com.botcraft.nav.Navigator.Plan[] plans = new com.botcraft.nav.Navigator.Plan[2];
+		int[] stage = {0};
+		cfg.pathNodesPerTick = 600;
+		ctx.addInstantFinalTask(() -> {
+			com.botcraft.nav.Navigator.Plan plan = c.nav().lastPlan();
+			if (stage[0] == 0) {
+				if (!c.nav().isBusy() && plan == null) {
+					c.nav().moveTo(goal, false);
+				}
+				ctx.assertTrue(plan != null, "waiting for the search at 600 nodes a tick (" + c.nav().state() + ")");
+				plans[0] = plan;
+				c.nav().stop();
+				c.player().teleport(startAt.x, startAt.y, startAt.z);
+				cfg.pathNodesPerTick = 25;
+				stage[0] = 1;
+			}
+			if (stage[0] == 1) {
+				if (!c.nav().isBusy() && plan == plans[0]) {
+					c.nav().moveTo(goal, false);
+				}
+				ctx.assertTrue(plan != null && plan != plans[0], "waiting for the search at 25 nodes a tick (" + c.nav().state() + ")");
+				plans[1] = plan;
+				cfg.pathNodesPerTick = before;
+				stage[0] = 2;
+			}
+			ctx.assertTrue(plans[0].outcome().equals("found"), "fast search: " + plans[0]);
+			// Same outcome and path length. The node counts may differ a little (seen: 1539 against
+			// 1576): other tests' companions nearby publish busy cells (see Blackboard) that come and go.
+			ctx.assertTrue(plans[0].outcome().equals(plans[1].outcome()) && plans[0].steps() == plans[1].steps()
+				&& Math.abs(plans[0].nodes() - plans[1].nodes()) <= plans[0].nodes() / 10,
+				"the same search ended differently: " + plans[0] + " at 600 nodes a tick, " + plans[1] + " at 25");
+			cleanup(m, "GtSlicer");
 		});
 	}
 }

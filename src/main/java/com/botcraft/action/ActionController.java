@@ -125,8 +125,14 @@ public class ActionController {
 		this.sneak = sneak;
 	}
 
+	/** Jumps asked for so far (the nav bench and tests count them: hopping in place is a known failure). */
+	public int jumps;
+
 	/** Jump once (when on ground). */
 	public void jump() {
+		if (!jumpOnce) {
+			jumps++;
+		}
 		this.jumpOnce = true;
 	}
 
@@ -188,6 +194,8 @@ public class ActionController {
 		diveOk = false;
 	}
 
+	private static final boolean LOOK_EASING = com.botcraft.util.Experiments.on("lookEasing");
+
 	private void applyLook(CompanionPlayer p) {
 		Vec3d target = null;
 		if (lookEntity != null && lookEntity.isAlive()) {
@@ -217,8 +225,10 @@ public class ActionController {
 		double h = Math.sqrt(dx * dx + dz * dz);
 		float wantYaw = (float) (MathHelper.atan2(dz, dx) * (180.0 / Math.PI)) - 90.0F + jitterYaw;
 		float wantPitch = MathHelper.clamp((float) (-(MathHelper.atan2(dy, h) * (180.0 / Math.PI))) + jitterPitch, -90.0F, 90.0F);
-		float yaw = p.getYaw() + ease(MathHelper.wrapDegrees(wantYaw - p.getYaw()));
-		float pitch = p.getPitch() + ease(wantPitch - p.getPitch());
+		// Turning the head eases in over a few ticks, like a player (off: snap like Baritone's look).
+		boolean easing = LOOK_EASING;
+		float yaw = easing ? p.getYaw() + ease(MathHelper.wrapDegrees(wantYaw - p.getYaw())) : wantYaw;
+		float pitch = easing ? p.getPitch() + ease(wantPitch - p.getPitch()) : wantPitch;
 		p.setYaw(yaw);
 		p.setHeadYaw(yaw);
 		p.setPitch(MathHelper.clamp(pitch, -90.0F, 90.0F));

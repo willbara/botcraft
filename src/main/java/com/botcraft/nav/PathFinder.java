@@ -13,91 +13,120 @@ import java.util.List;
 import java.util.PriorityQueue;
 
 /**
- * Time-sliced A* over feet positions with a Baritone-style movement set and costs in game
- * ticks. Call {@link #step(int)} once per tick until it stops returning SEARCHING. Never loads
- * chunks (see {@link Terrain}).
+ * Time-sliced A* over feet positions with Baritone's movement set and costs (in game ticks).
+ * Call {@link #step(int)} once per tick until it stops returning SEARCHING. Never loads chunks
+ * (see {@link Terrain}).
  *
- * <p>Movements from each node:
+ * <p>Movements from each node, each costed as in Baritone's {@code pathing.movement}:
  * <ul>
- *   <li>traverse (4 dirs), optionally mining what's in the way or placing a block to bridge;</li>
- *   <li>diagonal (4 dirs), only through open space;</li>
- *   <li>ascend one block (4 dirs), mining head room / the target if allowed;</li>
- *   <li>descend / fall (4 dirs) up to the safe fall height, deeper only into water;</li>
+ *   <li>traverse (4 dirs): walk or swim, mining the two cells in the way, or bridging onto a
+ *       block we place (against a side, or sneaking and placing behind us);</li>
+ *   <li>diagonal (4 dirs): through open space, or edging round one blocked corner;</li>
+ *   <li>ascend (4 dirs): jump up one, mining the head room and the cell above the step, or
+ *       placing the step if there is none;</li>
+ *   <li>descend / fall (4 dirs): step down one, mining the three cells of the step (that is how a
+ *       staircase is dug), or walk off a drop up to the safe fall height, further into water;</li>
  *   <li>downward: mine the block underneath and drop into it;</li>
- *   <li>pillar: jump and place a block underneath (needs throwaway blocks);</li>
- *   <li>ladder/vine climbing up and down; swimming;</li>
- *   <li>parkour: sprint-jump a 1-2 block gap on the same level.</li>
+ *   <li>pillar: jump and place a block underneath; ladder and vine climbing; swimming up and down;</li>
+ *   <li>parkour: jump a gap of 1 or 2 blocks, landing level.</li>
  * </ul>
  * Breaking is gated by {@link BreakPolicy} (via Terrain), placing by a budget of blocks we carry.
+ *
+ * <p>When the search runs out: Baritone's two limits. Once some node is more than
+ * {@link #MIN_PARTIAL} blocks from the start the search may stop at the primary node limit and
+ * hand over a partial path to the best node by {@code h + g / k} (the most cost-aware coefficient
+ * that gets that far). Until then it runs to the failure limit, and fails if still nothing got
+ * that far.
  */
 public class PathFinder {
 	public enum Status { SEARCHING, FOUND, PARTIAL, FAILED }
 
 	// Costs in ticks (Baritone ActionCosts).
-	public static final double WALK = 4.633;
-	public static final double SPRINT = 3.564;
-	public static final double WATER_COST = 9.091;
-	public static final double JUMP = 6.0;
-	public static final double JUMP_PENALTY = 2.0;
-	public static final double LADDER_UP = 8.511;
-	public static final double LADDER_DOWN = 6.667;
+	public static final double WALK = 20 / 4.317;
+	public static final double SPRINT = 20 / 5.612;
+	public static final double WATER_COST = 20 / 2.2;
+	public static final double SWIM = 20 / 2.86;
+	public static final double SNEAK = 20 / 1.3;
+	public static final double LADDER_UP = 20 / 2.35;
+	public static final double LADDER_DOWN = 20 / 3.0;
 	public static final double PLACE = 20.0;
-	public static final double WALK_OFF = 3.706;
-	public static final double CENTER = 0.927;
+	public static final double JUMP_PENALTY = 2.0;
+	public static final double WALK_OFF = WALK * 0.8;
+	public static final double CENTER = WALK - WALK_OFF;
 	public static final double DOOR_COST = 8.0;
-	/** Heuristic ticks per block: slightly above sprint cost, i.e. a little greedy. */
-	private static final double H_PER_BLOCK = com.botcraft.util.Experiments.num("hPerBlock", 4.0);
+	public static final double SQRT2 = Math.sqrt(2);
+	/** Heuristic ticks per block: the sprint cost (Baritone's costHeuristic). */
+	public static final double H_PER_BLOCK = 3.563;
 	/**
 	 * Extra cost of standing on leaves. Without it a forest canopy is cheaper than the forest
 	 * floor (no leaves at head height to break), and companions walked over the treetops.
 	 */
-	public static final double LEAF_FLOOR = com.botcraft.util.Experiments.num("leafFloorCost", 10.0);
+	public static final double LEAF_FLOOR = 10.0;
 	/** Cost factor for cells on the path we were walking before the goal moved (Baritone: backtrackCostFavoringCoefficient). */
-	public static final double FAVOR = com.botcraft.util.Experiments.num("favorPrevious", 0.5);
-	private static final double SQRT2 = Math.sqrt(2);
-	/**
-	 * Baritone's partial-path pick: the best node by h + g / k for each k, taking the first (most
-	 * cost-aware) one that gets more than {@link #MIN_PARTIAL} blocks from the start. Picking by h
-	 * alone took cheap-looking dead ends, like a spot up on a canopy that is near the goal.
-	 */
-	private static final double[] COEFFICIENTS = {1.5, 2, 2.5, 3, 4, 5, 10};
-	private static final double MIN_PARTIAL = 5;
+	public static final double FAVOR = 0.5;
+	/** Extra cost of a cell another companion stands in or is about to step into. */
+	public static final double BUSY_COST = 12.0;
 	/**
 	 * Extra cost of putting a block down at home (a bridge or pillar block left behind is litter
 	 * someone has to clear up): walk round unless that's much longer.
 	 */
-	public static final double LITTER_COST = com.botcraft.util.Experiments.num("litterCost", 100.0);
+	public static final double LITTER_COST = 100.0;
+	/** Baritone's partial-path coefficients: the best node by h + g / k, most cost-aware first. */
+	private static final double[] COEFFICIENTS = {1.5, 2, 2.5, 3, 4, 5, 10};
+	/** A partial path that doesn't get this far from the start isn't worth taking (Baritone's MIN_DIST_PATH). */
+	private static final double MIN_PARTIAL = 5;
+	/** Cost improvements below this aren't worth re-propagating (Baritone's MIN_IMPROVEMENT). */
+	private static final double MIN_IMPROVEMENT = 0.01;
 
 	private static final double[] FALL_TICKS = new double[64];
+	/** Ticks a jump takes to rise one block (Baritone: the 1.25 block leap less the 0.25 back down). */
+	public static final double JUMP_ONE_BLOCK;
 
 	static {
-		// Ticks to fall n blocks from rest: vanilla gravity 0.08/tick, drag 0.98.
-		double y = 0;
-		double v = 0;
-		int n = 1;
-		for (int tick = 1; n < FALL_TICKS.length && tick < 400; tick++) {
-			v = (v - 0.08) * 0.98;
-			y += v;
-			while (n < FALL_TICKS.length && -y >= n) {
-				FALL_TICKS[n++] = tick;
-			}
+		for (int i = 0; i < FALL_TICKS.length; i++) {
+			FALL_TICKS[i] = distanceToTicks(i);
 		}
+		JUMP_ONE_BLOCK = distanceToTicks(1.25) - distanceToTicks(0.25);
+	}
+
+	/** Baritone's ActionCosts.distanceToTicks: ticks to fall this far from rest. */
+	private static double distanceToTicks(double distance) {
+		if (distance == 0) {
+			return 0;
+		}
+		double left = distance;
+		int tick = 0;
+		while (true) {
+			double v = (Math.pow(0.98, tick) - 1) * -3.92;
+			if (left <= v) {
+				return tick + left / v;
+			}
+			left -= v;
+			tick++;
+		}
+	}
+
+	public static double fallTicks(int blocks) {
+		return FALL_TICKS[Math.min(Math.max(blocks, 0), FALL_TICKS.length - 1)];
 	}
 
 	private static final Direction[] CARDINALS = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST};
 	private static final int[][] DIAGONALS = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
-	private static final int MAX_WATER_FALL = 20;
+	private static final int MAX_WATER_FALL = 24;
 
 	/**
 	 * @param allowBreak   mine blocks in the way (still subject to BreakPolicy)
-	 * @param allowPlace   place throwaway blocks (bridges, pillars)
+	 * @param allowPlace   place throwaway blocks (bridges, pillars, missing steps)
 	 * @param allowParkour jump gaps
 	 * @param placeBudget  how many blocks we carry to place
+	 * @param primaryNodes stop here once a partial path worth taking exists (Baritone's primary timeout)
+	 * @param maxNodes     never expand more than this (Baritone's failure timeout)
 	 * @param maxFall      highest safe fall (3 = no damage)
 	 */
-	public record Options(boolean allowBreak, boolean allowPlace, boolean allowParkour, int placeBudget, int maxNodes, int maxRange, int maxFall) {
+	public record Options(boolean allowBreak, boolean allowPlace, boolean allowParkour, int placeBudget, int primaryNodes, int maxNodes, int maxRange,
+						  int maxFall) {
 		public static Options basic(int maxNodes, int maxRange) {
-			return new Options(false, false, true, 0, maxNodes, maxRange, 3);
+			return new Options(false, false, true, 0, maxNodes, maxNodes, maxRange, 3);
 		}
 	}
 
@@ -114,7 +143,7 @@ public class PathFinder {
 		int placed;
 		/** Steps in a row with the head under water (0 = can breathe here). */
 		int under;
-		/** Fall damage taken on the way here (big drops in escape mode), in health points. */
+		/** Fall damage taken on the way here (big drops when escaping), in health points. */
 		int damage;
 		boolean closed;
 
@@ -136,14 +165,16 @@ public class PathFinder {
 	private final Node startNode;
 	/** Fall damage of the move being added (set around the add() call of a big drop). */
 	private int damageNext;
-	private Node best;
 	/** Where the partial path we handed over ends. */
 	@Nullable
 	private Node chosen;
 	private final Node[] bestByCoefficient = new Node[COEFFICIENTS.length];
 	private final double[] bestScore = new double[COEFFICIENTS.length];
-	private final boolean coefPartial = com.botcraft.util.Experiments.on("coefPartial");
+	/** No node worth a partial path yet (nothing more than MIN_PARTIAL from the start). */
+	private boolean failing = true;
 	private final boolean leafFloor = com.botcraft.util.Experiments.on("leafFloor");
+	/** Limit and cost runs of steps with the head under water (off: Baritone has no breath rule). */
+	private static final boolean BREATH = com.botcraft.util.Experiments.on("breathLimit");
 	private final boolean edging = com.botcraft.util.Experiments.on("diagonalEdging");
 	private int expanded;
 	private Status status = Status.SEARCHING;
@@ -160,7 +191,6 @@ public class PathFinder {
 		startNode.type = MoveType.START;
 		nodes.put(this.start.asLong(), startNode);
 		open.add(startNode);
-		best = startNode;
 		java.util.Arrays.fill(bestByCoefficient, startNode);
 		java.util.Arrays.fill(bestScore, startNode.h);
 	}
@@ -182,8 +212,6 @@ public class PathFinder {
 		return this;
 	}
 
-	/** Extra cost of a cell another companion stands in or is about to step into. */
-	public static final double BUSY_COST = 12.0;
 	private it.unimi.dsi.fastutil.longs.LongSet busy = it.unimi.dsi.fastutil.longs.LongSets.EMPTY_SET;
 
 	/** Cells others are in or about to walk through (see Blackboard): passable, but better avoided. */
@@ -197,14 +225,12 @@ public class PathFinder {
 	 * blocks spends from it, so two big drops in a row can't add up to a deadly one.
 	 */
 	private int fallBudget;
-	/** Health we have now: a parkour jump whose miss would fall further than this allows isn't taken. */
-	private float health = 20;
 
 	/** Flat, clear walking is costed at sprint speed (we'll sprint it), like Baritone's canSprint. */
 	private boolean sprint;
 
 	public PathFinder sprint(boolean sprint) {
-		this.sprint = sprint && com.botcraft.util.Experiments.on("sprintCost");
+		this.sprint = sprint;
 		return this;
 	}
 
@@ -219,22 +245,22 @@ public class PathFinder {
 		return this;
 	}
 
-	public PathFinder fallBudget(int hp, float health) {
+	public PathFinder fallBudget(int hp) {
 		this.fallBudget = Math.max(0, hp);
-		this.health = health;
 		return this;
 	}
 
-	public static double fallTicks(int blocks) {
-		return FALL_TICKS[Math.min(Math.max(blocks, 1), FALL_TICKS.length - 1)];
-	}
-
 	private double h(BlockPos pos) {
-		return goal.heuristic(pos) * H_PER_BLOCK;
+		return goal.heuristic(pos);
 	}
 
 	public Status status() {
 		return status;
+	}
+
+	/** Where the search started (the cell the path's first step leaves from). */
+	public BlockPos start() {
+		return start;
 	}
 
 	public int expanded() {
@@ -269,23 +295,19 @@ public class PathFinder {
 				status = Status.FOUND;
 				break;
 			}
-			if (cur.h < best.h || (cur.h == best.h && cur.g < best.g)) {
-				best = cur;
-			}
-			if (expanded >= options.maxNodes()) {
+			if (expanded >= options.maxNodes() || (!failing && expanded >= options.primaryNodes()) || borderFetches >= MAX_BORDER_FETCH) {
 				finish();
 				break;
 			}
-
 			expand(cur);
 		}
 		return status;
 	}
 
-	/** Out of nodes: fall back to the path toward the best node so far (see {@link #partialEnd}). */
+	/** Out of nodes: the partial path to the best node so far, if one got far enough from the start. */
 	private void finish() {
-		Node end = partialEnd(GOOD_PROGRESS);
-		if (end != startNode && end.h < startNode.h - H_PER_BLOCK) {
+		Node end = partialEnd();
+		if (end != null) {
 			chosen = end;
 			result = build(end);
 			status = Status.PARTIAL;
@@ -294,59 +316,29 @@ public class PathFinder {
 		}
 	}
 
-	/**
-	 * Stop searching and take a partial path, if the best node so far gets at least
-	 * {@code minProgress} blocks closer (Baritone's primary timeout).
-	 * @return true if the search is now PARTIAL
-	 */
-	public boolean settle(double minProgress) {
-		if (status != Status.SEARCHING || progressOf(best) < minProgress) {
-			return false;
-		}
-		chosen = partialEnd(minProgress);
-		result = build(chosen);
-		status = Status.PARTIAL;
-		return true;
-	}
-
-	/**
-	 * How much closer the partial path gets to the goal (blocks), for deciding whether to escape;
-	 * while still searching, how close the best node so far gets.
-	 */
-	public double progress() {
-		return progressOf(chosen != null ? chosen : best);
-	}
-
-	private double progressOf(Node n) {
-		return (startNode.h - n.h) / H_PER_BLOCK;
-	}
-
-	/** Progress below which Navigator calls a partial path poor (and tries escape mode). */
-	private static final double GOOD_PROGRESS = 3;
-
-	/**
-	 * Where a partial path ends: Baritone's coefficient pick (the most cost-aware node more than
-	 * 5 blocks out) among nodes that still get {@code minProgress} blocks closer, else the node
-	 * nearest the goal. Whether to settle at all is judged by the nearest node, as before, so
-	 * searches aren't left running to the node limit when the cost-aware node is a bit short.
-	 */
-	private Node partialEnd(double minProgress) {
-		if (coefPartial) {
-			for (Node n : bestByCoefficient) {
-				if (n.pos.getSquaredDistance(start) > MIN_PARTIAL * MIN_PARTIAL && progressOf(n) >= minProgress) {
-					return n;
-				}
+	/** Baritone's bestSoFar: the first coefficient whose best node is more than MIN_PARTIAL blocks out. */
+	@Nullable
+	private Node partialEnd() {
+		for (Node n : bestByCoefficient) {
+			if (n.pos.getSquaredDistance(start) > MIN_PARTIAL * MIN_PARTIAL) {
+				return n;
 			}
 		}
-		return best;
+		return null;
+	}
+
+	/** How much closer (in heuristic ticks) the path handed over gets to the goal. */
+	public double progress() {
+		Node n = chosen != null ? chosen : startNode;
+		return startNode.h - n.h;
 	}
 
 	private List<PathStep> build(Node end) {
 		List<PathStep> steps = new ArrayList<>();
 		for (Node n = end; n != null && n != startNode; n = n.parent) {
 			double floor = n.place != null || !n.breaks.isEmpty() || n.type == MoveType.PILLAR ? n.pos.getY() : terrain.floorY(n.pos);
-			if (terrain.isClimbable(n.pos) || terrain.isWater(n.pos)) {
-				floor = n.pos.getY();
+			if (n.type == MoveType.CLIMB || terrain.isClimbable(n.pos) || terrain.isWater(n.pos)) {
+				floor = n.pos.getY(); // (the cell above a ladder's top rung stands on nothing solid)
 			}
 			steps.add(new PathStep(n.pos, n.type, floor, n.place, n.breaks, n.parent == null ? 0 : n.g - n.parent.g));
 		}
@@ -361,8 +353,8 @@ public class PathFinder {
 		boolean inWater = terrain.isWater(p);
 		for (Direction d : CARDINALS) {
 			traverse(cur, p, d, inWater);
-			ascend(cur, p, d);
-			descend(cur, p, d);
+			ascend(cur, p, d, inWater);
+			descend(cur, p, d, inWater);
 			parkour(cur, p, d, inWater);
 		}
 		for (int[] d : DIAGONALS) {
@@ -379,22 +371,46 @@ public class PathFinder {
 	}
 
 	private boolean usable(BlockPos t) {
-		return inRange(t) && terrain.kind(t) != Terrain.UNLOADED;
+		if (!inRange(t)) {
+			return false;
+		}
+		if (terrain.kind(t) == Terrain.UNLOADED) {
+			borderFetches++;
+			return false;
+		}
+		return true;
 	}
 
+	/**
+	 * Moves that ran into unloaded chunks. After {@link #MAX_BORDER_FETCH} the search has reached
+	 * the edge of the known world and stops with what it has (Baritone's pathingMaxChunkBorderFetch);
+	 * the rest is planned on the way, as more chunks load.
+	 */
+	private int borderFetches;
+	private static final int MAX_BORDER_FETCH = 50;
+
+	/** Something that hurts to walk into (Baritone's avoidWalkingInto, less water). */
 	private boolean deadly(BlockPos t) {
 		byte k = terrain.kind(t);
 		return k == Terrain.LAVA || k == Terrain.DANGER;
 	}
 
-	/** Cost of clearing the given cells; +inf if not allowed. Adds what must be mined to breaks. */
-	private double clearCost(List<BlockPos> breaks, BlockPos... cells) {
+	/** Baritone's fullyPassable: air we can jump through, not a door, ladder, vine or fluid. */
+	private boolean fullyPassable(BlockPos t) {
+		return terrain.kind(t) == Terrain.AIR && terrain.passable(t);
+	}
+
+	/**
+	 * Cost of clearing the given cells; +inf if not allowed. Adds what must be mined to breaks
+	 * (made on first use, so clear moves allocate nothing).
+	 */
+	private double clearCost(List<BlockPos>[] breaks, BlockPos... cells) {
 		double c = 0;
 		for (BlockPos b : cells) {
 			if (terrain.passable(b)) {
 				continue;
 			}
-			if (!options.allowBreak() || deadly(b) || terrain.isDoor(b)) {
+			if (!options.allowBreak() || deadly(b)) {
 				return Double.POSITIVE_INFINITY;
 			}
 			double bc = terrain.breakCost(b);
@@ -402,9 +418,38 @@ public class PathFinder {
 				return bc;
 			}
 			c += bc;
-			breaks.add(b.toImmutable());
+			if (breaks[0] == null) {
+				breaks[0] = new ArrayList<>(3);
+			}
+			breaks[0].add(b.toImmutable());
 		}
 		return c;
+	}
+
+	private static List<BlockPos> list(List<BlockPos>[] breaks) {
+		return breaks[0] == null ? List.of() : breaks[0];
+	}
+
+	/** Is there a solid face next to {@code at} to place a block against, other than from the {@code from} column? */
+	private boolean placeableBeside(BlockPos at, @Nullable BlockPos from) {
+		if (terrain.placeableAgainst(at.down())) {
+			return true;
+		}
+		for (Direction d : CARDINALS) {
+			BlockPos s = at.offset(d);
+			if ((from == null || s.getX() != from.getX() || s.getZ() != from.getZ()) && terrain.placeableAgainst(s)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private double placeCost(BlockPos at) {
+		return PLACE + (terrain.inHome(at) ? LITTER_COST : 0);
+	}
+
+	private boolean canPlace(Node cur, BlockPos at) {
+		return options.allowPlace() && cur.placed < options.placeBudget() && terrain.replaceable(at);
 	}
 
 	private void traverse(Node cur, BlockPos p, Direction d, boolean inWater) {
@@ -412,41 +457,50 @@ public class PathFinder {
 		if (!usable(t) || deadly(t) || deadly(t.up())) {
 			return;
 		}
-		List<BlockPos> breaks = new ArrayList<>(2);
-		double cost = clearCost(breaks, t.up(), t);
-		if (cost == Double.POSITIVE_INFINITY) {
+		BlockPos destOn = t.down();
+		boolean water = terrain.isWater(t);
+		boolean walkable = terrain.support(destOn) || terrain.isClimbable(t) || (water && terrain.standable(t));
+		@SuppressWarnings("unchecked")
+		List<BlockPos>[] breaks = new List[1];
+		double clear = clearCost(breaks, t.up(), t); // top first, as Baritone mines them
+		if (clear == Double.POSITIVE_INFINITY) {
 			return;
 		}
+		if (terrain.isClimbable(p)) {
+			clear *= 5; // mining from a ladder is slow
+		}
 		double door = terrain.isDoor(t) || terrain.isDoor(t.up()) ? DOOR_COST : 0;
-		boolean water = terrain.isWater(t);
-		BlockPos place = null;
-		if (!terrain.support(t.down()) && !water && !terrain.isClimbable(t)) {
-			// Nothing to stand on: bridge it if we can, otherwise this is a descend.
-			if (!options.allowPlace() || cur.placed >= options.placeBudget() || inWater || !terrain.replaceable(t.down())
-				|| !solidBelow(cur) || !breaks.isEmpty()) {
+		if (walkable) {
+			if (breaks[0] == null && cur.place == null && terrain.floorY(t) - terrain.floorY(p) > 0.6) {
+				return; // a step up: that's an ascend
+			}
+			double move = water || inWater ? WATER_COST : sprint && clear == 0 && door == 0 ? SPRINT : WALK;
+			add(cur, t, move + clear + door + terrain.hazard(t), water ? MoveType.SWIM : MoveType.WALK, null, list(breaks));
+			return;
+		}
+		// Nothing to stand on: bridge it, placing against a side if there is one, else sneaking out
+		// and placing behind us against the block we stand on.
+		if (inWater || water || terrain.isClimbable(p) || !canPlace(cur, destOn)) {
+			return;
+		}
+		double walk = WALK;
+		if (!placeableBeside(destOn, p)) {
+			if (!solidBelow(cur)) {
 				return;
 			}
-			place = t.down().toImmutable();
-			cost += PLACE + (terrain.inHome(place) ? LITTER_COST : 0);
+			walk = SNEAK;
 		}
-		double rise = place != null || !breaks.isEmpty() || cur.place != null ? 0 : terrain.floorY(t) - terrain.floorY(p);
-		MoveType type = place != null ? MoveType.BRIDGE : water ? MoveType.SWIM : MoveType.WALK;
-		if (rise > 0.6) {
-			if (rise > 1.25 || !terrain.passable(p.up(2))) {
-				return;
-			}
-			type = MoveType.JUMP;
-			cost += JUMP;
-		}
-		double move = water || inWater ? WATER_COST : sprint && type == MoveType.WALK && breaks.isEmpty() && door == 0 ? SPRINT : WALK;
-		cost += move + door + terrain.hazard(t);
-		add(cur, t, cost, type, place, breaks);
+		add(cur, t, walk + placeCost(destOn) + clear + door + terrain.hazard(t), MoveType.BRIDGE, destOn.toImmutable(), list(breaks));
 	}
 
 	private void diagonal(Node cur, BlockPos p, int dx, int dz) {
 		BlockPos t = p.add(dx, 0, dz);
-		if (!usable(t) || !terrain.standable(t) || terrain.isDoor(t) || terrain.isDoor(t.up()) || terrain.isClimbable(t)) {
+		if (!usable(t) || !terrain.clearBody(t) || terrain.isDoor(t) || terrain.isDoor(t.up()) || terrain.isClimbable(t) || deadly(t) || deadly(t.up())) {
 			return;
+		}
+		boolean water = terrain.isWater(t) || terrain.isWater(p);
+		if (!terrain.support(t.down()) && !(terrain.isWater(t) && terrain.standable(t))) {
+			return; // no diagonal descend or ascend (off in Baritone too)
 		}
 		BlockPos a = p.add(dx, 0, 0);
 		BlockPos b = p.add(0, 0, dz);
@@ -455,34 +509,32 @@ public class PathFinder {
 		}
 		boolean aClear = sideClear(a);
 		boolean bClear = sideClear(b);
-		boolean water = terrain.isWater(t) || terrain.isWater(p);
+		if (!aClear && !bClear) {
+			return;
+		}
+		double mult;
 		if (!aClear || !bClear) {
 			// Like Baritone: one side clear is enough, we slide round the corner of the other. Not
 			// past anything that hurts to brush against, and not in water or off a ladder.
 			BlockPos blocked = aClear ? b : a;
-			if (!edging || (!aClear && !bClear) || water || terrain.isClimbable(p) || deadly(blocked) || deadly(blocked.up())) {
+			BlockPos open = aClear ? a : b;
+			if (!edging || water || terrain.isClimbable(p) || deadly(blocked) || deadly(blocked.up()) || deadly(open) || deadly(open.up())) {
 				return;
 			}
 			// Sliding round the corner puts the whole body over the open side for a moment: it
 			// needs a floor there too, or we step off into whatever drop is beside the corner.
-			BlockPos open = aClear ? a : b;
 			if (!terrain.support(open.down())) {
 				return;
 			}
+			mult = WALK * (SQRT2 - 0.001);
+		} else {
+			mult = water ? WATER_COST : sprint ? SPRINT : WALK;
 		}
 		double rise = terrain.floorY(t) - terrain.floorY(p);
 		if (rise > 0.6 || rise < -0.6) {
 			return;
 		}
-		double base;
-		if (terrain.isWater(t)) {
-			base = WATER_COST * SQRT2;
-		} else if (!aClear || !bClear) {
-			base = WALK * (SQRT2 - 0.001) * SQRT2; // edging round: about as slow as two straight steps
-		} else {
-			base = (sprint && !water ? SPRINT : WALK) * SQRT2;
-		}
-		add(cur, t, base + terrain.hazard(t), terrain.isWater(t) ? MoveType.SWIM : MoveType.WALK, null, List.of());
+		add(cur, t, mult * SQRT2 + terrain.hazard(t), terrain.isWater(t) ? MoveType.SWIM : MoveType.WALK, null, List.of());
 	}
 
 	/** A diagonal's side cell the body can pass through without opening or bumping anything. */
@@ -490,125 +542,154 @@ public class PathFinder {
 		return terrain.clearBody(s) && !terrain.isDoor(s) && !terrain.isDoor(s.up());
 	}
 
-	private void ascend(Node cur, BlockPos p, Direction d) {
+	private void ascend(Node cur, BlockPos p, Direction d, boolean inWater) {
 		BlockPos t = p.offset(d);
 		BlockPos u = t.up();
-		if (!usable(u) || !terrain.support(t) || deadly(u) || deadly(u.up()) || terrain.isClimbable(p)) {
+		if (!usable(u) || deadly(u) || deadly(u.up()) || terrain.isClimbable(p)) {
 			return;
 		}
-		List<BlockPos> breaks = new ArrayList<>(3);
-		double cost = clearCost(breaks, p.up(2), u.up(), u);
-		if (cost == Double.POSITIVE_INFINITY || terrain.isDoor(u) || terrain.isDoor(u.up())) {
+		BlockPos place = null;
+		double placing = 0;
+		if (!terrain.support(t)) {
+			// No step to jump onto: put one there (Baritone's MovementAscend placement).
+			if (!canPlace(cur, t) || !placeableBeside(t, p)) {
+				return;
+			}
+			place = t.toImmutable();
+			placing = placeCost(t);
+		}
+		if (terrain.isFalling(p.up(3)) && (terrain.passable(p.up()) || !terrain.isFalling(p.up(2)))) {
+			return; // sand would fall on our head once we've broken the head room
+		}
+		@SuppressWarnings("unchecked")
+		List<BlockPos>[] breaks = new List[1];
+		double clear = clearCost(breaks, u, p.up(2), u.up());
+		if (clear == Double.POSITIVE_INFINITY || terrain.isDoor(u) || terrain.isDoor(u.up())) {
 			return;
 		}
-		if (breaks.contains(u.up()) && terrain.isFalling(u.up(2))) {
-			return; // sand would fall on our head
-		}
-		if (breaks.isEmpty() && terrain.floorY(u) - terrain.floorY(p) > 1.25) {
+		if (breaks[0] == null && place == null && terrain.floorY(u) - terrain.floorY(p) > 1.25) {
 			return;
 		}
-		add(cur, u, cost + JUMP + JUMP_PENALTY + WALK + terrain.hazard(u), MoveType.JUMP, null, breaks);
+		add(cur, u, Math.max(JUMP_ONE_BLOCK, WALK) + JUMP_PENALTY + placing + clear + terrain.hazard(u), MoveType.JUMP, place, list(breaks));
 	}
 
-	private void descend(Node cur, BlockPos p, Direction d) {
+	private void descend(Node cur, BlockPos p, Direction d, boolean inWater) {
 		BlockPos t = p.offset(d);
-		if (!usable(t) || deadly(t) || deadly(t.up()) || terrain.support(t.down()) || terrain.isWater(t) || terrain.isClimbable(t)) {
-			return; // standable (traverse) or not a ledge
-		}
-		List<BlockPos> breaks = new ArrayList<>(2);
-		double cost = clearCost(breaks, t.up(), t);
-		if (cost == Double.POSITIVE_INFINITY) {
+		if (!usable(t) || deadly(t) || deadly(t.up()) || terrain.isClimbable(p)) {
 			return;
 		}
-		for (int k = 1; k <= MAX_WATER_FALL; k++) {
-			BlockPos below = t.down(k);
-			byte kind = terrain.kind(below);
+		BlockPos dest = t.down();
+		if (deadly(dest) || terrain.isClimbable(dest) || terrain.isFlowingWater(t) || terrain.isFlowingWater(t.up()) || terrain.isFlowingWater(dest)) {
+			return; // (Baritone: no walking off into, or falling through, moving water)
+		}
+		// The three cells of the step: where we land, the head room there, and the cell our head
+		// passes as we step off. Mining them is how a staircase gets dug.
+		@SuppressWarnings("unchecked")
+		List<BlockPos>[] breaks = new List[1];
+		double clear = clearCost(breaks, t.up(), t, dest);
+		if (clear == Double.POSITIVE_INFINITY || terrain.isDoor(dest) || terrain.isDoor(t) || terrain.isDoor(t.up())) {
+			return;
+		}
+		BlockPos below = dest.down();
+		if (terrain.isWater(dest) && terrain.standable(dest) && terrain.support(dest.down())) {
+			add(cur, dest, clear + WALK_OFF + Math.max(fallTicks(1), CENTER) + terrain.hazard(dest), MoveType.FALL, null, list(breaks));
+			return;
+		}
+		if (terrain.support(below)) {
+			add(cur, dest, clear + WALK_OFF + Math.max(fallTicks(1), CENTER) + terrain.hazard(dest), MoveType.FALL, null, list(breaks));
+			return;
+		}
+		// Further down: only through what is already open, into still water with ground under it, onto solid
+		// ground within the safe fall height (further only on a fall budget).
+		if (breaks[0] != null && terrain.isFalling(t.up(2))) {
+			return;
+		}
+		if (!terrain.passable(below) && !terrain.isWater(below)) {
+			return;
+		}
+		for (int k = 2; k <= MAX_WATER_FALL; k++) {
+			BlockPos c = t.down(k);
+			byte kind = terrain.kind(c);
 			if (kind == Terrain.UNLOADED || kind == Terrain.LAVA || kind == Terrain.DANGER) {
 				return;
 			}
-			if (terrain.standable(below)) {
-				boolean soft = terrain.isWater(below) || terrain.isClimbable(below);
-				if (k > options.maxFall() && !soft) {
+			if (kind == Terrain.WATER) {
+				// Baritone: still water with ground right under it (deeper, we'd sink past the landing).
+				if (terrain.isFlowingWater(c) || !terrain.standable(c) || !terrain.support(c.down())) {
 					return;
 				}
-				if (k > 1 && !breaks.isEmpty()) {
-					return; // only dig into a one-block step down
-				}
-				int dmg = soft ? 0 : Math.max(0, k - 3);
-				if (dmg > 0 && cur.damage + dmg > fallBudget) {
-					return; // the falls on this path would add up to too much
-				}
-				damageNext = dmg;
-				add(cur, below, cost + WALK_OFF + fallTicks(k) + CENTER + terrain.hazard(below) + dmg * 10, MoveType.FALL, null, breaks);
-				damageNext = 0;
+				add(cur, c, clear + WALK_OFF + fallTicks(k) + terrain.hazard(c), MoveType.FALL, null, list(breaks));
 				return;
 			}
-			if (!terrain.passable(below)) {
+			if (kind == Terrain.CLIMBABLE) {
+				if (k - 1 > 11) {
+					return; // falling past 11 blocks we don't catch the ladder
+				}
+				add(cur, c, clear + WALK_OFF + fallTicks(k) + LADDER_DOWN + terrain.hazard(c), MoveType.FALL, null, list(breaks));
 				return;
 			}
+			if (terrain.passable(c)) {
+				continue;
+			}
+			if (!terrain.support(c) || terrain.top(c) < 1.0) {
+				return; // a fence top, or a half slab (landing on one is glitchy)
+			}
+			int drop = k - 1;
+			int dmg = Math.max(0, drop - 3);
+			if (drop > options.maxFall() || (dmg > 0 && cur.damage + dmg > fallBudget)) {
+				return;
+			}
+			damageNext = dmg;
+			add(cur, c.up(), clear + WALK_OFF + fallTicks(k) + terrain.hazard(c.up()) + dmg * 10, MoveType.FALL, null, list(breaks));
+			damageNext = 0;
+			return;
 		}
 	}
 
 	private void parkour(Node cur, BlockPos p, Direction d, boolean inWater) {
-		if (!options.allowParkour() || inWater || !(terrain.support(p.down()) || solidBelow(cur)) || !terrain.passable(p.up(2))) {
+		if (!options.allowParkour() || inWater || !(terrain.support(p.down()) || solidBelow(cur)) || !fullyPassable(p.up(2))) {
 			return;
+		}
+		if (terrain.isClimbable(p.down()) || (terrain.kind(p.down()) == Terrain.SOLID && terrain.top(p.down()) < 1.0)) {
+			return; // no jumping off a ladder, stairs or a half slab
 		}
 		if (leafFloor && terrain.isLeaves(p.down())) {
 			return; // no jumping from treetop to treetop
 		}
 		BlockPos first = p.offset(d);
-		if (!usable(first) || terrain.support(first.down()) || !terrain.clearBody(first) || terrain.isWater(first.down())) {
-			return; // not a gap
+		if (!usable(first) || !fullyPassable(first) || terrain.support(first.down()) || !fullyPassable(first.up()) || !fullyPassable(first.up(2))) {
+			return; // not a gap, or no room to jump
 		}
-		if (missDrop(first) > parkourMaxMissDrop()) {
-			return; // a missed jump here would be a bad fall (cliffs, ravines): go round
+		if (deadly(first.down())) {
+			return;
 		}
-		for (int dist = 2; dist <= 3; dist++) {
-			BlockPos gap = p.offset(d, dist - 1);
-			if (!terrain.clearBody(gap) || !terrain.passable(gap.up(2)) || terrain.support(gap.down()) || missDrop(gap) > parkourMaxMissDrop()) {
+		// Gaps of 1 or 2 blocks, landing level. Baritone also jumps 3-block gaps and lands one block
+		// up, both only at a full sprint with a run-up; on the nav bench every one of those missed
+		// (12 of 12 missed jumps were those two kinds), so they're left out until there's a run-up.
+		int maxJump = 3;
+		for (int i = 2; i <= maxJump; i++) {
+			BlockPos dest = p.offset(d, i);
+			if (!usable(dest)) {
 				return;
 			}
-			BlockPos land = p.offset(d, dist);
-			if (!usable(land) || deadly(land)) {
+			if (!fullyPassable(dest.up()) || !fullyPassable(dest.up(2)) || !fullyPassable(dest)) {
 				return;
 			}
-			if (terrain.standable(land) && !terrain.isWater(land) && Math.abs(terrain.floorY(land) - terrain.floorY(p)) < 0.1
-				&& terrain.passable(land.up(2))) {
-				if (leafFloor && terrain.isLeaves(land.down())) {
-					return;
+			if (terrain.support(dest.down())) {
+				if (overshootSafe(dest.offset(d)) && !(leafFloor && terrain.isLeaves(dest.down()))) {
+					add(cur, dest, WALK * i + JUMP_PENALTY + terrain.hazard(dest), MoveType.PARKOUR, null, List.of());
 				}
-				add(cur, land, SPRINT * dist + JUMP + JUMP_PENALTY + terrain.hazard(land), MoveType.PARKOUR, null, List.of());
+				return;
+			}
+			if (!fullyPassable(dest.up(3))) {
 				return;
 			}
 		}
 	}
 
-	/**
-	 * Deepest gap worth jumping: a miss hurts (7 hearts at most) but isn't fatal. Over deeper
-	 * drops (cliff edges, ravines) we go round. Baritone keeps parkour off altogether by default.
-	 */
-	private static final int PARKOUR_MAX_MISS_DROP = 10;
-
-	/** Deepest gap worth jumping right now: a miss must leave us at least 3 hearts. */
-	private int parkourMaxMissDrop() {
-		if (!com.botcraft.util.Experiments.on("parkourHealth")) {
-			return PARKOUR_MAX_MISS_DROP;
-		}
-		return Math.min(PARKOUR_MAX_MISS_DROP, 3 + (int) Math.floor(health - 6));
-	}
-
-	/** How far a missed jump over this gap column would fall (water at the bottom is a soft landing). */
-	private int missDrop(BlockPos gap) {
-		for (int i = 1; i <= 24; i++) {
-			BlockPos b = gap.down(i);
-			if (terrain.isWater(b)) {
-				return 0;
-			}
-			if (terrain.support(b)) {
-				return i - 1;
-			}
-		}
-		return Integer.MAX_VALUE;
+	/** We overshoot a landing by a little: the next cell along must not hurt to walk into. */
+	private boolean overshootSafe(BlockPos c) {
+		return !deadly(c) && !deadly(c.up()) && !terrain.isWater(c) && !terrain.isWater(c.up());
 	}
 
 	private void up(Node cur, BlockPos p, boolean inWater) {
@@ -632,15 +713,16 @@ public class PathFinder {
 			return;
 		}
 		// Pillar: jump and place a block where our feet were.
-		if (!options.allowPlace() || cur.placed >= options.placeBudget() || !solidBelow(cur) || !terrain.replaceable(p)) {
+		if (!canPlace(cur, p) || !(solidBelow(cur) || placeableBeside(p, null))) {
 			return;
 		}
-		List<BlockPos> breaks = new ArrayList<>(1);
-		double cost = clearCost(breaks, u.up());
-		if (cost == Double.POSITIVE_INFINITY || (!breaks.isEmpty() && terrain.isFalling(u.up(2)))) {
+		@SuppressWarnings("unchecked")
+		List<BlockPos>[] breaks = new List[1];
+		double clear = clearCost(breaks, u.up());
+		if (clear == Double.POSITIVE_INFINITY || (breaks[0] != null && terrain.isFalling(u.up(2)))) {
 			return;
 		}
-		add(cur, u, cost + JUMP + JUMP_PENALTY + PLACE + (terrain.inHome(p) ? LITTER_COST : 0), MoveType.PILLAR, p.toImmutable(), breaks);
+		add(cur, u, clear + JUMP_ONE_BLOCK + JUMP_PENALTY + placeCost(p), MoveType.PILLAR, p.toImmutable(), list(breaks));
 	}
 
 	private void down(Node cur, BlockPos p, boolean inWater) {
@@ -670,7 +752,7 @@ public class PathFinder {
 		if (bc == Double.POSITIVE_INFINITY) {
 			return;
 		}
-		add(cur, d, bc + fallTicks(1) + CENTER, MoveType.DOWNWARD, null, List.of(d.toImmutable()));
+		add(cur, d, bc + fallTicks(1), MoveType.DOWNWARD, null, List.of(d.toImmutable()));
 	}
 
 	private boolean inRange(BlockPos t) {
@@ -685,7 +767,7 @@ public class PathFinder {
 		}
 		// Breath: a run of steps with the head under water must end before the air runs out, and the
 		// longer the run, the more it costs (so a dry way round wins when there is one).
-		int under = terrain.isWater(pos.up()) ? from.under + 1 : 0;
+		int under = terrain.isWater(pos.up()) && BREATH ? from.under + 1 : 0;
 		if (under > MAX_UNDER) {
 			return;
 		}
@@ -706,7 +788,7 @@ public class PathFinder {
 		if (n == null) {
 			n = new Node(pos.toImmutable(), g, h(pos));
 			nodes.put(key, n);
-		} else if (n.closed || g >= n.g - 1e-6) {
+		} else if (n.closed || n.g - g < MIN_IMPROVEMENT) {
 			return;
 		} else {
 			n.g = g;
@@ -720,12 +802,13 @@ public class PathFinder {
 		n.under = under;
 		n.damage = from.damage + damageNext;
 		open.add(n); // duplicates are skipped later via the closed flag
-		if (coefPartial) {
-			for (int i = 0; i < COEFFICIENTS.length; i++) {
-				double score = n.h + n.g / COEFFICIENTS[i];
-				if (score < bestScore[i] - 0.01) {
-					bestScore[i] = score;
-					bestByCoefficient[i] = n;
+		for (int i = 0; i < COEFFICIENTS.length; i++) {
+			double score = n.h + n.g / COEFFICIENTS[i];
+			if (bestScore[i] - score > MIN_IMPROVEMENT) {
+				bestScore[i] = score;
+				bestByCoefficient[i] = n;
+				if (failing && n.pos.getSquaredDistance(start) > MIN_PARTIAL * MIN_PARTIAL) {
+					failing = false;
 				}
 			}
 		}

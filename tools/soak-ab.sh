@@ -6,7 +6,7 @@
 #
 # Needs one `./gradlew runSoak` (any length) first, so Loom has written its launch files.
 # The config JSON overrides fields of config/botcraft.json, e.g. '{"tickBudgetMs": 4.0}'.
-# Extra JVM arguments come from $SOAK_JVM_ARGS, e.g. SOAK_JVM_ARGS=-Dbotcraft.off=checkAhead.
+# Extra JVM arguments come from $SOAK_JVM_ARGS, e.g. SOAK_JVM_ARGS=-Dbotcraft.off=avoidOthers.
 # Output goes to run/ab/<name>/ (soak-report.md, logs/latest.log).
 set -euo pipefail
 
@@ -43,7 +43,7 @@ printf '%s\n' "$config" > "$dir/config/botcraft.json"
 
 java=$(ls "$HOME"/.gradle/jdks/*17*/bin/java | head -1)
 cd "$dir"
-exec "$java" -Xmx3G ${SOAK_JVM_ARGS:-} "-Dbotcraft.soak=$minutes:$companions" \
+exec "$java" -Xmx2G ${SOAK_JVM_ARGS:-} "-Dbotcraft.soak=$minutes:$companions" \
 	"-Dfabric.dli.config=$root/.gradle/loom-cache/launch.cfg" -Dfabric.dli.env=server \
 	-Dfabric.dli.main=net.fabricmc.loader.impl.launch.knot.KnotServer "@$dir/argfile" \
 	-Dfile.encoding=UTF-8 net.fabricmc.devlaunchinjector.Main nogui > "$dir/console.log" 2>&1

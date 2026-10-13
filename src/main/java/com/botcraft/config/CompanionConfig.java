@@ -37,8 +37,15 @@ public class CompanionConfig {
 	public double maxTickBudgetMs = 8.0;
 	/** A* node expansions allowed per companion per tick (also bounded by tickBudgetMs). */
 	public int pathNodesPerTick = 600;
+	/**
+	 * Once a path search has a partial path worth taking (one that gets more than 5 blocks from
+	 * the start), it stops here and hands that over; it only runs on to maxPathNodes while it has
+	 * nothing (Baritone's primary and failure timeouts, in nodes rather than milliseconds so a run
+	 * doesn't depend on how busy the machine is).
+	 */
+	public int pathPrimaryNodes = 20000;
 	/** Abort a path search after this many expanded nodes. */
-	public int maxPathNodes = 20000;
+	public int maxPathNodes = 80000;
 	/** Companions may chat (replies and unprompted remarks). */
 	public boolean chatEnabled = true;
 	/**
@@ -87,6 +94,9 @@ public class CompanionConfig {
 	public boolean easterEggs = true;
 	/** Log AI decisions at INFO (instead of DEBUG) so they show up in latest.log without log config. */
 	public boolean verboseAiLogging = false;
+	/** Which defaults this file was written with (missing = before 0.11.0), so old defaults can be upgraded. */
+	public int configVersion = 0;
+	private static final int CONFIG_VERSION = 2;
 
 	public static CompanionConfig get() {
 		return instance;
@@ -107,6 +117,10 @@ public class CompanionConfig {
 			}
 		}
 		instance = loaded != null ? loaded : new CompanionConfig();
+		if (loaded == null) {
+			instance.configVersion = CONFIG_VERSION;
+		}
+		instance.upgrade();
 		instance.sanitize();
 		save();
 	}
@@ -123,6 +137,20 @@ public class CompanionConfig {
 		}
 	}
 
+	/** Old defaults written into a file before they changed are moved to the new ones; values someone set stay. */
+	private void upgrade() {
+		if (configVersion < 2) {
+			// 0.11.0: Baritone-sized path searches (20000 nodes was the old cap).
+			if (maxPathNodes == 20000) {
+				maxPathNodes = 80000;
+			}
+			if (pathPrimaryNodes == 5000) {
+				pathPrimaryNodes = 20000; // (only ever written by 0.11.0 development builds)
+			}
+		}
+		configVersion = CONFIG_VERSION;
+	}
+
 	private void sanitize() {
 		maxCompanions = Math.max(0, maxCompanions);
 		aiTickInterval = Math.max(1, Math.min(40, aiTickInterval));
@@ -130,6 +158,7 @@ public class CompanionConfig {
 		maxTickBudgetMs = Math.max(tickBudgetMs, Math.min(30.0, maxTickBudgetMs));
 		pathNodesPerTick = Math.max(10, pathNodesPerTick);
 		maxPathNodes = Math.max(200, maxPathNodes);
+		pathPrimaryNodes = Math.max(200, Math.min(maxPathNodes, pathPrimaryNodes));
 		followDistance = Math.max(1.5, followDistance);
 		treeSearchRadius = Math.max(4, Math.min(64, treeSearchRadius));
 		respawnDelayTicks = Math.max(1, respawnDelayTicks);

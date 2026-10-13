@@ -46,7 +46,8 @@ public class GoToTask extends Task {
 	@Override
 	protected void onStart(boolean resumed) {
 		double d = Math.sqrt(c.player().getBlockPos().getSquaredDistance(target));
-		c.nav().moveTo(Goal.near(target, 2.0), d > 10);
+		// Not below the spot: ending 2 blocks under it (inside a hill, down a hole) isn't being there.
+		c.nav().moveTo(Goal.near(target, 2.0, 0, 2), d > 10);
 	}
 
 	@Override
