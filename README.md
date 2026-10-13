@@ -38,6 +38,7 @@ All commands need permission level 2 by default (`commandPermissionLevel`).
 | Command | Effect |
 |---|---|
 | `/companion spawn <name> [skin]` | Spawns a companion in front of you, with you as its owner. Re-using the name of a dismissed companion restores its inventory. |
+| `/companion batch <count>` | Spawns up to 64 companions around you at once, with random two-word names such as AgentCreeper or SneakyBadger and random default skins. You own them all. |
 | `/companion skin <name> <skin>` | Changes the skin. The companion leaves and rejoins in place. |
 | `/companion info <name>` | Debug view: personality, orders, job queue, current drive scores, memory. |
 | `/companion remove <name>` | Dismisses the companion and forgets it. Its playerdata file is kept. |

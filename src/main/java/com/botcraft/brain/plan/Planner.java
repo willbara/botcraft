@@ -48,7 +48,12 @@ public final class Planner {
 	public record Decision(String goal, Option chosen, List<Option> considered) {
 	}
 
-	private static final int MAX_DEPTH = 4;
+	/**
+	 * How many steps deep a plan may go. A diamond pickaxe from nothing is about a dozen (logs,
+	 * planks, table, wooden pickaxe, stone, stone pickaxe, iron, furnace, ingots, iron pickaxe,
+	 * diamonds); results are cached per item, so deep plans stay cheap.
+	 */
+	private static final int MAX_DEPTH = (int) com.botcraft.util.Experiments.num("plannerDepth", 14);
 	/** Walking speed for travel estimates. */
 	private static final double BLOCKS_PER_SECOND = 4.0;
 	private static final Option IMPOSSIBLE = new Option("none", Double.POSITIVE_INFINITY, List.of(), "no way known");

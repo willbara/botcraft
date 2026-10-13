@@ -43,7 +43,7 @@ public class Navigator {
 
 	private static final int NO_PROGRESS_TICKS = 30;
 	private static final int MAX_STUCK = 5;
-	private static final int SEARCH_RANGE = 96;
+	/** Path searches reach as far as a companion sees (the server's view distance, see Sight). */
 	/**
 	 * Baritone's primary timeout: a search still going after this long (or this many nodes)
 	 * hands over the best partial path if it gets at least EARLY_PROGRESS blocks closer, and we
@@ -266,6 +266,9 @@ public class Navigator {
 		if (digMode && !escape) {
 			terrain.spareBase();
 		}
+		if (!escape) {
+			terrain.homeRules();
+		}
 		// On the very edge of a block, the middle of us is over the drop: start from the block we're
 		// actually standing on. (From the cell over the drop, stepping back looked like a jump, and
 		// with leaves overhead a companion once found no path at all for 13 minutes.)
@@ -291,7 +294,7 @@ public class Navigator {
 		}
 		int blocks = Inventories.count(p.getInventory(), Inventories::isThrowaway);
 		boolean place = (allowPlace || escape) && blocks > 0;
-		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, maxFall(p));
+		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, com.botcraft.perception.Sight.blocks(companion.server), maxFall(p));
 		finder = new PathFinder(terrain, start, goal, opts, avoid).startAir(p.getAir(), p.isSubmergedInWater()).busy(busyCells(start))
 			.fallBudget(fallBudget(p), p.getHealth()).sprint(canSprint(p));
 		if (favored != null) {
@@ -686,7 +689,10 @@ public class Navigator {
 		if (digMode && !escape) {
 			terrain.spareBase();
 		}
-		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, SEARCH_RANGE, maxFall(p));
+		if (!escape) {
+			terrain.homeRules();
+		}
+		PathFinder.Options opts = new PathFinder.Options(true, place, true, blocks, CompanionConfig.get().maxPathNodes, com.botcraft.perception.Sight.blocks(companion.server), maxFall(p));
 		aheadFrom = last.pos();
 		ahead = new PathFinder(terrain, aheadFrom, goal, opts, avoid).busy(busyCells(aheadFrom)).fallBudget(fallBudget(p), p.getHealth())
 			.sprint(canSprint(p));

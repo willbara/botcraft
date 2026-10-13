@@ -49,10 +49,26 @@ final class Spots {
 		return best;
 	}
 
-	/** Part of the base kept clear (bed row, farm, pen, paths): nothing gets put down there. */
+	/**
+	 * Part of the base kept clear (bed row, farm, pen, paths): nothing gets put down there. And
+	 * at home, tables and furnaces only go in the core, not wherever we happen to stand.
+	 */
 	private static boolean reserved(ServerWorld world, BlockPos spot) {
 		var colony = com.botcraft.colony.Colony.get();
-		return colony != null && com.botcraft.colony.Zones.reserved(colony, world, spot);
+		if (colony == null) {
+			return false;
+		}
+		var core = homeCore(colony, world, spot);
+		return com.botcraft.colony.Zones.reserved(colony, world, spot) || (core != null && !core.contains(spot));
+	}
+
+	/** The core, if this spot is at home and furniture there belongs in the core; else null. */
+	@Nullable
+	private static com.botcraft.colony.Colony.Zone homeCore(com.botcraft.colony.Colony colony, ServerWorld world, BlockPos spot) {
+		if (!com.botcraft.util.Experiments.on("homeFurniture") || !com.botcraft.colony.Zones.inHome(colony, world, spot)) {
+			return null;
+		}
+		return colony.zone(com.botcraft.colony.Zones.CORE);
 	}
 
 	/**
@@ -63,6 +79,12 @@ final class Spots {
 		CompanionPlayer p = c.player();
 		ServerWorld world = p.getServerWorld();
 		BlockPos feet = p.getBlockPos();
+		var colony = com.botcraft.colony.Colony.get();
+		var core = colony == null ? null : homeCore(colony, world, feet);
+		if (core != null && !core.contains(feet)) {
+			// At home, somewhere to put things down means the core.
+			return core.center().add(random.nextInt(3) - 1, 0, random.nextInt(3) - 1);
+		}
 		BlockPos best = null;
 		double bestD = Double.MAX_VALUE;
 		for (int dx = -10; dx <= 10; dx += 2) {

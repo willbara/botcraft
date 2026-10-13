@@ -1936,13 +1936,208 @@ public class CompanionGameTests implements FabricGameTest {
 			var farm = colony.zone(com.botcraft.colony.Zones.FARM);
 			var pen = colony.zone(com.botcraft.colony.Zones.PEN);
 			ctx.assertTrue(farm != null && pen != null, "no farm or pen: " + colony.zones());
+			var home = colony.zone(com.botcraft.colony.Zones.HOME);
+			ctx.assertTrue(home != null, "no home zone: " + colony.zones());
 			for (var z : colony.zones()) {
+				if (z == home) {
+					continue;
+				}
+				ctx.assertTrue(home.contains(z.x1, z.z1) && home.contains(z.x2, z.z2), z + " isn't inside home " + home);
 				for (var o : colony.zones()) {
-					ctx.assertTrue(z == o || !z.overlaps(o, 0), z + " overlaps " + o);
+					ctx.assertTrue(z == o || o == home || !z.overlaps(o, 0), z + " overlaps " + o);
 				}
 			}
+			ctx.assertTrue(colony.protectsGround(ctx.getWorld(), base.down(2)), "home ground not protected");
+			ctx.assertTrue(!colony.protectsGround(ctx.getWorld(), new BlockPos(home.x2 + 5, base.getY() - 1, home.z2 + 5)),
+				"ground outside home protected");
 			colony.clear();
 			cleanup(m, "GtSettler");
+		});
+	}
+
+	/**
+	 * Natural or built: a tree's log is natural, a cabin's logs, planks, stripped logs and
+	 * placed leaves are built, and so is dirt a player put down (the ledger). Built blocks are
+	 * never broken, not even when digging.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "builds")
+	public void tellsBuiltFromNatural(TestContext ctx) {
+		flatArena(ctx, 12);
+		var w = ctx.getWorld();
+		for (int y = 1; y <= 4; y++) {
+			ctx.setBlockState(2, y, 2, Blocks.OAK_LOG);
+		}
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				if (dx != 0 || dz != 0) {
+					ctx.setBlockState(2 + dx, 4, 2 + dz, Blocks.OAK_LEAVES);
+				}
+			}
+		}
+		for (int y = 1; y <= 3; y++) {
+			ctx.setBlockState(8, y, 2, Blocks.OAK_LOG);
+			ctx.setBlockState(8, y, 3, Blocks.OAK_LOG);
+		}
+		ctx.setBlockState(5, 1, 5, Blocks.OAK_PLANKS);
+		ctx.setBlockState(5, 1, 7, Blocks.STRIPPED_OAK_LOG);
+		ctx.setBlockState(5, 1, 9, Blocks.OAK_LEAVES.getDefaultState().with(net.minecraft.block.LeavesBlock.PERSISTENT, true));
+		ctx.setBlockState(9, 1, 9, Blocks.DIRT);
+		ctx.setBlockState(10, 1, 9, Blocks.DIRT);
+		BlockPos placed = ctx.getAbsolutePos(new BlockPos(9, 1, 9));
+		BlockPos wild = ctx.getAbsolutePos(new BlockPos(10, 1, 9));
+		com.botcraft.colony.Builds.record(w, placed);
+		try {
+			java.util.function.BiConsumer<BlockPos, com.botcraft.colony.Builds.Origin> expect = (rel, origin) -> {
+				BlockPos a = ctx.getAbsolutePos(rel);
+				var got = com.botcraft.colony.Builds.origin(w, a, w.getBlockState(a));
+				ctx.assertTrue(got == origin, w.getBlockState(a).getBlock().getName().getString() + " at " + rel.toShortString() + " is " + got + ", not " + origin);
+			};
+			expect.accept(new BlockPos(2, 2, 2), com.botcraft.colony.Builds.Origin.NATURAL);
+			expect.accept(new BlockPos(8, 2, 2), com.botcraft.colony.Builds.Origin.BUILT);
+			expect.accept(new BlockPos(5, 1, 5), com.botcraft.colony.Builds.Origin.BUILT);
+			expect.accept(new BlockPos(5, 1, 7), com.botcraft.colony.Builds.Origin.BUILT);
+			expect.accept(new BlockPos(5, 1, 9), com.botcraft.colony.Builds.Origin.BUILT);
+			expect.accept(new BlockPos(2, 4, 3), com.botcraft.colony.Builds.Origin.NATURAL);
+			expect.accept(new BlockPos(9, 1, 9), com.botcraft.colony.Builds.Origin.BUILT);
+			expect.accept(new BlockPos(10, 1, 9), com.botcraft.colony.Builds.Origin.NATURAL);
+			ctx.assertTrue(!com.botcraft.nav.BreakPolicy.canBreakForNav(w, placed, w.getBlockState(placed), true), "would dig someone's dirt");
+			ctx.assertTrue(com.botcraft.nav.BreakPolicy.canBreakForNav(w, wild, w.getBlockState(wild), true), "won't dig natural dirt");
+		} finally {
+			com.botcraft.colony.Builds.forget(w, placed);
+		}
+		ctx.complete();
+	}
+
+	/** What a companion puts down is recorded: a furnace as built, a dirt block (a throwaway) as litter. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 200, batchId = "builds_placed")
+	public void recordsWhatCompanionsPlace(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtPlacer");
+		flatArena(ctx, 8);
+		ctx.assertTrue(m.spawn("GtPlacer", "noor", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(4.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtPlacer");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.FURNACE, 1);
+		give(c, net.minecraft.item.Items.DIRT, 1);
+		BlockPos furnace = ctx.getAbsolutePos(new BlockPos(4, 1, 6));
+		BlockPos dirt = ctx.getAbsolutePos(new BlockPos(6, 1, 4));
+		String dim = ctx.getWorld().getRegistryKey().getValue().toString();
+		ctx.addInstantFinalTask(() -> {
+			if (!ctx.getWorld().getBlockState(furnace).isOf(Blocks.FURNACE)) {
+				c.actions().placeBlock(furnace, s -> s.isOf(net.minecraft.item.Items.FURNACE));
+			}
+			if (!ctx.getWorld().getBlockState(dirt).isOf(Blocks.DIRT)) {
+				c.actions().placeBlock(dirt, s -> s.isOf(net.minecraft.item.Items.DIRT));
+			}
+			ctx.assertTrue(ctx.getWorld().getBlockState(furnace).isOf(Blocks.FURNACE) && ctx.getWorld().getBlockState(dirt).isOf(Blocks.DIRT),
+				"not placed yet: " + c.actions().lastPlaceProblem());
+			ctx.assertTrue(com.botcraft.colony.Builds.recorded(ctx.getWorld(), furnace), "furnace not recorded as built");
+			ctx.assertTrue(!com.botcraft.colony.Builds.recorded(ctx.getWorld(), dirt), "dirt recorded as built");
+			var colony = com.botcraft.colony.Colony.get();
+			ctx.assertTrue(colony != null && colony.placedByCompanion(dim, dirt), "dirt not recorded as litter");
+			com.botcraft.colony.Builds.forget(ctx.getWorld(), furnace);
+			colony.forgetPlaced(dim, dirt);
+			cleanup(m, "GtPlacer");
+		});
+	}
+
+	/** At home a path walks round a trench rather than bridging it (a bridge left there is litter). */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "home_litter")
+	public void homePathsDontBridge(TestContext ctx) {
+		flatArena(ctx, 12);
+		for (int z = 0; z <= 8; z++) {
+			for (int y = -2; y <= 0; y++) {
+				ctx.setBlockState(6, y, z, Blocks.AIR);
+			}
+			ctx.setBlockState(6, -3, z, Blocks.STONE);
+		}
+		BlockPos start = ctx.getAbsolutePos(new BlockPos(3, 1, 2));
+		BlockPos end = ctx.getAbsolutePos(new BlockPos(9, 1, 2));
+		PathFinder.Options opts = new PathFinder.Options(false, true, false, 16, 20000, 64, 3);
+		PathFinder away = new PathFinder(new Terrain(ctx.getWorld()), start, Goal.near(end, 0.5), opts, new LongOpenHashSet());
+		TickBudget.begin(1000);
+		ctx.assertTrue(away.step(100000) == PathFinder.Status.FOUND, "no path away from home");
+		ctx.assertTrue(away.result().stream().anyMatch(st -> st.type() == com.botcraft.nav.MoveType.BRIDGE), "away from home it should just bridge");
+		var colony = colony(ctx, new BlockPos(6, 1, 6));
+		colony.setZone(new com.botcraft.colony.Colony.Zone(com.botcraft.colony.Zones.HOME, ctx.getAbsolutePos(new BlockPos(-1, 0, -1)).getX(),
+			ctx.getAbsolutePos(new BlockPos(-1, 0, -1)).getZ(), ctx.getAbsolutePos(new BlockPos(12, 0, 12)).getX(),
+			ctx.getAbsolutePos(new BlockPos(12, 0, 12)).getZ(), start.getY(), true));
+		PathFinder home = new PathFinder(new Terrain(ctx.getWorld()).homeRules(), start, Goal.near(end, 0.5), opts, new LongOpenHashSet());
+		TickBudget.begin(1000);
+		ctx.assertTrue(home.step(100000) == PathFinder.Status.FOUND, "no path at home");
+		ctx.assertTrue(home.result().stream().noneMatch(st -> st.type() == com.botcraft.nav.MoveType.BRIDGE), "bridged at home: "
+			+ home.result().stream().map(st -> st.type() + " " + st.pos().toShortString()).toList());
+		colony.clear();
+		ctx.complete();
+	}
+
+	/**
+	 * Tidying up home: a dirt pillar a companion left is taken down, a hole a companion dug is
+	 * filled, a bump in the core is levelled; planks and someone's dirt in the core stay.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1400, batchId = "upkeep")
+	public void tidiesUpHome(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtUpkeep");
+		flatArena(ctx, 20);
+		var w = ctx.getWorld();
+		String dim = w.getRegistryKey().getValue().toString();
+		var colony = colony(ctx, new BlockPos(10, 1, 10));
+		com.botcraft.colony.BaseMap.clear();
+		com.botcraft.colony.Upkeep.clear();
+		BlockPos a = ctx.getAbsolutePos(new BlockPos(0, 0, 0));
+		BlockPos b = ctx.getAbsolutePos(new BlockPos(19, 0, 19));
+		BlockPos base = ctx.getAbsolutePos(new BlockPos(10, 1, 10));
+		colony.setZone(new com.botcraft.colony.Colony.Zone(com.botcraft.colony.Zones.HOME, a.getX(), a.getZ(), b.getX(), b.getZ(), base.getY(), true));
+		colony.setZone(new com.botcraft.colony.Colony.Zone(com.botcraft.colony.Zones.CORE, base.getX() - 3, base.getZ() - 3, base.getX() + 3,
+			base.getZ() + 3, base.getY(), true));
+		// The other zones by hand too, inside the arena, so planning doesn't put them on other tests' ground.
+		for (String kind : java.util.List.of(com.botcraft.colony.Zones.BEDS, com.botcraft.colony.Zones.FARM, com.botcraft.colony.Zones.PEN)) {
+			colony.setZone(new com.botcraft.colony.Colony.Zone(kind, a.getX() + 1, a.getZ() + 1, a.getX() + 3, a.getZ() + 3, base.getY(), true));
+		}
+		BlockPos[] pillar = new BlockPos[3];
+		for (int i = 0; i < 3; i++) {
+			ctx.setBlockState(15, 1 + i, 15, Blocks.DIRT);
+			pillar[i] = ctx.getAbsolutePos(new BlockPos(15, 1 + i, 15));
+			colony.recordPlaced(dim, pillar[i]);
+		}
+		BlockPos hole = ctx.getAbsolutePos(new BlockPos(5, 0, 5));
+		ctx.setBlockState(5, 0, 5, Blocks.AIR);
+		colony.recordDug(dim, hole);
+		BlockPos bump = ctx.getAbsolutePos(new BlockPos(11, 1, 9));
+		ctx.setBlockState(11, 1, 9, Blocks.DIRT);
+		BlockPos planks = ctx.getAbsolutePos(new BlockPos(9, 1, 11));
+		ctx.setBlockState(9, 1, 11, Blocks.OAK_PLANKS);
+		BlockPos theirs = ctx.getAbsolutePos(new BlockPos(12, 1, 11));
+		ctx.setBlockState(12, 1, 11, Blocks.DIRT);
+		com.botcraft.colony.Builds.record(w, theirs);
+		ctx.assertTrue(m.spawn("GtUpkeep", "efe", null, w, ctx.getAbsolute(new Vec3d(7.5, 1, 7.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtUpkeep");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.DIRT, 8);
+		boolean[] ordered = {false};
+		ctx.addInstantFinalTask(() -> {
+			var map = com.botcraft.colony.BaseMap.get();
+			ctx.assertTrue(map != null && map.complete(), "base map not done yet");
+			if (!ordered[0]) {
+				ordered[0] = true;
+				var work = com.botcraft.colony.Upkeep.find(colony);
+				ctx.assertTrue(work.stream().noneMatch(k -> k.pos().equals(planks) || k.pos().equals(theirs)), "would touch built blocks: " + work);
+				c.jobs().replace(java.util.List.of("tidy"));
+			}
+			for (BlockPos p : pillar) {
+				ctx.assertTrue(w.getBlockState(p).isAir(), "pillar still up at " + p.toShortString() + "; " + c.describeActivity());
+			}
+			ctx.assertTrue(w.getBlockState(bump).isAir(), "bump still there; " + c.describeActivity());
+			ctx.assertTrue(!w.getBlockState(hole).isAir(), "hole not filled; " + c.describeActivity());
+			ctx.assertTrue(!colony.placedByCompanion(dim, hole), "the filled hole counts as litter");
+			ctx.assertTrue(w.getBlockState(planks).isOf(Blocks.OAK_PLANKS) && w.getBlockState(theirs).isOf(Blocks.DIRT), "took built blocks");
+			com.botcraft.colony.Builds.forget(w, theirs);
+			colony.clear();
+			com.botcraft.colony.Upkeep.clear();
+			cleanup(m, "GtUpkeep");
 		});
 	}
 
@@ -2097,6 +2292,23 @@ public class CompanionGameTests implements FabricGameTest {
 		ctx.assertTrue(mine >= 0 && smelt > mine && craft > smelt, "steps " + steps);
 		ctx.assertTrue(steps.stream().anyMatch(st -> st.startsWith("gather logs")), "needs wood for sticks: " + steps);
 		cleanup(CompanionManager.get(), "GtPlanC");
+		ctx.complete();
+	}
+
+	/** Planner: a diamond pickaxe from an empty inventory (about a dozen steps deep), planned quickly. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 20, batchId = "planner_deep")
+	public void plannerPlansDiamondsFromNothing(TestContext ctx) {
+		Companion c = plannerSubject(ctx, "GtPlanDeep");
+		long t0 = System.nanoTime();
+		var d = com.botcraft.brain.plan.Planner.acquire(c, net.minecraft.item.Items.DIAMOND_PICKAXE, 1);
+		double ms = (System.nanoTime() - t0) / 1e6;
+		var steps = d.chosen().steps();
+		ctx.assertTrue(d.chosen().possible(), "no plan: " + d.chosen().note());
+		int iron = steps.indexOf("craft iron_pickaxe 1");
+		int diamonds = steps.indexOf("mine diamond 3");
+		ctx.assertTrue(steps.stream().anyMatch(st -> st.startsWith("gather logs")) && iron >= 0 && diamonds > iron, "steps " + steps);
+		ctx.assertTrue(ms < 50, "planning took " + ms + " ms");
+		cleanup(CompanionManager.get(), "GtPlanDeep");
 		ctx.complete();
 	}
 

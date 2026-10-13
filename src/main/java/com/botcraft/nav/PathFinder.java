@@ -62,6 +62,11 @@ public class PathFinder {
 	 */
 	private static final double[] COEFFICIENTS = {1.5, 2, 2.5, 3, 4, 5, 10};
 	private static final double MIN_PARTIAL = 5;
+	/**
+	 * Extra cost of putting a block down at home (a bridge or pillar block left behind is litter
+	 * someone has to clear up): walk round unless that's much longer.
+	 */
+	public static final double LITTER_COST = com.botcraft.util.Experiments.num("litterCost", 100.0);
 
 	private static final double[] FALL_TICKS = new double[64];
 
@@ -422,7 +427,7 @@ public class PathFinder {
 				return;
 			}
 			place = t.down().toImmutable();
-			cost += PLACE;
+			cost += PLACE + (terrain.inHome(place) ? LITTER_COST : 0);
 		}
 		double rise = place != null || !breaks.isEmpty() || cur.place != null ? 0 : terrain.floorY(t) - terrain.floorY(p);
 		MoveType type = place != null ? MoveType.BRIDGE : water ? MoveType.SWIM : MoveType.WALK;
@@ -629,7 +634,7 @@ public class PathFinder {
 		if (cost == Double.POSITIVE_INFINITY || (!breaks.isEmpty() && terrain.isFalling(u.up(2)))) {
 			return;
 		}
-		add(cur, u, cost + JUMP + JUMP_PENALTY + PLACE, MoveType.PILLAR, p.toImmutable(), breaks);
+		add(cur, u, cost + JUMP + JUMP_PENALTY + PLACE + (terrain.inHome(p) ? LITTER_COST : 0), MoveType.PILLAR, p.toImmutable(), breaks);
 	}
 
 	private void down(Node cur, BlockPos p, boolean inWater) {

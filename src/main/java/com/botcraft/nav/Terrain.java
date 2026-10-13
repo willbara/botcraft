@@ -115,6 +115,24 @@ public class Terrain {
 		return dig;
 	}
 
+	/** The colony's home zone, while it applies to this search (see {@link #homeRules}). */
+	@Nullable
+	private com.botcraft.colony.Colony.Zone home;
+
+	/** Apply home's rules to this search: blocks put down at home cost extra (litter). */
+	public Terrain homeRules() {
+		var colony = com.botcraft.colony.Colony.get();
+		if (colony != null && colony.world() == world && com.botcraft.util.Experiments.on("homeLitter")) {
+			home = colony.zone(com.botcraft.colony.Zones.HOME);
+		}
+		return this;
+	}
+
+	/** In the home zone (only once {@link #homeRules} applied it). */
+	public boolean inHome(BlockPos pos) {
+		return home != null && home.contains(pos);
+	}
+
 	@Nullable
 	private WorldChunk chunk(BlockPos pos) {
 		int cx = pos.getX() >> 4;

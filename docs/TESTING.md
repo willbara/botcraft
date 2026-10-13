@@ -5,7 +5,8 @@
 | Command | What it covers |
 |---|---|
 | `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
-| `./gradlew runGametest` | Headless server, 88 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/botcraft.json` to see AI traces. |
+| `./gradlew runGametest` | Headless server, 93 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/botcraft.json` to see AI traces. |
+| `tools/bench.sh <name> [trials] [goal] [minutes] [seed]` | The bench: one companion with an empty inventory on a fixed-seed world (12345), told to get a diamond pickaxe (or `iron_pickaxe`, `stone_pickaxe`), from a different fixed start point per trial; trials run side by side. Each milestone (first log, crafting table, wooden pickaxe, first stone, stone pickaxe, coal, furnace, raw iron, iron ingot, iron pickaxe, below y 0, diamond, diamond pickaxe) is timed, with what went wrong in between: stuck events, failed searches, search nodes, failed jobs, deaths. Path search is limited by node counts, not the clock, so the machine's load doesn't change a run. Reports in `run/bench/<name>/t*/`; `tools/bench-watch.sh <name>` follows a run live (milestones, re-orders, exceptions per trial); `tools/bench-compare.py <name> <name>...` puts runs side by side (trials reaching each milestone, median times). The standard check for whether a change made companions better: the times should only go down. Needs one `./gradlew runSoak` first for the launch files. |
 
 | GameTest | Milestone | Passes when |
 |---|---|---|
@@ -110,6 +111,13 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] Walk up a ladder or across a 1–2 block gap. Bob follows (ladder climbing, parkour).
 - [ ] Watch him walk across a field. He goes straight rather than zig-zagging.
 - [ ] "Bob, follow me" through a dense oak forest. He stays on the ground, breaking leaves at head height as he walks, cuts diagonally between trunks, and doesn't climb onto the canopy, pillar or dig up. While you keep walking he keeps to one way round each tree.
+
+### 9b. Home and zones
+- [ ] `/companion colony` lists a home zone around the other zones, an "Upkeep" line and the number of built blocks on record.
+- [ ] Put a dirt pillar and a few blocks of dirt litter at home with a companion (or let one pillar up), dig a hole in the core yourself, and wait: a free companion takes "tidy up the base" from the board and takes the pillar down, but leaves your hole alone.
+- [ ] Build a small log cabin next to a tree near home. Free mode chops the tree but leaves the cabin's logs.
+- [ ] Place some dirt by hand at home: nobody digs it for pillars.
+- [ ] `/companion colony zone home here 51` makes home bigger; planning doesn't change it back.
 
 ### 10. Mechanics
 - [ ] Right-click Bob. A chest screen titled "Bob's inventory" shows his items (hotbar in row 4, armour and off hand in row 5). Take an item, give him one, shift-click a helmet onto him; dirt won't go into an armour slot. Walk more than 8 blocks away and the screen closes.
