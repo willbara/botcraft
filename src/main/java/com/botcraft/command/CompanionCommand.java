@@ -70,6 +70,8 @@ public final class CompanionCommand {
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
 					.executes(CompanionCommand::remove)))
+			.then(CommandManager.literal("removeall")
+				.executes(CompanionCommand::removeAll))
 			.then(CommandManager.literal("info")
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
@@ -236,6 +238,24 @@ public final class CompanionCommand {
 		}
 		ctx.getSource().sendFeedback(() -> Text.literal("Removed companion " + name), true);
 		return 1;
+	}
+
+	/** /companion removeall: dismiss every companion (like /companion remove for each). */
+	private static int removeAll(CommandContext<ServerCommandSource> ctx) {
+		CompanionManager m = manager(ctx);
+		List<String> names = new ArrayList<>();
+		for (Companion c : m.all()) {
+			names.add(c.name());
+		}
+		int removed = 0;
+		for (String name : names) {
+			if (m.remove(name)) {
+				removed++;
+			}
+		}
+		int n = removed;
+		ctx.getSource().sendFeedback(() -> Text.literal(n == 0 ? "No companions to remove" : "Removed " + n + " companion(s)"), true);
+		return removed;
 	}
 
 	/** Why a companion is doing what it's doing: its goal, the plan, the alternatives, what it has learned. */

@@ -42,6 +42,7 @@ All commands need permission level 2 by default (`commandPermissionLevel`).
 | `/companion skin <name> <skin>` | Changes the skin. The companion leaves and rejoins in place. |
 | `/companion info <name>` | Debug view: personality, orders, job queue, current drive scores, memory. |
 | `/companion remove <name>` | Dismisses the companion and forgets it. Its playerdata file is kept. |
+| `/companion removeall` | Dismisses every companion and forgets them, like `/companion remove` for each. Their playerdata files are kept. |
 | `/companion list` | Name, owner, position, health, food and current activity of every companion. |
 | `/companion colony` | The shared base: its chests, what's stored, the stock targets, and the request board with each request's top bids. |
 | `/companion colony want <item> <count>` | How many of something the base should keep (`0` stops collecting it). |
