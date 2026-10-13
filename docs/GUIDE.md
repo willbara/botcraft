@@ -123,7 +123,7 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
   - jump up one block, mining the head room, or placing the step first if there is none;
   - step down one block, mining the three blocks of the step (which is how it digs a staircase), or walk off a drop of up to 3 blocks, or into still water with ground right under it, never through flowing water (as in Baritone);
   - dig down through the block underfoot;
-  - pillar up and bridge gaps with throwaway blocks (placing against a side, or sneaking out and placing behind);
+  - pillar up and bridge gaps with throwaway blocks (placing against a side, or sneaking out and placing behind); a pillar only goes up from a full floor, not from snow or a bottom slab, and a step up is only planned where a jump can clear it;
   - climb ladders and vines;
   - parkour across 1 or 2 block gaps, landing level, never from or onto leaves (Baritone also jumps 3-block gaps and onto ledges one block up; with no run-up those missed every time on the nav bench, so they are left out);
   - swim;
@@ -164,7 +164,7 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
 
 ### Gathering wood
 
-- **Whole trees.** Once a companion starts a tree it finishes it. For high logs it pillars up on dirt it digs nearby, then digs the pillar back down. It picks a flower or sapling it stands in first (a block can't be placed over one); if it still can't put a block under itself after about five jumps, it says why in the log and leaves the top of that tree.
+- **Whole trees.** Once a companion starts a tree it finishes it. It chops every log in reach, lowest first, breaking a leaf that hides one. For logs out of reach it asks the path finder for a spot within reach of the next log, the way Baritone mines logs: the path breaks leaves and towers up on throwaway blocks as needed. With no blocks to climb with, it digs some dirt nearby first. The tower is left standing; at home the base upkeep clears it, as with other litter.
 - **Tree choice.** It prefers trees about the size it needs. Trees within 8 blocks of another companion's tree are left to them, as with ore veins, so companions spread out through a wood (they share only when every tree is near someone). All candidates go into one path goal; A* reaches the cheapest to get to, and the companion locks onto it.
 - **Searching.** With no trees in range it goes to a remembered wood. If it's underground it heads out to open sky first, whichever way that is (a cave mouth, or digging up); otherwise it walks about 48 blocks in one direction (away from where others are working) and looks again, up to 5 trips. Underground means no sky in sight anywhere around it, so standing under an overhang or at the foot of a cliff doesn't count. Hunting searches the same way, and from underground it heads out before going after animals it noticed up on the surface.
 

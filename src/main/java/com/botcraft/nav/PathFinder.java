@@ -364,6 +364,11 @@ public class PathFinder {
 		down(cur, p, inWater);
 	}
 
+	/** Height of the floor under this node, counting a block the path itself placed under it. */
+	private double floorOf(Node n) {
+		return n.place != null && n.place.equals(n.pos.down()) ? n.pos.getY() : terrain.floorY(n.pos);
+	}
+
 	/** Solid under this node to stand on / place against, counting a block we planned to place there. */
 	private boolean solidBelow(Node cur) {
 		BlockPos below = cur.pos.down();
@@ -567,7 +572,10 @@ public class PathFinder {
 		if (clear == Double.POSITIVE_INFINITY || terrain.isDoor(u) || terrain.isDoor(u.up())) {
 			return;
 		}
-		if (breaks[0] == null && place == null && terrain.floorY(u) - terrain.floorY(p) > 1.25) {
+		// A jump lifts the feet 1.25 at most, measured from the floor we really stand on (snow, a
+		// slab) to the top of the step (a placed one is a full block).
+		double destFloor = place != null ? u.getY() : terrain.floorY(u);
+		if (destFloor - floorOf(cur) > 1.25) {
 			return;
 		}
 		add(cur, u, Math.max(JUMP_ONE_BLOCK, WALK) + JUMP_PENALTY + placing + clear + terrain.hazard(u), MoveType.JUMP, place, list(breaks));
@@ -712,8 +720,10 @@ public class PathFinder {
 			}
 			return;
 		}
-		// Pillar: jump and place a block where our feet were.
-		if (!canPlace(cur, p) || !(solidBelow(cur) || placeableBeside(p, null))) {
+		// Pillar: jump and place a block where our feet were. Only from a full floor: standing on
+		// something lower (snow, a bottom slab) the block's cell starts above our feet and a jump
+		// can't clear it (Baritone won't pillar off a bottom slab either).
+		if (!canPlace(cur, p) || !(solidBelow(cur) || placeableBeside(p, null)) || floorOf(cur) < p.getY() - 0.01) {
 			return;
 		}
 		@SuppressWarnings("unchecked")

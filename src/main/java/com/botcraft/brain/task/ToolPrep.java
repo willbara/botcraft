@@ -96,7 +96,10 @@ public final class ToolPrep {
 				case SWORD -> "sword";
 			};
 			List<String> fromStock = new ArrayList<>();
-			for (String w : com.botcraft.brain.Jobs.gearFromStock(c, java.util.Set.of(toolKind, "sword"), true)) {
+			// (A sword job asks for "sword" once: Set.of with the same word twice throws, which
+			// stopped every companion that took a hunting request at the base.)
+			var kinds = toolKind.equals("sword") ? java.util.Set.of("sword") : java.util.Set.of(toolKind, "sword");
+			for (String w : com.botcraft.brain.Jobs.gearFromStock(c, kinds, true)) {
 				fromStock.add("?" + w);
 			}
 			if (!fromStock.isEmpty()) {
