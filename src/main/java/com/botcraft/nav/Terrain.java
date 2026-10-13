@@ -33,7 +33,9 @@ import java.util.List;
  * chunks that are already loaded; unloaded chunks are impassable (never triggers chunk loads).
  *
  * <p>Costs are in game ticks, following Baritone's model: walking one block takes ~4.6 ticks,
- * breaking a block takes as long as it would really take with the best tool we carry.
+ * breaking a block takes as long as it would really take with the best tool we carry. Natural
+ * terrain may always be dug through (what may be broken is {@link BreakPolicy}'s business); the
+ * mining time is what keeps paths out of the rock when there's a way round.
  */
 public class Terrain {
 	public static final byte AIR = 0;      // nothing to collide with
@@ -47,8 +49,12 @@ public class Terrain {
 	/** Stored next to the kind in the section cache: the block is leaves (kind SOLID). */
 	private static final byte LEAF_FLAG = 0x40;
 
+	/** Extra cost near lava, fire and the like (off: Baritone has none, it only refuses to walk into them). */
+	private static final boolean HAZARD = com.botcraft.util.Experiments.on("navHazard");
 	/** Extra cost per broken block on top of mining time (Baritone: breakBlockAdditionalCost). */
 	public static final double BREAK_EXTRA = 2.0;
+	/** A block that would take longer than this to mine (obsidian by hand, 20 s) is not in a path's way. */
+	public static final double MAX_BREAK_TICKS = 400;
 
 	private final ServerWorld world;
 	/**
@@ -82,7 +88,7 @@ public class Terrain {
 	}
 
 	/**
-	 * @param dig       allow digging through natural terrain (mining orders, escaping a hole)
+	 * @param dig       allow digging through natural terrain (false only for tests of walking alone)
 	 * @param inventory the tools we carry (for realistic break times); null = bare hands
 	 */
 	public Terrain(ServerWorld world, boolean dig, PlayerInventory inventory) {
@@ -105,7 +111,7 @@ public class Terrain {
 		return world;
 	}
 
-	/** Mining-job digging: leave the ground the base stands on alone (see Colony#protectsGround). */
+	/** Leave the ground the base stands on alone (see Colony#protectsGround). */
 	public Terrain spareBase() {
 		this.spareBase = true;
 		return this;
@@ -144,6 +150,11 @@ public class Terrain {
 		WorldChunk c = chunks.get(key);
 		if (c == null && !chunks.containsKey(key)) {
 			c = world.getChunkManager().getWorldChunk(cx, cz); // null if not loaded; never loads
+			if (c != null && !world.shouldTickEntity(new BlockPos(cx << 4, pos.getY(), cz << 4))) {
+				// Loaded but not entity-ticking (past the simulation distance): a companion can't
+				// move in there (its body freezes on the edge), so it's as good as unloaded.
+				c = null;
+			}
 			chunks.put(key, c);
 		}
 		lastChunkKey = key;
@@ -300,6 +311,14 @@ public class Terrain {
 		return !f.isStill() && f.contains(net.minecraft.fluid.FlowableFluid.FALLING) && f.get(net.minecraft.fluid.FlowableFluid.FALLING);
 	}
 
+	/**
+	 * Moving water (a stream, the edge of a waterfall): Baritone won't walk or fall through it,
+	 * since the current pushes the body off its line.
+	 */
+	public boolean isFlowingWater(BlockPos pos) {
+		return kind(pos) == WATER && !state(pos).getFluidState().isStill();
+	}
+
 	/** Falling water here or right beside it (it catches our body as we climb past). */
 	public boolean nearFallingWater(BlockPos pos) {
 		if (isFallingWater(pos)) {
@@ -343,14 +362,17 @@ public class Terrain {
 
 	/** Exact feet height when standing in this node. */
 	public double floorY(BlockPos feet) {
-		if (isWater(feet) || isClimbable(feet)) {
-			return feet.getY();
+		if (isWater(feet) || isClimbable(feet) || isClimbable(feet.down())) {
+			return feet.getY(); // (above a ladder's top rung we hold on at this height)
 		}
 		return feet.getY() - 1 + top(feet.down());
 	}
 
 	/** Extra cost for nearby dangers (in ticks). */
 	public double hazard(BlockPos feet) {
+		if (!HAZARD) {
+			return 0;
+		}
 		long key = feet.asLong();
 		double cached = hazards.get(key);
 		if (!Double.isNaN(cached)) {
@@ -375,17 +397,6 @@ public class Terrain {
 		}
 		if (kind(feet.down()) == LAVA) {
 			cost += 100;
-		}
-		if (kind(feet) == WATER) {
-			// Water is slow, and deep water can drown us: prefer dry routes, avoid going under,
-			// and keep out of currents (waterfalls, rivers) that push us off course.
-			cost += 6;
-			if (kind(feet.up()) == WATER) {
-				cost += 30;
-			}
-			if (!state(feet).getFluidState().isStill()) {
-				cost += 10;
-			}
 		}
 		return cost;
 	}
@@ -414,7 +425,9 @@ public class Terrain {
 				c = Double.POSITIVE_INFINITY;
 			} else {
 				c = miningTicks(s, pos) + BREAK_EXTRA;
-				if (isFalling(pos.up())) {
+				if (c > MAX_BREAK_TICKS) {
+					c = Double.POSITIVE_INFINITY;
+				} else if (isFalling(pos.up())) {
 					c += 40; // gravel above will drop in and need digging again
 				}
 			}
@@ -423,7 +436,7 @@ public class Terrain {
 		return c;
 	}
 
-	/** Like vanilla calcBlockBreakingDelta, with the best tool we carry (no enchantments). */
+	/** Like vanilla calcBlockBreakingDelta, with the best tool we carry (Efficiency counted). */
 	private double miningTicks(BlockState s, BlockPos pos) {
 		float hardness = s.getHardness(world, pos);
 		if (hardness <= 0) {
@@ -432,7 +445,15 @@ public class Terrain {
 		float speed = 1.0F;
 		boolean harvest = !s.isToolRequired();
 		for (ItemStack t : tools) {
-			speed = Math.max(speed, t.getMiningSpeedMultiplier(s));
+			float toolSpeed = t.getMiningSpeedMultiplier(s);
+			if (toolSpeed > 1.0F) {
+				// Efficiency, as vanilla's PlayerEntity#getBlockBreakingSpeed (and Baritone's ToolSet) count it.
+				int eff = net.minecraft.enchantment.EnchantmentHelper.getLevel(net.minecraft.enchantment.Enchantments.EFFICIENCY, t);
+				if (eff > 0) {
+					toolSpeed += eff * eff + 1;
+				}
+			}
+			speed = Math.max(speed, toolSpeed);
 			harvest |= t.isSuitableFor(s);
 		}
 		double delta = speed / hardness / (harvest ? 30.0 : 100.0);

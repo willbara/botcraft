@@ -12,19 +12,19 @@ import net.minecraft.util.math.Direction;
 /**
  * Which blocks a companion may break while navigating.
  *
- * <p>Vanilla does not record who placed a block, so "never break player-placed blocks" is
- * enforced conservatively: with griefing off the only blocks broken for navigation are natural
- * leaves (LeavesBlock.PERSISTENT is false for tree-grown leaves and true for placed ones).
- * Block entities (chests, furnaces, beds, signs...) are never broken, griefing or not.
+ * <p>With griefing off a companion breaks natural terrain (stone, dirt, ores, tree-grown
+ * leaves: LeavesBlock.PERSISTENT is false for those and true for placed ones), its own throwaway
+ * blocks, and nothing else; the built ledger (colony/Builds) keeps what players put down safe
+ * even when it's made of natural blocks. Block entities (chests, furnaces, beds, signs...) are
+ * never broken, griefing or not.
  */
 public final class BreakPolicy {
 	private BreakPolicy() {
 	}
 
 	/**
-	 * Natural terrain a companion may dig through while carrying out an explicit mining order
-	 * ("dig mode"): stone types, deepslate, dirt, sand, gravel, ores. Even with griefing off this
-	 * is allowed, since the player asked for mining; built blocks (cobblestone, bricks, planks,
+	 * Natural terrain a path may dig through ({@code dig}, which every Navigator search has):
+	 * stone types, deepslate, dirt, sand, gravel, ores. Built blocks (cobblestone, bricks, planks,
 	 * glass...) are not on the list.
 	 */
 	public static boolean isNaturalTerrain(BlockState state) {
@@ -45,9 +45,8 @@ public final class BreakPolicy {
 		if (state.isAir() || state.hasBlockEntity()) {
 			return false;
 		}
-		float hardness = state.getHardness(world, pos);
-		if (hardness < 0 || hardness > (dig ? 4.5F : 3.0F)) {
-			return false;
+		if (state.getHardness(world, pos) < 0) {
+			return false; // bedrock, barriers (how long a block takes is Terrain's business)
 		}
 		if (touchesFluid(world, pos)) {
 			return false; // don't flood ourselves or release lava

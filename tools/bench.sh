@@ -8,7 +8,7 @@
 #   goal: diamond_pickaxe (default), iron_pickaxe, stone_pickaxe
 #
 # Needs one `./gradlew runSoak` (any length) first, so Loom has written its launch files.
-# Extra JVM arguments come from $BENCH_JVM_ARGS, e.g. BENCH_JVM_ARGS=-Dbotcraft.off=keepPath.
+# Extra JVM arguments come from $BENCH_JVM_ARGS, e.g. BENCH_JVM_ARGS=-Dbotcraft.off=avoidOthers.
 # Output: run/bench/<name>/t<N>/bench.json and bench-report.md; then a summary of all trials
 # (tools/bench-compare.py <name> [<other name> ...] compares runs).
 set -euo pipefail

@@ -5,7 +5,11 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.BlockView;
 import org.jetbrains.annotations.Nullable;
 
-/** A* goal over feet positions. */
+/**
+ * A* goal over feet positions. Heuristics are in ticks, Baritone's way: the horizontal part is
+ * the octile distance at sprint speed ({@link PathFinder#H_PER_BLOCK}), going up costs a jump a
+ * block, going down half a two-block fall a block.
+ */
 public interface Goal {
 	boolean isGoal(BlockPos feet);
 
@@ -13,7 +17,12 @@ public interface Goal {
 
 	/** Within {@code radius} (horizontal) and 2 blocks (vertical) of a point. */
 	static Goal near(BlockPos target, double radius) {
-		return new Near(target.toImmutable(), radius);
+		return new Near(target.toImmutable(), radius, 2, 2);
+	}
+
+	/** Within {@code radius} (horizontal), at most {@code below} blocks under and {@code above} over the point. */
+	static Goal near(BlockPos target, double radius, int below, int above) {
+		return new Near(target.toImmutable(), radius, below, above);
 	}
 
 	/** Stand somewhere the eyes can reach the block (for mining / using it). */
@@ -30,6 +39,16 @@ public interface Goal {
 	}
 
 	/**
+	 * Get the feet or the head into the block (Baritone's GoalTwoBlocks), or stand two below it
+	 * when nothing would fall on us (GoalThreeBlocks): the path's last move mines the block, so
+	 * reaching the goal is mining it. How Baritone's MineProcess paths to ore.
+	 * @param shaft whether standing two below also counts (false when the block above would fall)
+	 */
+	static Goal into(BlockPos block, boolean shaft) {
+		return new Into(block.toImmutable(), shaft);
+	}
+
+	/**
 	 * Any of several goals (Baritone's GoalComposite): A* reaches whichever is cheapest to get
 	 * to, which is how a target is chosen among many candidates without flip-flopping.
 	 */
@@ -39,10 +58,35 @@ public interface Goal {
 
 	/**
 	 * Anywhere under open sky: the way out of a cave, whichever way it is. The heuristic is the
-	 * height still to climb, so a companion boxed in digs straight up (Navigator's shaft).
+	 * height still to climb.
 	 */
 	static Goal openSky(net.minecraft.world.WorldView world) {
 		return new OpenSky(world);
+	}
+
+	/** Baritone's GoalXZ: octile distance at the heuristic's ticks per block. */
+	static double xz(int dx, int dz) {
+		dx = Math.abs(dx);
+		dz = Math.abs(dz);
+		int diagonal = Math.min(dx, dz);
+		int straight = Math.max(dx, dz) - diagonal;
+		return (diagonal * PathFinder.SQRT2 + straight) * PathFinder.H_PER_BLOCK;
+	}
+
+	/** Baritone's GoalYLevel: a jump per block up, half a two-block fall per block down. */
+	static double y(int dy) {
+		if (dy > 0) {
+			return dy * PathFinder.JUMP_ONE_BLOCK;
+		}
+		if (dy < 0) {
+			return -dy * PathFinder.fallTicks(2) / 2;
+		}
+		return 0;
+	}
+
+	/** Baritone's GoalBlock: xz plus y, with dy the climb still to do (positive = up). */
+	static double block(int dx, int dy, int dz) {
+		return xz(dx, dz) + y(dy);
 	}
 
 	record OpenSky(net.minecraft.world.WorldView world) implements Goal {
@@ -54,7 +98,7 @@ public interface Goal {
 		@Override
 		public double heuristic(BlockPos feet) {
 			int top = world.getTopY(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, feet.getX(), feet.getZ());
-			return Math.max(0, top - feet.getY()) * 0.5;
+			return y(Math.max(0, top - feet.getY()));
 		}
 	}
 
@@ -94,24 +138,39 @@ public interface Goal {
 		}
 	}
 
-	static double octile(int dx, int dz) {
-		dx = Math.abs(dx);
-		dz = Math.abs(dz);
-		return Math.max(dx, dz) + 0.414 * Math.min(dx, dz);
-	}
-
-	record Near(BlockPos target, double radius) implements Goal {
+	record Near(BlockPos target, double radius, int below, int above) implements Goal {
 		@Override
 		public boolean isGoal(BlockPos feet) {
 			int dx = feet.getX() - target.getX();
 			int dz = feet.getZ() - target.getZ();
-			return dx * dx + dz * dz <= radius * radius && Math.abs(feet.getY() - target.getY()) <= 2;
+			int dy = feet.getY() - target.getY();
+			return dx * dx + dz * dz <= radius * radius && dy >= -below && dy <= above;
 		}
 
 		@Override
 		public double heuristic(BlockPos feet) {
-			double d = octile(feet.getX() - target.getX(), feet.getZ() - target.getZ()) - radius;
-			return Math.max(0, d) + Math.abs(feet.getY() - target.getY()) * 0.5;
+			double flat = Math.max(0, xz(feet.getX() - target.getX(), feet.getZ() - target.getZ()) - radius * PathFinder.H_PER_BLOCK);
+			int climb = target.getY() - feet.getY(); // positive: still below the target
+			return flat + y(climb > below ? climb - below : climb < -above ? climb + above : 0);
+		}
+	}
+
+	record Into(BlockPos block, boolean shaft) implements Goal {
+		@Override
+		public boolean isGoal(BlockPos feet) {
+			if (feet.getX() != block.getX() || feet.getZ() != block.getZ()) {
+				return false;
+			}
+			int dy = feet.getY() - block.getY();
+			return dy == 0 || dy == -1 || (shaft && dy == -2);
+		}
+
+		@Override
+		public double heuristic(BlockPos feet) {
+			int dy = block.getY() - feet.getY();
+			// Feet one below (head in the block) is as good as feet in it; two below too, for a shaft.
+			int climb = dy > 0 ? (shaft ? Math.max(0, dy - 2) : Math.max(0, dy - 1)) : dy;
+			return Goal.block(feet.getX() - block.getX(), climb, feet.getZ() - block.getZ());
 		}
 	}
 
@@ -152,8 +211,9 @@ public interface Goal {
 
 		@Override
 		public double heuristic(BlockPos feet) {
-			double d = octile(feet.getX() - block.getX(), feet.getZ() - block.getZ()) - reach * 0.7;
-			return Math.max(0, d) + Math.abs(feet.getY() + 1 - block.getY()) * 0.5;
+			double flat = Math.max(0, xz(feet.getX() - block.getX(), feet.getZ() - block.getZ()) - reach * 0.7 * PathFinder.H_PER_BLOCK);
+			int dy = block.getY() - (feet.getY() + 1);
+			return flat + y(dy > 2 ? dy - 2 : dy < -2 ? dy + 2 : 0);
 		}
 	}
 }

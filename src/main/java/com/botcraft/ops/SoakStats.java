@@ -29,6 +29,8 @@ public final class SoakStats {
 	static long tickNanos;
 	static long maxTickNanos;
 	static long ticksOverBudget;
+	/** What the companions took on the most recent tick (nanoseconds), for per-trip maxima. */
+	static long lastTickNanos;
 	static double budgetSum;
 	static double serverMsSum;
 	static long serverSlowTicks;
@@ -171,6 +173,7 @@ public final class SoakStats {
 		budgetSum += budgetMs;
 		ticks++;
 		tickNanos += nanos;
+		lastTickNanos = nanos;
 		maxTickNanos = Math.max(maxTickNanos, nanos);
 		if (nanos > budgetMs * 1_000_000 * 1.5) {
 			ticksOverBudget++;

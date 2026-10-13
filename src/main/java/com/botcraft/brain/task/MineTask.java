@@ -32,19 +32,16 @@ import java.util.Random;
 import java.util.Set;
 
 /**
- * Mine {@code wanted} items of an ore (or cobblestone), the way a player would:
- * <ol>
- *   <li>look for ore we can already see (exposed to air: in caves, ravines, cliffs), including
- *       spots we or a friend remembered;</li>
- *   <li>if none is exposed nearby, <b>find a cave</b> and go into it, then look again;</li>
- *   <li>only then dig toward buried ore close by, or dig a staircase toward the ore's depth.</li>
- * </ol>
- * Choosing among many candidates is done like Baritone: all of them become one composite path
- * goal, A* reaches the cheapest, and we <b>lock onto</b> that one until it's mined (no circling
- * between ores). Whole veins are mined, drops collected.
+ * Mine {@code wanted} items of an ore (or cobblestone), the way Baritone's MineProcess does:
+ * every ore of the kind known nearby (scanned, or remembered by us or a friend), exposed or not,
+ * becomes one composite path goal of "get the feet or head into this block" goals. A* reaches
+ * the cheapest by path cost, digging time included, so the nearest reachable ore wins, and the
+ * path's last moves mine it. We <b>lock onto</b> the ore it picked until it's mined (no circling
+ * between ores; others see the claim). Whole veins are mined, drops collected.
  *
- * <p>While this job runs the navigator is in dig mode: natural terrain only, never next to
- * fluids. Needs a suitable pickaxe; if there isn't one, it queues crafting one first.
+ * <p>With no ore known in range: look for a cave and go into it, else dig a staircase down
+ * toward the ore's depth and strip-mine along. Needs a suitable pickaxe; if there isn't one, it
+ * queues crafting one first.
  */
 public class MineTask extends Task {
 	private enum Phase { SCAN, CHOOSE, APPROACH, MINE, COLLECT, CAVE_SEARCH, CAVE, EXPLORE }
@@ -52,7 +49,8 @@ public class MineTask extends Task {
 	private static final int SCAN_RADIUS = 24;
 	private static final int MAX_EXPLORES = 24;
 	private static final int MAX_FAILURES = 16;
-	private static final int MAX_CHOICES = 16;
+	/** Ores in one composite goal, nearest first (Baritone keeps 64; the heuristic is a min over all of them). */
+	private static final int MAX_CHOICES = 32;
 	private static final int MAX_CAVE_SEARCHES = 3;
 
 	private final OreKind kind;
@@ -72,7 +70,6 @@ public class MineTask extends Task {
 	private final List<BlockPos> visitedCaves = new ArrayList<>();
 	private List<BlockPos> caveChoices = List.of();
 	private final CaveFinder caves = new CaveFinder();
-	private List<BlockPos> buried = List.of();
 	private int caveSearches;
 	private int explores;
 	/** Moving to reach the next block of a vein; time spent finishing a vein after we had enough. */
@@ -83,8 +80,6 @@ public class MineTask extends Task {
 	@Nullable
 	private ItemEntity collecting;
 	private final Pickup pickup = new Pickup();
-	@Nullable
-	private BlockPos digging;
 	private int replans;
 	private boolean askedForPickaxe;
 
@@ -121,7 +116,6 @@ public class MineTask extends Task {
 
 	@Override
 	protected void onStart(boolean resumed) {
-		c.nav().setDigMode(true);
 		lastCount = -1;
 		// Resuming with a locked target: carry on toward it rather than re-choosing.
 		if (resumed && target != null && kind.blocks().test(c.player().getWorld().getBlockState(target))) {
@@ -133,7 +127,6 @@ public class MineTask extends Task {
 
 	@Override
 	protected void onStop() {
-		c.nav().setDigMode(false);
 		com.botcraft.brain.Claims.release(c);
 		super.onStop();
 	}
@@ -248,52 +241,26 @@ public class MineTask extends Task {
 		}
 		all.addAll(c.perception().blocks().results());
 		all.removeIf(blacklist::contains);
-		List<BlockPos> exposed = new ArrayList<>();
-		List<BlockPos> hidden = new ArrayList<>();
-		for (BlockPos b : all) {
-			(exposed(world, b) ? exposed : hidden).add(b.toImmutable());
-		}
 		if (kind != OreKind.STONE) {
 			int n = 0;
-			for (BlockPos b : exposed) {
-				if (n++ < 12) {
+			for (BlockPos b : all) {
+				if (exposed(world, b) && n++ < 12) {
 					c.memory().sight(kind.word, b, dim(), world.getTime());
 				}
 			}
 		}
-		AiLog.log(c.name(), "mine {}: {} exposed, {} buried in range", kind.word, exposed.size(), hidden.size());
-		if (!exposed.isEmpty()) {
-			return chooseAmong(p, exposed);
-		}
-		BlockPos here = p.getBlockPos();
-		List<BlockPos> nearBuried = hidden.stream().filter(b -> Math.abs(b.getX() - here.getX()) <= 12 && Math.abs(b.getZ() - here.getZ()) <= 12
-			&& Math.abs(b.getY() - here.getY()) <= 10).toList();
-		if (!nearBuried.isEmpty()) {
-			buried = nearBuried; // remember these in case the cave trip comes up empty
-		}
-		// Very close buried ore is quicker to dig to than any cave trip.
-		List<BlockPos> veryClose = nearBuried.stream().filter(b -> b.getSquaredDistance(here) <= 6.5 * 6.5).toList();
-		if (!veryClose.isEmpty() && kind != OreKind.STONE) {
-			return chooseAmong(p, veryClose);
-		}
-		// Already down at the ore's depth: dig to what's nearby rather than hunting for more caves.
-		if (!nearBuried.isEmpty() && kind != OreKind.STONE && atDepth(here)) {
-			return chooseAmong(p, nearBuried);
+		AiLog.log(c.name(), "mine {}: {} known in range", kind.word, all.size());
+		if (!all.isEmpty()) {
+			return chooseAmong(p, new ArrayList<>(all));
 		}
 		if (kind == OreKind.STONE) {
-			if (!hidden.isEmpty()) {
-				return chooseAmong(p, hidden); // stone: just dig some, it's everywhere
-			}
 			setPhase(Phase.EXPLORE);
 			return Status.RUNNING;
 		}
-		// Nothing in sight: a player would go find a cave before tunnelling blind.
+		// Nothing in range: a player would go find a cave before tunnelling blind.
 		if (caveSearches < MAX_CAVE_SEARCHES) {
 			setPhase(Phase.CAVE_SEARCH);
 			return Status.RUNNING;
-		}
-		if (!buried.isEmpty()) {
-			return chooseAmong(p, buried);
 		}
 		setPhase(Phase.EXPLORE);
 		return Status.RUNNING;
@@ -311,7 +278,7 @@ public class MineTask extends Task {
 			if (b.getSquaredDistance(eye) > 5 * 5) {
 				break; // nearest first: the rest are out of reach
 			}
-			if (blacklist.contains(b) || b.equals(target) || !kind.blocks().test(world.getBlockState(b)) || wet(world, b)) {
+			if (blacklist.contains(b) || b.equals(target) || !kind.blocks().test(world.getBlockState(b)) || !plausible(world, b)) {
 				continue;
 			}
 			if (c.actions().canReachBlock(b)) {
@@ -331,41 +298,12 @@ public class MineTask extends Task {
 		return true;
 	}
 
-	private static boolean nextToLava(ServerWorld world, BlockPos pos) {
-		for (Direction d : Direction.values()) {
-			if (world.getFluidState(pos.offset(d)).isIn(net.minecraft.registry.tag.FluidTags.LAVA)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
 	/**
-	 * Breaking it would let liquid in (Baritone's rule): liquid directly above, or a source block
-	 * beside it (sources flow sideways). Mining those floods the tunnel, or means mining while
-	 * submerged.
+	 * Worth trying to mine (Baritone's plausibleToBreak): we may break it, and it doesn't let
+	 * liquid in (nothing liquid above or beside it; see BreakPolicy).
 	 */
-	private static boolean floods(ServerWorld world, BlockPos pos) {
-		if (!world.getFluidState(pos.up()).isEmpty()) {
-			return true;
-		}
-		for (Direction d : Direction.Type.HORIZONTAL) {
-			var f = world.getFluidState(pos.offset(d));
-			if (!f.isEmpty() && f.isStill()) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	/** Next to water or lava: mining it means swimming, or letting the fluid in. */
-	private static boolean wet(ServerWorld world, BlockPos pos) {
-		for (Direction d : Direction.values()) {
-			if (!world.getFluidState(pos.offset(d)).isEmpty()) {
-				return true;
-			}
-		}
-		return false;
+	private static boolean plausible(ServerWorld world, BlockPos pos) {
+		return BreakPolicy.canBreakForNav(world, pos, world.getBlockState(pos), true);
 	}
 
 	private static boolean exposed(ServerWorld world, BlockPos pos) {
@@ -383,27 +321,21 @@ public class MineTask extends Task {
 	 */
 	private Status chooseAmong(CompanionPlayer p, List<BlockPos> candidates) {
 		BlockPos from = p.getBlockPos();
-		// Leave veins someone else is already working alone (unless that's all there is).
 		ServerWorld world = p.getServerWorld();
 		var colony = com.botcraft.colony.Colony.get();
-		List<BlockPos> safe = candidates.stream().filter(b -> !floods(world, b) && (colony == null || !colony.protectsGround(world, b))).toList();
-		if (safe.isEmpty()) {
+		List<BlockPos> ok = candidates.stream().filter(b -> plausible(world, b) && (colony == null || !colony.protectsGround(world, b))).toList();
+		if (ok.isEmpty()) {
 			blacklist.addAll(candidates);
-			setPhase(Phase.EXPLORE); // all of it under water: look elsewhere
+			setPhase(Phase.EXPLORE); // all of it under water or at home: look elsewhere
 			return Status.RUNNING;
 		}
-		List<BlockPos> sorted = new ArrayList<>(com.botcraft.brain.Claims.spreadOut(c, safe, b -> b, 6));
-		// Ore by water (behind a waterfall, at the bottom of a flooded cave) only when there's no dry ore.
-		ServerWorld w = p.getServerWorld();
-		List<BlockPos> dry = sorted.stream().filter(b -> !wet(w, b)).toList();
-		if (!dry.isEmpty()) {
-			sorted = new ArrayList<>(dry);
-		}
-		sorted.sort(Comparator.comparingDouble(b -> b.getSquaredDistance(from) + 3.0 * (b.getY() - from.getY()) * (b.getY() - from.getY())));
+		// Leave veins someone else is already working alone (unless that's all there is).
+		List<BlockPos> sorted = new ArrayList<>(com.botcraft.brain.Claims.spreadOut(c, ok, b -> b, 6));
+		sorted.sort(Comparator.comparingDouble(b -> b.getSquaredDistance(from)));
 		choices = sorted.subList(0, Math.min(MAX_CHOICES, sorted.size()));
 		List<Goal> goals = new ArrayList<>();
 		for (BlockPos b : choices) {
-			goals.add(reachGoal(b));
+			goals.add(intoGoal(world, b));
 		}
 		composite = Goal.anyOf(goals);
 		c.nav().moveTo(composite, from.getSquaredDistance(choices.get(0)) > 100);
@@ -411,8 +343,9 @@ public class MineTask extends Task {
 		return Status.RUNNING;
 	}
 
-	private Goal reachGoal(BlockPos b) {
-		return Goal.reachVisible(c.player().getWorld(), b, ActionController.BLOCK_REACH - 0.5);
+	/** Get into the block, or under it when nothing above would fall on us (Baritone's GoalTwoBlocks / GoalThreeBlocks). */
+	private static Goal intoGoal(ServerWorld world, BlockPos b) {
+		return Goal.into(b, !(world.getBlockState(b.up()).getBlock() instanceof net.minecraft.block.FallingBlock));
 	}
 
 	private Status choose(CompanionPlayer p) {
@@ -441,28 +374,32 @@ public class MineTask extends Task {
 	private Status goTo(BlockPos pos) {
 		target = pos.toImmutable();
 		replans = 0;
-		c.nav().moveTo(reachGoal(target), c.player().getBlockPos().getSquaredDistance(target) > 100);
+		c.nav().moveTo(intoGoal(c.player().getServerWorld(), target), c.player().getBlockPos().getSquaredDistance(target) > 100);
 		setPhase(Phase.APPROACH);
 		return Status.RUNNING;
 	}
 
 	private Status approach(CompanionPlayer p) {
-		if (!kind.blocks().test(p.getWorld().getBlockState(target))) {
+		ServerWorld world = p.getServerWorld();
+		if (!kind.blocks().test(world.getBlockState(target))) {
 			c.memory().forgetSighting(kind.word, target);
-			setPhase(Phase.SCAN);
+			if (p.getBlockPos().getSquaredDistance(target) <= 3 * 3) {
+				// The path's last move mined it: on to the rest of the vein.
+				c.nav().stop();
+				collectVein(world);
+				setPhase(Phase.MINE);
+			} else {
+				setPhase(Phase.SCAN);
+			}
 			return Status.RUNNING;
 		}
 		Navigator.State s = c.nav().state();
-		if (c.actions().canReachBlock(target) && (s == Navigator.State.ARRIVED || (p.isOnGround() && phaseTicks > 5))) {
-			c.nav().stop();
-			collectVein(p.getServerWorld());
+		if (c.actions().canReachBlock(target) && (s == Navigator.State.ARRIVED || p.isOnGround())) {
+			c.nav().stop(); // in reach and in sight (or right over our head at the end of a shaft)
+			collectVein(world);
 			setPhase(Phase.MINE);
-		} else if (digThrough(p, target)) {
-			if (c.nav().isBusy()) {
-				c.nav().stop(); // in reach but hidden behind stone: dig toward it like a player would
-			}
 		} else if ((s == Navigator.State.IDLE || s == Navigator.State.FAILED) && replans++ < 4) {
-			c.nav().moveTo(reachGoal(target), false); // locked target: re-plan to the same one
+			c.nav().moveTo(intoGoal(world, target), false); // locked target: re-plan to the same one
 		} else if (s == Navigator.State.ARRIVED) {
 			AiLog.log(c.name(), "mine {}: arrived but can't reach {} ({})", kind.word, target.toShortString(), c.actions().reachDebug(target));
 			blacklist.add(target);
@@ -501,9 +438,6 @@ public class MineTask extends Task {
 		if (fresh.isEmpty()) {
 			AiLog.log(c.name(), "mine {}: no caves nearby", kind.word);
 			caveSearches = MAX_CAVE_SEARCHES;
-			if (!buried.isEmpty()) {
-				return chooseAmong(p, buried);
-			}
 			setPhase(Phase.EXPLORE);
 			return Status.RUNNING;
 		}
@@ -548,16 +482,13 @@ public class MineTask extends Task {
 			return Status.RUNNING;
 		}
 		if (!c.actions().canReachBlock(next)) {
-			if (digThrough(p, next)) {
-				return Status.RUNNING;
-			}
-			// The rest of the vein is a step or two further: move over rather than leave it.
+			// The rest of the vein is a step or two further, or behind stone: path into it.
 			Navigator.State ns = c.nav().state();
 			if (repositionTicks == 0 || ns == Navigator.State.IDLE) {
-				c.nav().moveTo(reachGoal(next), false);
+				c.nav().moveTo(intoGoal(world, next), false);
 			}
-			if (++repositionTicks > 20 * 15 || ns == Navigator.State.FAILED
-				|| (ns == Navigator.State.ARRIVED && !c.actions().canReachBlock(next))) {
+			if (++repositionTicks > 20 * 30 || ns == Navigator.State.FAILED
+				|| (ns == Navigator.State.ARRIVED && !c.actions().canReachBlock(next) && kind.blocks().test(world.getBlockState(next)))) {
 				AiLog.log(c.name(), "mine {}: can't get at {} in this vein, leaving it", kind.word, next.toShortString());
 				blacklist.add(vein.pop());
 				repositionTicks = 0;
@@ -635,21 +566,6 @@ public class MineTask extends Task {
 		return kind != OreKind.STONE && Math.abs(here.getY() - kind.bestY) <= 10;
 	}
 
-	/** If natural terrain hides an in-reach target, mine it. @return true while doing so */
-	private boolean digThrough(CompanionPlayer p, BlockPos goal) {
-		// Stick with one block until it's gone; the raycast can flip between neighbours as we sway.
-		BlockPos block = digging != null && !p.getWorld().getBlockState(digging).isAir() ? digging : c.actions().obstruction(goal);
-		digging = block == null ? null : block.toImmutable();
-		if (block == null) {
-			return false;
-		}
-		var state = p.getWorld().getBlockState(block);
-		if (!BreakPolicy.canBreakForNav(p.getServerWorld(), block, state, true)) {
-			return false;
-		}
-		return c.actions().mineBlock(block) != ActionController.MineResult.FAILED;
-	}
-
 	private void collectVein(ServerWorld world) {
 		vein.clear();
 		var colony = com.botcraft.colony.Colony.get();
@@ -664,8 +580,8 @@ public class MineTask extends Task {
 			out.add(cur);
 			// Veins connect diagonally too (that's how they look in the wall).
 			for (BlockPos n : BlockPos.iterate(cur.add(-1, -1, -1), cur.add(1, 1, 1))) {
-				if (seen.add(n.toImmutable()) && kind.blocks().test(world.getBlockState(n)) && !blacklist.contains(n) && !nextToLava(world, n)
-					&& !floods(world, n) && (colony == null || !colony.protectsGround(world, n))) {
+				if (seen.add(n.toImmutable()) && kind.blocks().test(world.getBlockState(n)) && !blacklist.contains(n) && plausible(world, n)
+					&& (colony == null || !colony.protectsGround(world, n))) {
 					queue.add(n.toImmutable());
 				}
 			}

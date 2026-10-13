@@ -65,6 +65,7 @@ public final class CompanionManager {
 		instance.loadAndSpawnAll();
 		com.botcraft.ops.Soak.maybeStart(server);
 		com.botcraft.ops.Bench.maybeStart(server);
+		com.botcraft.ops.NavBench.maybeStart(server);
 	}
 
 	static void onServerStopping(MinecraftServer server) {
@@ -350,6 +351,7 @@ public final class CompanionManager {
 		com.botcraft.ops.SoakStats.serverTick(server.getTickTime());
 		com.botcraft.ops.Soak.tick(server);
 		com.botcraft.ops.Bench.tick(server);
+		com.botcraft.ops.NavBench.tick(server);
 		com.botcraft.chat.Social.tick(companions.values(), tickCount);
 		if (tickCount % 100 == 0) {
 			try {

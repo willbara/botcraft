@@ -117,33 +117,41 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
 
 ### Moving around
 
-- **Pathfinding (Baritone-style).** A* is weighted in game-tick costs and spread over ticks within a time budget, which grows when the server has time to spare. The moves are:
-  - walk, diagonal step (also past one blocked corner, sliding round it, as in Baritone), jump up one block, drop down;
-  - dig through and dig down (natural terrain only);
-  - pillar up and bridge gaps with throwaway blocks;
+- **Pathfinding (ported from Baritone).** A* is weighted in game-tick costs, with Baritone's move set, costs and heuristic, and spread over ticks within a time budget, which grows when the server has time to spare. The moves are:
+  - walk, mining up to two blocks in the way;
+  - diagonal step through open space, or past one blocked corner, sliding round it;
+  - jump up one block, mining the head room, or placing the step first if there is none;
+  - step down one block, mining the three blocks of the step (which is how it digs a staircase), or walk off a drop of up to 3 blocks, or into still water with ground right under it, never through flowing water (as in Baritone);
+  - dig down through the block underfoot;
+  - pillar up and bridge gaps with throwaway blocks (placing against a side, or sneaking out and placing behind);
   - climb ladders and vines;
-  - parkour across 1–2 block gaps, but never over a drop deeper than 10 blocks (a missed jump there could kill), so cliff edges and ravines are walked round, and never from or onto leaves;
+  - parkour across 1 or 2 block gaps, landing level, never from or onto leaves (Baritone also jumps 3-block gaps and onto ledges one block up; with no run-up those missed every time on the nav bench, so they are left out);
   - swim;
   - open doors and fence gates.
+- **Digging.** Every search may dig natural terrain (stone, dirt, sand, gravel, ores, tree-grown leaves). Mining time with the best tool on hand, Efficiency included, is part of the cost, so a path goes round when that is quicker and digs when it isn't. Each step mines whatever is in the cells its body passes through when it runs, as in Baritone. A block hidden from view is reached by mining what hides it only if that is right next to the companion.
 - **How far they see.** As far as the server lets players see (its view distance), at most 12 chunks. A path search may reach that far, and the surface within it is in sight: a companion that finds no trees nearby heads for the nearest wood it can see (across water, past a hill) before searching at random. Underground, ores and caves are still only found close by. Seeing the surface reads just the top block of every other column and is shared by all companions for a few minutes.
 - **Smooth walking.** On open ground it walks straight at the furthest reachable step instead of zig-zagging from node to node. Flat, clear ground is costed at sprint speed when the companion will sprint it. It keeps walking up to a block it is breaking on a level step (a leaf at head height) instead of standing still for each one.
-- **Forests.** Standing on leaves costs extra, so paths keep to the forest floor and break leaves at head height rather than climb onto the canopy and cross the treetops. Under trees counts as outdoors, not underground (the leaves are ignored), so a forest doesn't trigger escape mode, digging straight up or torch placing.
+- **Forests.** Standing on leaves costs extra, so paths keep to the forest floor and break leaves at head height rather than climb onto the canopy and cross the treetops. Under trees counts as outdoors, not underground (the leaves are ignored), so a forest doesn't trigger digging straight up or torch placing.
 - **Following a moving goal.** When the goal moves (an owner walking on), the companion keeps its current path if that still ends in the new goal, or for a partial path, still gets it at least 2 blocks closer. Otherwise it re-plans, and the new search costs the old path's remaining cells at half, so it keeps to the same way round obstacles instead of switching sides each time (Baritone does both).
 - **Avoiding hazards.**
   - **Lava** and fire are strongly avoided. A companion that ends up in lava anyway wades straight to the nearest dry footing within 10 blocks (path finding can't help there, since every block around counts as deadly).
-  - **Water:** swimming costs extra, being fully underwater costs much more, and currents (rivers, waterfalls) cost more still. Paths go around water whenever a dry route exists.
+  - **Water:** swimming costs about twice as much as walking, as in Baritone, so paths go around water when the dry way is not much longer. Flowing water is never walked off into or fallen through: the current pushes the body off its line.
   - **Waterfalls:** no climbing (vines, ladders) or swimming up in or right beside falling water, which drags you back down. No digging-up-and-pillaring while standing in water either.
   - **Swimming upright:** in water a companion only sprint-swims (the swimming pose, head under) where the route itself goes under water. Across the surface it swims upright, so it can breathe.
   - **Breath:** a path may stay with the head under water for at most 14 blocks in a row, fewer when the companion is already short of air. Longer underwater stretches cost more the longer they get. It never routes through a flooded tunnel longer than a breath lasts.
+- **Where it can go.** Only chunks where the server moves entities (within the simulation distance) count as open: a companion can't move into a chunk that is loaded but not ticking, and used to freeze on its edge.
+- **Following a path.** As in Baritone, each step knows where the body may be while it runs. A companion knocked back onto an earlier step picks up from there. One more than 3 blocks off the path, or more than 2 blocks off for 10 seconds, re-plans. It jumps only on steps that go up (when lined up and close to the step, or at once when nothing overhead could bump its head), and on parkour steps at the edge of the gap.
 - **Getting unstuck.**
-  - **Stuck while walking:** it wiggles, then re-plans around the spot that stopped it.
-  - **No normal path:** escape mode digs through natural terrain and pillars. It may also jump down more than 3 blocks, like a player stuck on a pillar would, as long as the fall leaves it at least 3 hearts.
-  - **Underground with the goal above:** it digs straight up like a player, breaking the block overhead, jumping and placing a block underneath. It stops before fluids, sand and gravel, and anything that isn't natural terrain.
-  - **Short or failed searches:** a path that ends just short of the goal re-plans, and a search that fails almost at once is retried after a moment.
+  - **Stuck while walking:** it re-plans, and the second time at one spot it plans round it. After five, the move fails.
+  - **No path at all:** it searches once more, allowing a jump down of more than 3 blocks (like a player stuck on a pillar, as long as the fall leaves it at least 3 hearts) and digging the base's ground.
+  - **Underground with the goal above:** if that finds nothing either, it digs straight up like a player, breaking the block overhead, jumping and placing a block underneath. It stops before fluids, sand and gravel, and anything that isn't natural terrain.
+  - **Short searches:** a path that ends just short of the goal re-plans, and a search that fails almost at once (planned from mid-step, mid-fall or mid-swim) is tried again half a second later.
   - **Standing on an edge:** when the middle of the companion is over a drop, the search starts from the block it is actually standing on.
-  - **Long searches:** after about a second, a search hands over the best partial path if it gets at least 8 blocks closer. As in Baritone, the partial path ends at the best node by distance left plus cost so far (cost divided by 1.5, 2, … 10, the first that ends more than 5 blocks from the start), not just the node nearest the goal, which could be a costly dead end. The companion walks it and plans the next stretch on the way, so it is usually ready on arrival.
-  - **The world changing ahead:** four times a second it re-checks the next five steps. If a block appeared, the floor was dug out or lava flowed in, it re-plans at once.
-  - **Slow steps:** a step that takes more than twice what the planner expected, plus 5 seconds, counts as stuck.
+  - **Long searches:** as in Baritone, a search that has a partial path worth taking (one that ends more than 5 blocks from the start) stops after `pathPrimaryNodes` nodes and hands it over; one that has nothing yet runs on to `maxPathNodes`. The limits count nodes, not time, so how busy the server is changes how soon a search ends, never how it ends. The partial path ends at the best node by distance left plus cost so far (cost divided by 1.5, 2, … 10, the first that ends more than 5 blocks out). The companion walks it and plans the next stretch on the way.
+  - **The world changing ahead:** four times a second it re-checks the next five steps, like Baritone: it re-plans when a block appears that it may not mine, the floor it needs is dug out, or lava flows in. A block it can mine is simply mined when the step runs.
+  - **Slow steps:** a step that takes 5 seconds longer than the planner expected counts as stuck.
+  - **Doors and gates:** a step through a closed door or gate isn't done until it has been opened (pressed against a closed gate used to count as through it).
+  - **Steps down by an edge:** where the ground past the landing drops away, it comes in at half speed, so it doesn't overshoot into the drop.
   - **Bridges:** after two bridge blocks it couldn't place, it looks for a way round without bridging. Bridges are only planned off blocks with solid faces (not leaves).
 - **Breathing.** When a companion's air drops below half, it stops everything and swims to the nearest air the water actually leads to: up to about 32 blocks of swimming, never air behind a wall or above a solid ceiling. It swims that route itself, block by block (sideways, down, up), without the pathfinder. With no air in reach it swims straight up.
 - **Giving up on wet jobs.** A job that sends a companion up for air three times is abandoned ("there's too much water here"), and counts as a failure of that method.
@@ -163,19 +171,17 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
 
 ### Mining
 
-When asked for an ore, a companion looks in this order:
+When asked for an ore, a companion works as Baritone's mine command does:
 
-1. More of the ore right where it is (from its surroundings), including the rest of a vein it's working on.
-2. Ore it can already see, exposed in caves, ravines or cliffs, including spots it or a friend remembers.
-3. Buried ore within about 6 blocks, which is quicker to dig to.
-4. A cave: it goes in and looks again. For deep ores (diamonds, redstone, gold, lapis) it searches further and prefers caves near the ore's depth.
-5. If there's no good cave, it digs a staircase down to the ore's depth, then strip-mines forward, looking again every 16 blocks. At the right depth it digs straight to any buried ore it senses nearby.
+1. Every ore of that kind it knows of within about 24 blocks counts, exposed or buried, including spots it or a friend remembers. The nearest 32 become one path goal: get into the ore block, or right under it. A* reaches whichever is cheapest to get to, digging included, so the nearest reachable ore wins, and the path's last moves mine it. The companion locks onto that ore so others leave it be.
+2. With none in range: a cave. It goes in and looks again. For deep ores (diamonds, redstone, gold, lapis) it searches further and prefers caves near the ore's depth.
+3. If there's no good cave, it digs a staircase down to the ore's depth, then strip-mines forward, looking again every 16 blocks.
 
 While mining:
 - **Whole veins.** It mines every block of a vein, including blocks joined only at the corners, and steps over to reach the rest. It finishes the vein even past the requested count.
 - **Ore on the way.** Any of the target ore it passes within reach while walking, exploring or heading for a cave gets mined.
 - **The base's ground.** Mining leaves home's ground alone (the home zone, from 6 blocks under its ground upwards, hills included), including when digging a staircase or strip mine; it walks out of home first. Deep caves under home can still be mined. Soaks showed stone jobs digging out the base until its chests and furnaces stood on one-block pillars.
-- **Wet and dangerous ore.** Ore that would let liquid in when mined (liquid directly above it, or a liquid source beside it, as in Baritone) is never mined, including when following a vein. Other ore next to water is chosen only when there's no dry ore. Ore next to lava is left alone.
+- **Wet and dangerous ore.** Ore touching liquid above or beside it is never mined, including when following a vein.
 - **Time limit.** It keeps at it for up to 15 minutes, or 25 for deep ores.
 
 ### Crafting, smelting and tools
@@ -403,8 +409,7 @@ Spawn a companion named popbob (any capitalisation) and it turns on everyone:
 
 Vanilla doesn't record who placed a block. Botcraft records every block placed since it was installed and judges older blocks by what they are (see "Natural or built" under The base), and the rules are conservative:
 - wood only comes from natural trees;
-- normal pathing only breaks natural leaves;
-- mining jobs and escape mode only dig natural terrain, never a block someone placed;
+- pathing only digs natural terrain and companions' own throwaway blocks, never a block someone placed;
 - containers and block entities are never broken, whatever the setting.
 
 Away from home, pillars, bridges and staircases built while travelling are left in the world. So are a crafting table it couldn't get back to, and a furnace when it had no pickaxe to break it with. At home they are tidied up.
@@ -412,8 +417,8 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 ### Navigation
 
 - **Not supported:** boats, elytra, water buckets, ender pearls, and parkour beyond 2-block gaps.
-- **Search size.** One search covers about 96 blocks (`maxPathNodes`). Longer trips use partial paths, planned on while walking.
-- **Very large height differences** are slow. Escape mode and digging straight up get there, but climbing from deep caves to a mountain top can take minutes.
+- **Search size.** A search stops at `pathPrimaryNodes` nodes once it has a partial path, at `maxPathNodes` otherwise. Longer trips use partial paths, planned on while walking.
+- **Very large height differences** are slow. Staircases and digging straight up get there, but climbing from deep caves to a mountain top can take minutes.
 - **Digging out needs the right tools and blocks.** It needs a pickaxe for stone and at least one throwaway block. A companion with an empty inventory deep underground is stuck, just as a player would be, until the teleport-to-owner fallback (follow mode) or the failsafe (free mode, after 90 seconds of digging by hand) brings it out.
 - **Sealed underwater caves.** If no air is reachable within about 32 blocks of swimming, a companion can still drown. Paths keep breathing room, but currents can push a companion off its route.
 - **No portals.** Companions don't use Nether or End portals on their own. They follow you between dimensions by teleporting.
@@ -456,10 +461,10 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `aiTickInterval` | 5 | Drives are re-scored every N ticks (body control runs every tick). |
 | `tickBudgetMs` | 2.0 | AI time per server tick that is always available, shared by all companions. |
 | `maxTickBudgetMs` | 8.0 | When the rest of the server leaves room (a whole tick under 35 ms), the AI budget grows up to this. |
-| `pathNodesPerTick` / `maxPathNodes` | 600 / 20000 | A* time slicing and search limit. |
+| `pathNodesPerTick` / `pathPrimaryNodes` / `maxPathNodes` | 600 / 20000 / 80000 | A* nodes per companion per tick; where a search stops once it has a partial path worth taking; where it stops in any case. |
 | `chatEnabled` | true | Replies and unprompted remarks. |
 | `chatVerbosity` | all | `all`, or `quiet`: only answers and acknowledgements, what a companion starts on its own and what failed. `/companion chat all\|quiet\|off` sets it in game. |
-| `griefing` | false | When off, navigation only breaks natural leaves and only natural trees are chopped. Containers and block entities are never broken either way. |
+| `griefing` | false | When off, navigation only breaks natural terrain and companions' own throwaway blocks, and only natural trees are chopped. Containers and block entities are never broken either way. |
 | `allowBridging` | true | May place dirt or cobblestone to cross gaps. |
 | `followDistance` | 3.5 | Comfortable distance from the owner. |
 | `teleportToOwnerDistance` | 48 | When following and farther than this, walk first and teleport only if walking fails or takes over 30 s (at most once a minute). Also used to follow you into another dimension. Never applies during a job. 0 disables. |
@@ -491,8 +496,8 @@ com.botcraft
 ├─ action/      ActionController (look easing, aim jitter, reaction delay, movement input,
 │               survival mining, use/place, attack, eat, drop/give), Inventories (tool/weapon/food choice)
 ├─ nav/         Terrain (block classes, tick costs, hazards), PathFinder (time-sliced A*, Baritone-style
-│               moves), Navigator (execution, string pulling, escape mode, digging out, stuck
-│               recovery), BreakPolicy, Goal
+│               moves), Navigator (execution per step kind, string pulling, off-path checks,
+│               digging out, stuck recovery), BreakPolicy, Goal
 ├─ perception/  Perception (threats, owner, time, inventory summary), Surroundings (rolling 8-block
 │               picture), BlockScanner, CaveFinder
 ├─ colony/      Colony (the base, its chests and their purposes, stock, wanted levels; colony.json), Kit (what a

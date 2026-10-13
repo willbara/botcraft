@@ -5,7 +5,8 @@
 | Command | What it covers |
 |---|---|
 | `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
-| `./gradlew runGametest` | Headless server, 95 GameTests (the table below lists the early ones). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/botcraft.json` to see AI traces. |
+| `./gradlew runGametest` | Headless server, 99 GameTests (the table below lists the early ones, and the pathfinding symptom tests). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/botcraft.json` to see AI traces. |
+| `tools/navbench.sh <name> [workers] [minutes]` | The navigation bench: one companion per server walks its share of 100 fixed start/goal pairs (`tools/navbench-pairs.json`, from seed 12345: 50 across the surface, 25 from the surface down into a cave, 15 from a cave up, 10 cave to cave), carrying a netherite pickaxe with Efficiency V (like the manual Baritone runs it was compared with), 32 cobblestone and bread. Each trip records whether it arrived, ticks, blocks walked against the straight line, searches, nodes, ticks spent waiting on searches, stuck events, jumps, AI ms per server tick and server tick ms. `tools/navbench-compare.py <name> <name>...` puts runs side by side, with times and path lengths over the trips every run completed. The pair list can grow: add a pair where a companion was seen to fail. `tools/navbench-generate.sh` remakes it. `CLASSES_FROM=<dir>` runs an older build's classes. |
 | `tools/bench.sh <name> [trials] [goal] [minutes] [seed]` | The bench: one companion with an empty inventory on a fixed-seed world (12345), told to get a diamond pickaxe (or `iron_pickaxe`, `stone_pickaxe`), from a different fixed start point per trial; trials run side by side. Each milestone (first log, crafting table, wooden pickaxe, first stone, stone pickaxe, coal, furnace, raw iron, iron ingot, iron pickaxe, below y 0, diamond, diamond pickaxe) is timed, with what went wrong in between: stuck events, failed searches, search nodes, failed jobs, deaths. Path search is limited by node counts, not the clock, so the machine's load doesn't change a run. Reports in `run/bench/<name>/t*/`; `tools/bench-watch.sh <name>` follows a run live (milestones, re-orders, exceptions per trial); `tools/bench-compare.py <name> <name>...` puts runs side by side (trials reaching each milestone, median times). The standard check for whether a change made companions better: the times should only go down. Needs one `./gradlew runSoak` first for the launch files. |
 
 | GameTest | Milestone | Passes when |
@@ -36,6 +37,10 @@
 | `givesToFriendOnLedge` | 13 | "X, give Y your logs" reaches Y even though Y is on a ledge. |
 | `companionsBanterAndShare` | 12 | Two companions banter, and the one told about an iron sighting remembers it. |
 | `fellsWholeTallTree` | 7 | Asked for only 2 logs from a 9-log tree with an empty inventory, it digs dirt, pillars up, fells the whole trunk, digs the pillar down and collects at least 7 logs. |
+| `noHoppingUnderTheCanopy` | nav | Following its owner through trunks under a low canopy, it arrives without jumping once. |
+| `digsOnlyAlongItsPath` | nav | Mining coal set in solid stone above head height, it only breaks blocks next to where it stands. |
+| `minesTheNearerVein` | nav | Coal behind one block of stone and exposed coal 20 blocks down a corridor: it mines the near coal first. |
+| `searchResultDoesNotDependOnTickSlicing` | nav | The same search at 600 and at 25 node expansions per tick ends the same way, with the same path. |
 
 ## Manual checklist (Test profile, world "CompanionsTest", cheats ON)
 
