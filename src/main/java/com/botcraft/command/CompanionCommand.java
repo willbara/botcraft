@@ -70,6 +70,11 @@ public final class CompanionCommand {
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
 					.executes(CompanionCommand::remove)))
+			.then(CommandManager.literal("chat")
+				.executes(CompanionCommand::chatShow)
+				.then(CommandManager.argument("level", StringArgumentType.word())
+					.suggests((ctx, b) -> CommandSource.suggestMatching(List.of("all", "quiet", "off"), b))
+					.executes(CompanionCommand::chatSet)))
 			.then(CommandManager.literal("removeall")
 				.executes(CompanionCommand::removeAll))
 			.then(CommandManager.literal("info")
@@ -237,6 +242,42 @@ public final class CompanionCommand {
 			return 0;
 		}
 		ctx.getSource().sendFeedback(() -> Text.literal("Removed companion " + name), true);
+		return 1;
+	}
+
+	/** /companion chat: how much companions say right now. */
+	private static int chatShow(CommandContext<ServerCommandSource> ctx) {
+		CompanionConfig cfg = CompanionConfig.get();
+		String level = !cfg.chatEnabled ? "off" : cfg.chatVerbosity;
+		ctx.getSource().sendFeedback(() -> Text.literal("Companion chat: " + level + " (/companion chat all|quiet|off)"), false);
+		return 1;
+	}
+
+	/**
+	 * /companion chat all|quiet|off: everything; only answers, what they start and what failed;
+	 * or nothing. Saved in the config.
+	 */
+	private static int chatSet(CommandContext<ServerCommandSource> ctx) {
+		String level = StringArgumentType.getString(ctx, "level");
+		CompanionConfig cfg = CompanionConfig.get();
+		switch (level) {
+			case "all", "quiet" -> {
+				cfg.chatEnabled = true;
+				cfg.chatVerbosity = level;
+			}
+			case "off" -> cfg.chatEnabled = false;
+			default -> {
+				ctx.getSource().sendError(Text.literal("Chat is all, quiet or off"));
+				return 0;
+			}
+		}
+		CompanionConfig.save();
+		String what = switch (level) {
+			case "quiet" -> "quiet: answers, what they start and what failed";
+			case "off" -> "off: companions don't talk";
+			default -> "all";
+		};
+		ctx.getSource().sendFeedback(() -> Text.literal("Companion chat: " + what), true);
 		return 1;
 	}
 

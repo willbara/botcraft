@@ -296,6 +296,12 @@ public class Companion {
 	 * drowned in, not somewhere that has already killed us twice.
 	 */
 	private void planRecovery() {
+		// A trip back from an earlier death is out of date: it's decided afresh below. (Left in
+		// the queue, it carried on to the place that had killed us twice, and killed us again.)
+		int stale = jobs.drop(spec -> spec.contains(RECOVERY));
+		if (stale > 0) {
+			AiLog.log(name(), "dropped {} earlier trip(s) back for my things", stale);
+		}
 		Memory.Place death = memory.place("last_death");
 		if (death == null || player == null || !dimension().equals(death.dim)
 			|| player.getWorld().getGameRules().getBoolean(net.minecraft.world.GameRules.KEEP_INVENTORY)) {
@@ -319,10 +325,13 @@ public class Companion {
 		// Items last 5 minutes from the death; keep looking for them that long.
 		leftovers.expect(death.pos(), 10.0, Math.max(20 * 30, 20 * 60 * 5 - age));
 		BlockPos at = death.pos();
-		jobs.pushFront(List.of("goto " + at.getX() + " " + at.getY() + " " + at.getZ() + " back for my things"));
+		jobs.pushFront(List.of("goto " + at.getX() + " " + at.getY() + " " + at.getZ() + " " + RECOVERY));
 		AiLog.log(name(), "going back for my things at {}", at.toShortString());
 		speech.event("event.recover", Map.of(), 0, 0.8F);
 	}
+
+	/** The label of the trip back to where we died (it's in the job spec). */
+	private static final String RECOVERY = "back for my things";
 
 	/** The job made no progress for minutes: give up on it like any failure. */
 	private void onStalled() {

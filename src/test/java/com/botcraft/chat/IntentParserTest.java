@@ -355,4 +355,14 @@ class IntentParserTest {
 		assertEquals(Intent.Type.LIGHT, type("bob place some torches"));
 		assertEquals(Intent.Type.LIGHT, type("bob it's dark around here"));
 	}
+
+	@Test
+	void oneVerbSeveralThings() {
+		var p = IntentParser.parse("everyone make a iron pickaxe and iron armor", List.of("bob")).intents();
+		assertEquals(2, p.size(), p.toString());
+		assertEquals("iron pickaxe", p.get(0).item());
+		assertEquals("iron armor", p.get(1).item());
+		var q = IntentParser.parse("bob bring me logs and coal", List.of("bob")).intents();
+		assertEquals(2, q.size(), q.toString());
+	}
 }

@@ -67,9 +67,26 @@ public class Speech {
 		}
 	}
 
-	/** A reply to someone: always said (if chat is enabled). */
+	/** A reply to someone: always said (if chat is enabled), quiet or not. */
 	public void reply(String key, @Nullable ServerPlayerEntity to, Map<String, String> extra) {
-		say(key, to, extra);
+		replying = true;
+		try {
+			say(key, to, extra);
+		} finally {
+			replying = false;
+		}
+	}
+
+	/** Saying a reply right now (quiet chat lets those through). */
+	private boolean replying;
+
+	/** Unprompted lines still said with quiet chat: starting something of our own, and failures. */
+	private static final java.util.Set<String> QUIET_KEEPS = java.util.Set.of("event.initiative", "board.take", "event.task_failed",
+		"event.plan_failed");
+
+	/** Quiet chat (/companion chat quiet): only replies and {@link #QUIET_KEEPS} get said. */
+	private boolean quietSkips(String key) {
+		return "quiet".equals(CompanionConfig.get().chatVerbosity) && !replying && !QUIET_KEEPS.contains(key);
 	}
 
 	/**
@@ -96,7 +113,7 @@ public class Speech {
 
 	/** Say something after {@code delay} ticks (plus typing time): used for back-and-forth banter. */
 	public boolean sayIn(String key, @Nullable ServerPlayerEntity to, Map<String, String> extra, int delay) {
-		if (!CompanionConfig.get().chatEnabled || queue.size() > 5) {
+		if (!CompanionConfig.get().chatEnabled || queue.size() > 5 || quietSkips(key)) {
 			return false;
 		}
 		Map<String, String> vars = vars(to);

@@ -42,6 +42,12 @@ public class CompanionConfig {
 	/** Companions may chat (replies and unprompted remarks). */
 	public boolean chatEnabled = true;
 	/**
+	 * How much companions say: "all" (everything), or "quiet": answers and acknowledgements when
+	 * spoken to, saying what they're starting on their own, and saying when something failed;
+	 * no small talk, banter or remarks. Set in game with /companion chat.
+	 */
+	public String chatVerbosity = "all";
+	/**
 	 * When false (default) companions never break blocks that could be player-placed:
 	 * navigation only breaks natural (non-persistent) leaves, and wood is only taken from
 	 * trees that still have natural leaves. Containers / block entities are never broken.
@@ -129,5 +135,8 @@ public class CompanionConfig {
 		respawnDelayTicks = Math.max(1, respawnDelayTicks);
 		commandPermissionLevel = Math.max(0, Math.min(4, commandPermissionLevel));
 		initiative = Math.max(0.0F, Math.min(1.0F, initiative));
+		if (!"quiet".equals(chatVerbosity)) {
+			chatVerbosity = "all";
+		}
 	}
 }

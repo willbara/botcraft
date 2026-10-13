@@ -433,9 +433,36 @@ public final class IntentParser {
 			for (String sub : AND_VERB.split(part)) {
 				String s = sub.trim().replaceAll("^(and|also|please)\\s+", "");
 				if (!s.isEmpty()) {
-					out.add(s);
+					out.addAll(splitObjects(s));
 				}
 			}
+		}
+		return out;
+	}
+
+	/** "make an iron pickaxe and iron armour": one verb, several things to get. */
+	private static final Pattern VERB_OBJECTS = Pattern.compile(
+		"^((?:\\S+ )*?(?:get|grab|mine|chop|gather|collect|craft|make|fetch|bring|find|smelt|cook)(?: (?:me|us|him|her|them))?) (.+ and .+)$");
+
+	/**
+	 * "&lt;verb&gt; X and Y" becomes "&lt;verb&gt; X" and "&lt;verb&gt; Y" (a few short things at most, so a
+	 * sentence that merely contains "and" is left alone).
+	 */
+	static List<String> splitObjects(String clause) {
+		Matcher m = VERB_OBJECTS.matcher(clause);
+		if (!m.matches()) {
+			return List.of(clause);
+		}
+		String[] things = m.group(2).split("\\s*(?:\\band\\b|,)\\s*");
+		if (things.length < 2 || things.length > 4) {
+			return List.of(clause);
+		}
+		List<String> out = new ArrayList<>();
+		for (String t : things) {
+			if (t.isBlank() || t.trim().split(" ").length > 4) {
+				return List.of(clause);
+			}
+			out.add(m.group(1) + " " + t.trim());
 		}
 		return out;
 	}
