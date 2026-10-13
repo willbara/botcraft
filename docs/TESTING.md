@@ -5,7 +5,7 @@
 | Command | What it covers |
 |---|---|
 | `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
-| `./gradlew runGametest` | Headless server, 101 GameTests (the table below lists the early ones, and the pathfinding symptom tests). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/botcraft.json` to see AI traces. |
+| `./gradlew runGametest` | Headless server, 103 GameTests (the table below lists the early ones, and the pathfinding symptom tests). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/botcraft.json` to see AI traces. |
 | `tools/navbench.sh <name> [workers] [minutes]` | The navigation bench: one companion per server walks its share of 100 fixed start/goal pairs (`tools/navbench-pairs.json`, from seed 12345: 50 across the surface, 25 from the surface down into a cave, 15 from a cave up, 10 cave to cave), carrying a netherite pickaxe with Efficiency V (like the manual Baritone runs it was compared with), 32 cobblestone and bread. Each trip records whether it arrived, ticks, blocks walked against the straight line, searches, nodes, ticks spent waiting on searches, stuck events, jumps, AI ms per server tick and server tick ms. `tools/navbench-compare.py <name> <name>...` puts runs side by side, with times and path lengths over the trips every run completed. The pair list can grow: add a pair where a companion was seen to fail. `tools/navbench-generate.sh` remakes it. `CLASSES_FROM=<dir>` runs an older build's classes. |
 | `tools/bench.sh <name> [trials] [goal] [minutes] [seed]` | The bench: one companion with an empty inventory on a fixed-seed world (12345), told to get a diamond pickaxe (or `iron_pickaxe`, `stone_pickaxe`), from a different fixed start point per trial; trials run side by side. Each milestone (first log, crafting table, wooden pickaxe, first stone, stone pickaxe, coal, furnace, raw iron, iron ingot, iron pickaxe, below y 0, diamond, diamond pickaxe) is timed, with what went wrong in between: stuck events, failed searches, search nodes, failed jobs, deaths. Path search is limited by node counts, not the clock, so the machine's load doesn't change a run. Reports in `run/bench/<name>/t*/`; `tools/bench-watch.sh <name>` follows a run live (milestones, re-orders, exceptions per trial); `tools/bench-compare.py <name> <name>...` puts runs side by side (trials reaching each milestone, median times). The standard check for whether a change made companions better: the times should only go down. Needs one `./gradlew runSoak` first for the launch files. |
 
@@ -36,13 +36,15 @@
 | `friendSharesLogs` | 13 | Missing wood for a crafting table, a companion asks a friend, who brings logs. |
 | `givesToFriendOnLedge` | 13 | "X, give Y your logs" reaches Y even though Y is on a ledge. |
 | `companionsBanterAndShare` | 12 | Two companions banter, and the one told about an iron sighting remembers it. |
-| `fellsWholeTallTree` | 7 | Asked for only 2 logs from a 9-log tree with an empty inventory, it digs dirt, pillars up, fells the whole trunk, digs the pillar down and collects at least 7 logs. |
+| `fellsWholeTallTree` | 7 | Asked for only 2 logs from a 9-log tree with an empty inventory, it digs dirt, towers up (the path finder plans the climb), fells the whole trunk and collects at least 7 logs. |
 | `noHoppingUnderTheCanopy` | nav | Following its owner through trunks under a low canopy, it arrives without jumping once. |
 | `digsOnlyAlongItsPath` | nav | Mining coal set in solid stone above head height, it only breaks blocks next to where it stands. |
 | `minesTheNearerVein` | nav | Coal behind one block of stone and exposed coal 20 blocks down a corridor: it mines the near coal first. |
 | `searchResultDoesNotDependOnTickSlicing` | nav | The same search at 600 and at 25 node expansions per tick ends the same way, with the same path. |
 | `fellsTreeAmongFlowers` | trees | Towering up beside a tree in a field of poppies, it picks the flower it stands in first (a flower can't be placed over), then fells the tree. |
 | `companionsSpreadOutOverTrees` | trees | With one companion at a tree, a second one leaves the tree 3 blocks away alone and takes one about 30 blocks off. |
+| `noEndlessJumpingOnThinGround` | trees | In snow three layers deep, a tree on a 2-high stump: it clears the snow it stands in, towers up and fells the tree, in under 50 jumps (the old code jumped on the spot 80 times). |
+| `toolPrepForAHuntAtTheBase` | base | Getting ready for a hunt at the base doesn't throw (it threw "duplicate element: sword" and stopped the companion). |
 
 ## Manual checklist (Test profile, world "CompanionsTest", cheats ON)
 
@@ -101,7 +103,7 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] "Bob, mine 5 iron" with no pickaxe: it makes a wooden pickaxe, mines cobblestone, makes a stone pickaxe, then digs (natural stone only) to iron.
 - [ ] "Bob, make an iron pickaxe" fails with a reason mentioning smelting.
 - [ ] "Bob, bring me 10 logs": it chops, walks back and tosses them to you.
-- [ ] Bob chops one tree **completely**, pillaring up on dirt for the high logs, then removes the pillar.
+- [ ] Bob chops one tree **completely**, towering up on dirt for the high logs (the dirt tower stays; at home the upkeep clears it).
 - [ ] Questions: "Bob, where are you?" (coordinates plus "N blocks east of you"), "what do you have?", "what have you found?", "how many logs have you chopped?", "what can you do?".
 - [ ] "Bob, never mind" drops the plan.
 - [ ] Quit mid-plan and reload. The remaining jobs continue.

@@ -3237,4 +3237,90 @@ public class CompanionGameTests implements FabricGameTest {
 			ctx.assertTrue(firstPick[0].isEmpty(), firstPick[0]);
 		});
 	}
+
+	/**
+	 * At the base, getting ready for a hunt (a sword job) threw "duplicate element: sword" and
+	 * stopped the companion's tick (a player's log, 0.11.0).
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "tool_prep_sword")
+	public void toolPrepForAHuntAtTheBase(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtHunter");
+		flatArena(ctx, 8);
+		var colony = colony(ctx, new BlockPos(4, 1, 4));
+		ctx.assertTrue(m.spawn("GtHunter", "kai", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(4.5, 1, 4.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtHunter");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		try {
+			com.botcraft.brain.task.ToolPrep.before(c, "hunt meat 6");
+		} catch (RuntimeException e) {
+			ctx.throwGameTestException("preparing for a hunt at the base threw " + e);
+		} finally {
+			colony.clear();
+			cleanup(m, "GtHunter");
+		}
+		ctx.complete();
+	}
+
+	/**
+	 * A player saw a companion jump on the spot for a minute under a tree: standing on something
+	 * a quarter block high, the block it meant to place was out of a jump's reach. Ground covered
+	 * in snow 3 layers deep, a tree on a 2-high stump: it clears the snow where it stands and
+	 * towers up, without jumping for a minute (80 jumps on the old code).
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 1400, batchId = "tall_tree_snow")
+	public void noEndlessJumpingOnThinGround(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtSnowy");
+		BlockState snow = Blocks.SNOW.getDefaultState().with(net.minecraft.block.SnowBlock.LAYERS, 3);
+		for (int x = -2; x <= 12; x++) {
+			for (int z = -3; z <= 9; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.GRASS_BLOCK);
+				for (int y = 1; y <= 14; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+				if (!(x == 6 && z == 3)) {
+					ctx.setBlockState(x, 1, z, snow);
+				}
+			}
+		}
+		ctx.setBlockState(6, 1, 3, Blocks.STONE);
+		ctx.setBlockState(6, 2, 3, Blocks.STONE);
+		for (int y = 3; y <= 9; y++) {
+			ctx.setBlockState(6, y, 3, Blocks.OAK_LOG);
+		}
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				for (int y = 8; y <= 10; y++) {
+					if ((dx != 0 || dz != 0 || y == 10) && Math.abs(dx) + Math.abs(dz) < 4) {
+						ctx.setBlockState(6 + dx, y, 3 + dz, Blocks.OAK_LEAVES);
+					}
+				}
+			}
+		}
+		ctx.assertTrue(m.spawn("GtSnowy", "steve", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 2, 3.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtSnowy");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.DIRT, 16);
+		int[] start = new int[1];
+		ctx.runAtTick(5, () -> {
+			start[0] = c.actions().jumps;
+			ctx.assertTrue(com.botcraft.chat.CommandTasks.gather(c, "logs", 2, null) == null, "order");
+		});
+		ctx.runAtTick(1300, () -> { // (judged once, after the old minute of jumping would be over)
+			int jumps = c.actions().jumps - start[0];
+			int left = 0;
+			for (int y = 3; y <= 9; y++) {
+				if (ctx.getWorld().getBlockState(ctx.getAbsolutePos(new BlockPos(6, y, 3))).isOf(Blocks.OAK_LOG)) {
+					left++;
+				}
+			}
+			cleanup(m, "GtSnowy");
+			ctx.assertTrue(jumps < 50, "jumped " + jumps + " times"); // (the whole job takes about 30; the old minute of jumping, 80)
+			ctx.assertTrue(left == 0, left + " logs still standing (it should clear the snow and tower)");
+			ctx.complete();
+		});
+	}
 }
