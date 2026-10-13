@@ -62,6 +62,23 @@ public class JobQueue {
 		c.brain().setJob(null);
 	}
 
+	/** Drop the jobs (queued, or the current one) whose spec matches. Returns how many. */
+	public int drop(java.util.function.Predicate<String> which) {
+		int n = 0;
+		for (java.util.Iterator<String> it = queue().iterator(); it.hasNext(); ) {
+			if (which.test(it.next())) {
+				it.remove();
+				n++;
+			}
+		}
+		if (c.brain().hasJob() && c.data.job != null && which.test(c.data.job)) {
+			c.brain().setJob(null);
+			c.data.job = null;
+			n++;
+		}
+		return n;
+	}
+
 	public List<String> pending() {
 		return queue();
 	}

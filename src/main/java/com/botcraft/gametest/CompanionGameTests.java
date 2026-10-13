@@ -213,6 +213,53 @@ public class CompanionGameTests implements FabricGameTest {
 		ctx.complete();
 	}
 
+	/** No corner slide over a hole: the open side of the corner needs a floor (or we'd step off into it). */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "nav_edging_floor")
+	public void noEdgingOverAHole(TestContext ctx) {
+		flatArena(ctx, 6);
+		ctx.setBlockState(2, 1, 2, Blocks.STONE);
+		ctx.setBlockState(2, 2, 2, Blocks.STONE);
+		for (int y = -3; y <= 0; y++) {
+			ctx.setBlockState(3, y, 1, Blocks.AIR);
+		}
+		Terrain terrain = new Terrain(ctx.getWorld());
+		BlockPos start = ctx.getAbsolutePos(new BlockPos(2, 1, 1));
+		BlockPos end = ctx.getAbsolutePos(new BlockPos(3, 1, 2));
+		PathFinder pf = new PathFinder(terrain, start, Goal.near(end, 0.5), PathFinder.Options.basic(5000, 64), new LongOpenHashSet());
+		TickBudget.begin(1000);
+		ctx.assertTrue(pf.step(100000) == PathFinder.Status.FOUND, "no path");
+		ctx.assertTrue(pf.result().size() > 1, "slid round the corner over the hole: " + pf.result().stream().map(st -> st.pos().toShortString()).toList());
+		ctx.complete();
+	}
+
+	/** Quiet chat: no remarks, but answers, what we start and what failed still get said. */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 200, batchId = "chat_quiet")
+	public void quietChatKeepsWhatMatters(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtQuiet");
+		flatArena(ctx, 6);
+		ctx.assertTrue(m.spawn("GtQuiet", "ari", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(3.5, 1, 3.5)), 0.0F) == null, "spawn");
+		Companion c = m.byName("GtQuiet");
+		com.botcraft.chat.CommandTasks.stay(c);
+		var cfg = com.botcraft.config.CompanionConfig.get();
+		String before = cfg.chatVerbosity;
+		cfg.chatVerbosity = "quiet";
+		try {
+			ctx.assertTrue(!c.speech().event("event.muse", java.util.Map.of(), 0, 1.0F), "mused with quiet chat");
+			ctx.assertTrue(!c.speech().event("event.night", java.util.Map.of(), 0, 1.0F), "remarked on the night with quiet chat");
+			ctx.assertTrue(c.speech().event("event.task_failed", java.util.Map.of("reason", "test", "task", "test"), 0, 1.0F), "didn't say a job failed");
+			ctx.assertTrue(c.speech().event("event.initiative", java.util.Map.of("plan", "test", "reason", "test"), 0, 1.0F), "didn't say what it's starting");
+			c.speech().reply("status", null, java.util.Map.of());
+		} finally {
+			cfg.chatVerbosity = before;
+		}
+		ctx.runAtTick(150, () -> {
+			ctx.assertTrue(c.speech().spokenKeys().contains("status"), "didn't answer: " + c.speech().spokenKeys());
+			cleanup(m, "GtQuiet");
+			ctx.complete();
+		});
+	}
+
 	/** Replanning after the goal moved keeps to the side of an obstacle the old path went round. */
 	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 40, batchId = "nav_favor")
 	public void replanKeepsToThePreviousRoute(TestContext ctx) {

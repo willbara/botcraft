@@ -463,6 +463,12 @@ public class PathFinder {
 			if (!edging || (!aClear && !bClear) || water || terrain.isClimbable(p) || deadly(blocked) || deadly(blocked.up())) {
 				return;
 			}
+			// Sliding round the corner puts the whole body over the open side for a moment: it
+			// needs a floor there too, or we step off into whatever drop is beside the corner.
+			BlockPos open = aClear ? a : b;
+			if (!terrain.support(open.down())) {
+				return;
+			}
 		}
 		double rise = terrain.floorY(t) - terrain.floorY(p);
 		if (rise > 0.6 || rise < -0.6) {

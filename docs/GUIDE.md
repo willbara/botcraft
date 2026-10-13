@@ -458,6 +458,7 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `maxTickBudgetMs` | 8.0 | When the rest of the server leaves room (a whole tick under 35 ms), the AI budget grows up to this. |
 | `pathNodesPerTick` / `maxPathNodes` | 600 / 20000 | A* time slicing and search limit. |
 | `chatEnabled` | true | Replies and unprompted remarks. |
+| `chatVerbosity` | all | `all`, or `quiet`: only answers and acknowledgements, what a companion starts on its own and what failed. `/companion chat all\|quiet\|off` sets it in game. |
 | `griefing` | false | When off, navigation only breaks natural leaves and only natural trees are chopped. Containers and block entities are never broken either way. |
 | `allowBridging` | true | May place dirt or cobblestone to cross gaps. |
 | `followDistance` | 3.5 | Comfortable distance from the owner. |
