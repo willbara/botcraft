@@ -77,6 +77,12 @@ public final class Claims {
 		return free.isEmpty() ? candidates : free;
 	}
 
+	/** Where this companion is working (its claim), or null. */
+	@Nullable
+	public static BlockPos of(Companion c) {
+		return CLAIMS.get(c.name());
+	}
+
 	/** For tests: forget everything. */
 	public static void clear() {
 		CLAIMS.clear();

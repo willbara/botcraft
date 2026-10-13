@@ -139,7 +139,6 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
   - **Waterfalls:** no climbing (vines, ladders) or swimming up in or right beside falling water, which drags you back down. No digging-up-and-pillaring while standing in water either.
   - **Swimming upright:** in water a companion only sprint-swims (the swimming pose, head under) where the route itself goes under water. Across the surface it swims upright, so it can breathe.
   - **Breath:** a path may stay with the head under water for at most 14 blocks in a row, fewer when the companion is already short of air. Longer underwater stretches cost more the longer they get. It never routes through a flooded tunnel longer than a breath lasts.
-- **Where it can go.** Only chunks where the server moves entities (within the simulation distance) count as open: a companion can't move into a chunk that is loaded but not ticking, and used to freeze on its edge.
 - **Following a path.** As in Baritone, each step knows where the body may be while it runs. A companion knocked back onto an earlier step picks up from there. One more than 3 blocks off the path, or more than 2 blocks off for 10 seconds, re-plans. It jumps only on steps that go up (when lined up and close to the step, or at once when nothing overhead could bump its head), and on parkour steps at the edge of the gap.
 - **Getting unstuck.**
   - **Stuck while walking:** it re-plans, and the second time at one spot it plans round it. After five, the move fails.
@@ -165,8 +164,8 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
 
 ### Gathering wood
 
-- **Whole trees.** Once a companion starts a tree it finishes it. For high logs it pillars up on dirt it digs nearby, then digs the pillar back down.
-- **Tree choice.** It prefers trees about the size it needs. All candidates go into one path goal; A* reaches the cheapest to get to, and the companion locks onto it.
+- **Whole trees.** Once a companion starts a tree it finishes it. For high logs it pillars up on dirt it digs nearby, then digs the pillar back down. It picks a flower or sapling it stands in first (a block can't be placed over one); if it still can't put a block under itself after about five jumps, it says why in the log and leaves the top of that tree.
+- **Tree choice.** It prefers trees about the size it needs. Trees within 8 blocks of another companion's tree are left to them, as with ore veins, so companions spread out through a wood (they share only when every tree is near someone). All candidates go into one path goal; A* reaches the cheapest to get to, and the companion locks onto it.
 - **Searching.** With no trees in range it goes to a remembered wood. If it's underground it heads out to open sky first, whichever way that is (a cave mouth, or digging up); otherwise it walks about 48 blocks in one direction (away from where others are working) and looks again, up to 5 trips. Underground means no sky in sight anywhere around it, so standing under an overhang or at the foot of a cliff doesn't count. Hunting searches the same way, and from underground it heads out before going after animals it noticed up on the surface.
 
 ### Mining
