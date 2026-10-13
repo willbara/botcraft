@@ -150,11 +150,6 @@ public class Terrain {
 		WorldChunk c = chunks.get(key);
 		if (c == null && !chunks.containsKey(key)) {
 			c = world.getChunkManager().getWorldChunk(cx, cz); // null if not loaded; never loads
-			if (c != null && !world.shouldTickEntity(new BlockPos(cx << 4, pos.getY(), cz << 4))) {
-				// Loaded but not entity-ticking (past the simulation distance): a companion can't
-				// move in there (its body freezes on the edge), so it's as good as unloaded.
-				c = null;
-			}
 			chunks.put(key, c);
 		}
 		lastChunkKey = key;

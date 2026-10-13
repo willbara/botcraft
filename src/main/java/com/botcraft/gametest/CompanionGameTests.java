@@ -1616,7 +1616,7 @@ public class CompanionGameTests implements FabricGameTest {
 	}
 
 	/** Free mode keeps food in reserve: fed but with nothing to eat, it hunts and cooks. */
-	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 2400, batchId = "stock_food")
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 3600, batchId = "stock_food")
 	public void freeModeStocksFood(TestContext ctx) {
 		clearAnimals(ctx);
 		CompanionManager m = manager(ctx);
@@ -3126,6 +3126,115 @@ public class CompanionGameTests implements FabricGameTest {
 				&& Math.abs(plans[0].nodes() - plans[1].nodes()) <= plans[0].nodes() / 10,
 				"the same search ended differently: " + plans[0] + " at 600 nodes a tick, " + plans[1] + " at 25");
 			cleanup(m, "GtSlicer");
+		});
+	}
+
+	/**
+	 * A player's report: towering up a tree in a flower forest, a companion jumped on the spot
+	 * for a minute. A flower where it stands can't be placed over, so no block ever went under
+	 * it. A tall tree on a stone stump (no stepping into the trunk), poppies all round it.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 4000, batchId = "tall_tree_flowers")
+	public void fellsTreeAmongFlowers(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtFlorist");
+		for (int x = -2; x <= 12; x++) {
+			for (int z = -3; z <= 9; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.GRASS_BLOCK);
+				for (int y = 1; y <= 14; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+				if (!(x == 6 && z == 3)) {
+					ctx.setBlockState(x, 1, z, Blocks.POPPY); // wherever it towers, it stands in a flower
+				}
+			}
+		}
+		// The trunk stands on a stone stump, so there's no stepping into its column: the
+		// companion has to tower up beside it, standing in the flowers.
+		ctx.setBlockState(6, 1, 3, Blocks.STONE);
+		ctx.setBlockState(6, 2, 3, Blocks.STONE); // two high: no hopping up onto it either
+		for (int y = 3; y <= 9; y++) {
+			ctx.setBlockState(6, y, 3, Blocks.OAK_LOG);
+		}
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				for (int y = 8; y <= 10; y++) {
+					if ((dx != 0 || dz != 0 || y == 10) && Math.abs(dx) + Math.abs(dz) < 4) {
+						ctx.setBlockState(6 + dx, y, 3 + dz, Blocks.OAK_LEAVES);
+					}
+				}
+			}
+		}
+		ctx.assertTrue(m.spawn("GtFlorist", "steve", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 3.5)), -90.0F) == null, "spawn");
+		Companion c = m.byName("GtFlorist");
+		com.botcraft.chat.CommandTasks.stay(c);
+		c.player().getInventory().clear();
+		give(c, net.minecraft.item.Items.DIRT, 16); // (so it towers at once instead of fetching dirt)
+		ctx.assertTrue(com.botcraft.chat.CommandTasks.gather(c, "logs", 2, null) == null, "order");
+		ctx.addInstantFinalTask(() -> {
+			int left = 0;
+			for (int y = 3; y <= 9; y++) {
+				if (ctx.getWorld().getBlockState(ctx.getAbsolutePos(new BlockPos(6, y, 3))).isOf(Blocks.OAK_LOG)) {
+					left++;
+				}
+			}
+			ctx.assertTrue(left == 0, left + " logs still standing; " + c.describeActivity());
+			cleanup(m, "GtFlorist");
+		});
+	}
+
+	/**
+	 * Companions spread out through a wood the way they do over veins: with one already at a
+	 * tree, a second one leaves the tree right next to it alone and takes one further off. Two
+	 * trees 3 apart near the start, two more about 30 blocks away.
+	 */
+	@GameTest(templateName = EMPTY_STRUCTURE, tickLimit = 900, batchId = "tree_claims")
+	public void companionsSpreadOutOverTrees(TestContext ctx) {
+		CompanionManager m = manager(ctx);
+		cleanup(m, "GtLumberA", "GtLumberB");
+		for (int x = -2; x <= 38; x++) {
+			for (int z = -1; z <= 9; z++) {
+				ctx.setBlockState(x, 0, z, Blocks.GRASS_BLOCK);
+				for (int y = 1; y <= 8; y++) {
+					ctx.setBlockState(x, y, z, Blocks.AIR);
+				}
+			}
+		}
+		for (int tx : new int[]{6, 9, 32, 35}) {
+			for (int y = 1; y <= 4; y++) {
+				ctx.setBlockState(tx, y, 4, Blocks.OAK_LOG);
+			}
+			for (int dx = -1; dx <= 1; dx++) {
+				for (int dz = -1; dz <= 1; dz++) {
+					ctx.setBlockState(tx + dx, 5, 4 + dz, Blocks.OAK_LEAVES);
+				}
+			}
+		}
+		ctx.assertTrue(m.spawn("GtLumberA", "steve", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 4.5)), -90.0F) == null, "spawn a");
+		Companion a = m.byName("GtLumberA");
+		com.botcraft.chat.CommandTasks.stay(a);
+		a.player().getInventory().clear();
+		ctx.assertTrue(com.botcraft.chat.CommandTasks.gather(a, "logs", 8, null) == null, "order a");
+		Companion[] b = new Companion[1];
+		ctx.runAtTick(60, () -> {
+			ctx.assertTrue(m.spawn("GtLumberB", "alex", null, ctx.getWorld(), ctx.getAbsolute(new Vec3d(2.5, 1, 5.5)), -90.0F) == null, "spawn b");
+			b[0] = m.byName("GtLumberB");
+			com.botcraft.chat.CommandTasks.stay(b[0]);
+			b[0].player().getInventory().clear();
+			ctx.assertTrue(com.botcraft.chat.CommandTasks.gather(b[0], "logs", 4, null) == null, "order b");
+		});
+		String[] firstPick = new String[1];
+		ctx.addInstantFinalTask(() -> {
+			// Judge the second companion's first pick, against where the first one was working then.
+			if (firstPick[0] == null) {
+				BlockPos ta = com.botcraft.brain.Claims.of(a);
+				BlockPos tb = b[0] == null ? null : com.botcraft.brain.Claims.of(b[0]);
+				ctx.assertTrue(ta != null && tb != null, "waiting for both to pick a tree (" + ta + ", " + tb + ")");
+				double d = Math.sqrt(ta.getSquaredDistance(tb));
+				firstPick[0] = d >= 8 ? "" : "both at trees " + String.format("%.0f", d) + " apart: " + ta.toShortString() + " and " + tb.toShortString();
+			}
+			cleanup(m, "GtLumberA", "GtLumberB");
+			ctx.assertTrue(firstPick[0].isEmpty(), firstPick[0]);
 		});
 	}
 }

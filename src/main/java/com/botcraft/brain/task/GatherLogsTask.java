@@ -370,6 +370,9 @@ public class GatherLogsTask extends Task {
 	 * Tower up under ourselves (jump, place a throwaway block below) until the remaining logs are
 	 * in reach, clearing leaves/logs above our head as we go.
 	 */
+	/** Jumps in a row that ended without a block placed under us. */
+	private int pillarFails;
+
 	private Status pillar(CompanionPlayer p) {
 		ServerWorld world = p.getServerWorld();
 		logs.removeIf(l -> !world.getBlockState(l).isIn(BlockTags.LOGS));
@@ -416,6 +419,15 @@ public class GatherLogsTask extends Task {
 		// Stay centred on the block and look down, like a player towering up.
 		c.actions().moveTo(Vec3d.ofBottomCenter(feet), 0.4);
 		c.actions().lookAt(p.getPos().add(0, -2, 0));
+		if (pillarStage == 0 && p.isOnGround()) {
+			// A flower, fern or sapling where we stand can't be placed over (only grass-like plants
+			// can): pick it first, or every jump ends without a block under us.
+			var here = world.getBlockState(feet);
+			if (!here.isAir() && !here.isReplaceable() && here.getCollisionShape(world, feet).isEmpty() && here.getHardness(world, feet) == 0) {
+				c.actions().mineBlock(feet);
+				return Status.RUNNING;
+			}
+		}
 		if (pillarStage == 0) {
 			if (p.isOnGround()) {
 				pillarLevel = feet.getY();
@@ -428,6 +440,14 @@ public class GatherLogsTask extends Task {
 				pillar.add(spot);
 				AiLog.log(c.name(), "gather: pillar block {} at {}", pillar.size(), spot.toShortString());
 				pillarStage = 0;
+				pillarFails = 0;
+			} else if (++pillarFails >= 15) { // (a few attempts each jump: about five jumps)
+				// Jumping on the spot for a minute helped nobody (a player saw it): say why and move on.
+				AiLog.log(c.name(), "gather: can't put a block under me at {} ({}), leaving the top of this tree", spot.toShortString(),
+					c.actions().lastPlaceProblem());
+				pillarFails = 0;
+				logs.clear();
+				return finishTree();
 			}
 		} else if (p.isOnGround() && pillarStage == 1 && p.getY() < pillarLevel + 0.5) {
 			pillarStage = 0; // landed without placing: try again
@@ -595,6 +615,9 @@ public class GatherLogsTask extends Task {
 		return items.isEmpty() ? null : items.get(0);
 	}
 
+	/** Trees within this of another companion's tree are theirs (veins use 6; trees stand further apart). */
+	static final double TREE_SPACING = 8;
+
 	/** The best few trees to choose from (nearest, sized to what we need), best first. */
 	private List<BlockPos> pickTrees(ServerWorld world, List<BlockPos> found, BlockPos from) {
 		Set<BlockPos> seenBases = new HashSet<>();
@@ -621,12 +644,12 @@ public class GatherLogsTask extends Task {
 			// We always finish a tree we start, so a 50-log giant is a poor choice for a few logs.
 			int size = treeSize(world, base);
 			int need = Math.max(1, wanted - gathered);
-			// Trees where someone else is working or standing count as much further away: preferred
-			// only when there's nothing else (a crowded wood is still better than no wood).
-			double crowd = com.botcraft.brain.Claims.crowded(c, base, 5) ? 24 : 0;
-			score.put(base, Math.sqrt(base.getSquaredDistance(from)) + Math.max(0, size - need - 8) * 1.5 + crowd);
+			score.put(base, Math.sqrt(base.getSquaredDistance(from)) + Math.max(0, size - need - 8) * 1.5);
 			bases.add(base);
 		}
+		// Like veins: trees near where someone else is working are left to them, so companions
+		// spread out through a wood. Only when every tree is near someone do we share.
+		bases = new ArrayList<>(com.botcraft.brain.Claims.spreadOut(c, bases, b -> b, TREE_SPACING));
 		bases.sort(Comparator.comparingDouble(score::get));
 		return bases.subList(0, Math.min(5, bases.size()));
 	}
