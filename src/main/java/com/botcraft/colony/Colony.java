@@ -60,8 +60,10 @@ public final class Colony {
 		Map<String, Integer> wants = new java.util.LinkedHashMap<>();
 		/** Dimension -> throwaway blocks companions put down (BlockPos longs, oldest first). */
 		Map<String, long[]> placed = new HashMap<>();
-		/** The base's areas: core, beds, farm, pen (see {@link Zones}). */
+		/** The base's areas: core, beds, farm, pen, home (see {@link Zones}). */
 		List<Zone> zones = new ArrayList<>();
+		/** Dimension -> ground at home that companions dug out, to fill back in (BlockPos longs). */
+		Map<String, long[]> dug = new HashMap<>();
 	}
 
 	/**
@@ -113,6 +115,8 @@ public final class Colony {
 	private static final int MAX_PLACED = 8192;
 	/** {@link Data#placed} while running, in insertion order. */
 	private final Map<String, java.util.LinkedHashSet<Long>> placed = new HashMap<>();
+	/** {@link Data#dug} while running. */
+	private final Map<String, java.util.LinkedHashSet<Long>> dug = new HashMap<>();
 
 	private final MinecraftServer server;
 	private Data data = new Data();
@@ -146,21 +150,26 @@ public final class Colony {
 					if (c.data.zones == null) {
 						c.data.zones = new ArrayList<>();
 					}
-					if (c.data.placed != null) {
-						c.data.placed.forEach((dim, longs) -> {
-							var set = new java.util.LinkedHashSet<Long>();
-							for (long l : longs) {
-								set.add(l);
-							}
-							c.placed.put(dim, set);
-						});
-					}
+					readLedger(c.data.placed, c.placed);
+					readLedger(c.data.dug, c.dug);
 				}
 			} catch (IOException | JsonParseException e) {
 				Botcraft.LOG.error("Could not read {}", f, e);
 			}
 		}
 		instance = c;
+	}
+
+	private static void readLedger(@Nullable Map<String, long[]> saved, Map<String, java.util.LinkedHashSet<Long>> into) {
+		if (saved != null) {
+			saved.forEach((dim, longs) -> {
+				var set = new java.util.LinkedHashSet<Long>();
+				for (long l : longs) {
+					set.add(l);
+				}
+				into.put(dim, set);
+			});
+		}
 	}
 
 	public static void unload() {
@@ -182,6 +191,8 @@ public final class Colony {
 		Path f = file(server);
 		data.placed = new HashMap<>();
 		placed.forEach((dim, set) -> data.placed.put(dim, set.stream().mapToLong(Long::longValue).toArray()));
+		data.dug = new HashMap<>();
+		dug.forEach((dim, set) -> data.dug.put(dim, set.stream().mapToLong(Long::longValue).toArray()));
 		try {
 			Files.createDirectories(f.getParent());
 			Path tmp = f.resolveSibling("colony.json.tmp");
@@ -235,22 +246,28 @@ public final class Colony {
 		return b != null && world == world() && b.getSquaredDistance(pos) <= radius * radius;
 	}
 
-	/** How far around the base its ground is left alone by mining. */
+	/** Before the home zone is planned, home is this far around the base spot. */
 	public static final int PROTECTED_RADIUS = 12;
+	/** Mining leaves home alone from this far under its ground upwards. */
+	private static final int PROTECTED_DEPTH = 6;
 
 	/**
-	 * Part of the ground the base stands on: mining leaves it alone. (Soaks showed mining jobs
+	 * Part of home's ground (anything in the home zone from a few blocks under the ground up,
+	 * hills included): mining and digging for dirt leave it alone. (Soaks showed mining jobs
 	 * digging the stone right under the base until its chests and furnaces stood on one-block
-	 * pillars high above the new ground.)
+	 * pillars high above the new ground.) Deep caves under home can still be mined.
 	 */
 	public boolean protectsGround(ServerWorld w, BlockPos pos) {
 		BlockPos b = base();
-		if (b == null || w != world() || !com.botcraft.util.Experiments.on("spareBase")) {
+		if (b == null || w != world() || !com.botcraft.util.Experiments.on("spareBase") || !Zones.inHome(this, w, pos)) {
 			return false;
 		}
-		int dx = pos.getX() - b.getX();
-		int dz = pos.getZ() - b.getZ();
-		return dx * dx + dz * dz <= PROTECTED_RADIUS * PROTECTED_RADIUS && pos.getY() >= b.getY() - 4 && pos.getY() <= b.getY() + 8;
+		BaseMap map = BaseMap.get();
+		int ground = b.getY() - 1;
+		if (map != null && map.ground(pos.getX(), pos.getZ()) != BaseMap.Ground.UNKNOWN) {
+			ground = Math.min(ground, map.groundY(pos.getX(), pos.getZ()));
+		}
+		return pos.getY() >= ground - PROTECTED_DEPTH;
 	}
 
 	// ---- chests ---------------------------------------------------------------------------------
@@ -616,6 +633,39 @@ public final class Colony {
 		}
 	}
 
+	/** Every throwaway block companions put down in a dimension (may since be gone: check). */
+	public List<BlockPos> placedIn(String dim) {
+		var set = placed.get(dim);
+		return set == null ? List.of() : set.stream().map(BlockPos::fromLong).toList();
+	}
+
+	// ---- ground companions dug out at home ------------------------------------------------------------
+
+	/** A companion dug out the ground here at home: fill it back in (see {@link Upkeep}). */
+	public void recordDug(String dim, BlockPos pos) {
+		var set = dug.computeIfAbsent(dim, d -> new java.util.LinkedHashSet<>());
+		if (set.add(pos.asLong())) {
+			if (set.size() > MAX_PLACED) {
+				var it = set.iterator();
+				it.next();
+				it.remove();
+			}
+			dirty = true;
+		}
+	}
+
+	public void forgetDug(String dim, BlockPos pos) {
+		var set = dug.get(dim);
+		if (set != null && set.remove(pos.asLong())) {
+			dirty = true;
+		}
+	}
+
+	public List<BlockPos> dugIn(String dim) {
+		var set = dug.get(dim);
+		return set == null ? List.of() : set.stream().map(BlockPos::fromLong).toList();
+	}
+
 	// ---- stock targets ---------------------------------------------------------------------------
 
 	/** How many of a stock target the base should keep: the player's setting, else the default. */
@@ -643,6 +693,7 @@ public final class Colony {
 	public void clear() {
 		data = new Data();
 		placed.clear();
+		dug.clear();
 		stockAt = -1000;
 		dirty = true;
 	}

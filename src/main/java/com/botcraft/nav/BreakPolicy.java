@@ -52,6 +52,9 @@ public final class BreakPolicy {
 		if (touchesFluid(world, pos)) {
 			return false; // don't flood ourselves or release lava
 		}
+		if (com.botcraft.colony.Builds.recorded(world, pos) && !CompanionConfig.get().griefing) {
+			return false; // someone built this (see colony/Builds)
+		}
 		if (state.getBlock() instanceof LeavesBlock) {
 			return !state.get(LeavesBlock.PERSISTENT) || CompanionConfig.get().griefing;
 		}

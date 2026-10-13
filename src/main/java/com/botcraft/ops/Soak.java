@@ -112,7 +112,7 @@ public final class Soak {
 	 * (the top of the spawn column can be a tree, which then gets chopped away from under the base).
 	 */
 	@Nullable
-	private static BlockPos groundNear(ServerWorld world, BlockPos center, int radius) {
+	static BlockPos groundNear(ServerWorld world, BlockPos center, int radius) {
 		BlockPos best = null;
 		double bestD = Double.MAX_VALUE;
 		for (int dx = -radius; dx <= radius; dx++) {

@@ -125,6 +125,7 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
   - parkour across 1–2 block gaps, but never over a drop deeper than 10 blocks (a missed jump there could kill), so cliff edges and ravines are walked round, and never from or onto leaves;
   - swim;
   - open doors and fence gates.
+- **How far they see.** As far as the server lets players see (its view distance), at most 12 chunks. A path search may reach that far, and the surface within it is in sight: a companion that finds no trees nearby heads for the nearest wood it can see (across water, past a hill) before searching at random. Underground, ores and caves are still only found close by. Seeing the surface reads just the top block of every other column and is shared by all companions for a few minutes.
 - **Smooth walking.** On open ground it walks straight at the furthest reachable step instead of zig-zagging from node to node. Flat, clear ground is costed at sprint speed when the companion will sprint it. It keeps walking up to a block it is breaking on a level step (a leaf at head height) instead of standing still for each one.
 - **Forests.** Standing on leaves costs extra, so paths keep to the forest floor and break leaves at head height rather than climb onto the canopy and cross the treetops. Under trees counts as outdoors, not underground (the leaves are ignored), so a forest doesn't trigger escape mode, digging straight up or torch placing.
 - **Following a moving goal.** When the goal moves (an owner walking on), the companion keeps its current path if that still ends in the new goal, or for a partial path, still gets it at least 2 blocks closer. Otherwise it re-plans, and the new search costs the old path's remaining cells at half, so it keeps to the same way round obstacles instead of switching sides each time (Baritone does both).
@@ -173,7 +174,7 @@ When asked for an ore, a companion looks in this order:
 While mining:
 - **Whole veins.** It mines every block of a vein, including blocks joined only at the corners, and steps over to reach the rest. It finishes the vein even past the requested count.
 - **Ore on the way.** Any of the target ore it passes within reach while walking, exploring or heading for a cave gets mined.
-- **The base's ground.** Mining leaves the ground within 12 blocks of the base alone (from 4 blocks below it upwards), including when digging a staircase or strip mine; it walks out of that area first. Soaks showed stone jobs digging out the base until its chests and furnaces stood on one-block pillars.
+- **The base's ground.** Mining leaves home's ground alone (the home zone, from 6 blocks under its ground upwards, hills included), including when digging a staircase or strip mine; it walks out of home first. Deep caves under home can still be mined. Soaks showed stone jobs digging out the base until its chests and furnaces stood on one-block pillars.
 - **Wet and dangerous ore.** Ore that would let liquid in when mined (liquid directly above it, or a liquid source beside it, as in Baritone) is never mined, including when following a vein. Other ore next to water is chosen only when there's no dry ore. Ore next to lava is left alone.
 - **Time limit.** It keeps at it for up to 15 minutes, or 25 for deep ores.
 
@@ -252,10 +253,22 @@ While mining:
   - **beds:** a row of bed slots (11 long, 2 deep) on the flattest side just outside the core; beds put down at home go into the next free slot, heads toward the core;
   - **farm:** a flat 9x9, soil preferred, near water if there is some, 10-28 blocks out;
   - **pen:** another flat 9x9, clear of the farm;
-  - **paths** from the core to the farm and the pen.
+  - **paths** from the core to the farm and the pen;
+  - **home:** the base and all the zones above, plus 3 blocks, and at least 16 blocks each way from the home spot (33x33). It grows when a zone is added.
 
   Nothing but what a zone is for gets put down on the bed row, the farm, the pen or a path. `/companion colony` lists the zones. `/companion colony zone <kind> here [size]` sets one by hand, centred where you stand (the bed row runs along the way you face); planning never replaces it. `/companion colony zone <kind> clear` hands it back to the planner. Moving the base plans the zones again (except hand-set ones).
-- **Blocks companions put down to get around** (bridges, pillars, shelter roofs) are remembered in `colony.json`. Navigation may break those again, so nobody gets walled in by a roof or pillar another companion left behind.
+- **Blocks companions put down to get around** (bridges, pillars, shelter roofs, the tower for chopping a tall tree) are remembered in `colony.json` as litter. Navigation may break those again, so nobody gets walled in by a roof or pillar another companion left behind.
+- **Natural or built.** Companions tell what nature made from what someone built, and only take resources from natural blocks:
+  - every block a player places is recorded, and so are base blocks companions place (chests, furnaces, tables, beds, torches), in `<world>/botcraft/built.dat`; breaking a block takes it off the record;
+  - for anything older, blocks that never occur in nature count as built: planks, bricks, glass, wool, stairs, slabs, fences, walls, doors, polished, cut and stripped blocks, cobblestone, concrete, persistent (placed) leaves and every block entity;
+  - a log counts as part of a tree only if its trunk is topped with tree-grown leaves, so a log cabin's walls are built.
+
+  Built blocks are never broken while getting around or digging (unless `griefing` is on), dirt someone put down isn't dug for pillars, and chopping a tree stops at logs someone placed (a cabin wall the tree grew against).
+- **Looking after home.** Inside the home zone:
+  - **no mining or digging for dirt** (see "The base's ground" under Mining);
+  - **no litter:** a bridge or pillar block at home costs as much as walking about 20 extra blocks, so paths go round when they can (not when escaping from a hole);
+  - **tables and furnaces go in the core.** A companion elsewhere at home walks to the core to put one down;
+  - **upkeep:** every few seconds the base looks for litter companions left at home (taken down, unless it fills a hole in the ground or holds something up), ground a companion dug out at home (filled back in; holes players dig are left alone), and bumps or dips up to 3 blocks deep in the core, bed row, farm and pen (levelled to the zone's ground; never built blocks, trees, water or ground under furniture). It goes on the request board as "tidy up the base", and a free companion takes it like any other request. Holes are filled with dirt or other throwaway blocks the companion carries. `/companion colony` shows what's waiting.
 - **Night chores.** An armed companion at the base at night (with no bed) stores its things, cooks raw meat, smelts raw iron and crafts iron gear from carried and stored materials. It doesn't leave the base for anything after dark.
 
 ### Torches
@@ -388,13 +401,13 @@ Spawn a companion named popbob (any capitalisation) and it turns on everyone:
 
 ### Griefing safety (`griefing: false`)
 
-Vanilla doesn't record who placed a block, so the rules are conservative:
+Vanilla doesn't record who placed a block. Botcraft records every block placed since it was installed and judges older blocks by what they are (see "Natural or built" under The base), and the rules are conservative:
 - wood only comes from natural trees;
 - normal pathing only breaks natural leaves;
-- mining jobs and escape mode only dig natural terrain;
+- mining jobs and escape mode only dig natural terrain, never a block someone placed;
 - containers and block entities are never broken, whatever the setting.
 
-Pillars, bridges and staircases built while travelling are left in the world. So are a crafting table it couldn't get back to, and a furnace when it had no pickaxe to break it with.
+Away from home, pillars, bridges and staircases built while travelling are left in the world. So are a crafting table it couldn't get back to, and a furnace when it had no pickaxe to break it with. At home they are tidied up.
 
 ### Navigation
 

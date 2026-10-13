@@ -29,7 +29,7 @@ import java.util.function.Predicate;
  *   gather logs N        mine &lt;ore|stone&gt; N      craft &lt;item_id&gt; N
  *   smelt &lt;item_id|food&gt; N                       hunt &lt;animal|meat&gt; N
  *   deliver &lt;logs|ore|item_id|all&gt; N             goto X Y Z [label]
- *   home                 sleep
+ *   home                 sleep                tidy
  * </pre>
  * A trailing "~N" counts how often a job deferred to its prerequisites (loop guard).
  */
@@ -75,6 +75,9 @@ public final class Jobs {
 				}
 				case "light" -> {
 					return new com.botcraft.brain.task.LightHomeTask(c);
+				}
+				case "tidy" -> {
+					return new com.botcraft.brain.task.TidyTask(c);
 				}
 				case "dance" -> {
 					return new com.botcraft.brain.task.DanceTask(c);
@@ -147,6 +150,7 @@ public final class Jobs {
 			case "deposit" -> w.length > 1 ? "bring " + num(w, 2, 1) + " " + ItemNames.plural(label(w[1]), num(w, 2, 1)) + " to the base" : "put my things away";
 			case "dance" -> "dance";
 			case "light" -> "light up the base";
+			case "tidy" -> "tidy up the base";
 			case "withdraw" -> "get " + label(w.length > 1 ? w[1] : "food") + " from the chests";
 			case "gear" -> "get " + (w.length > 1 ? "a " + w[1].replace('_', ' ') : "gear");
 			case "smelt" -> {

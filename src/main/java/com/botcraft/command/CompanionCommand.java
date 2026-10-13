@@ -57,6 +57,9 @@ public final class CompanionCommand {
 					.then(CommandManager.argument("skin", StringArgumentType.word())
 						.suggests(SKINS)
 						.executes(ctx -> spawn(ctx, StringArgumentType.getString(ctx, "skin"))))))
+			.then(CommandManager.literal("batch")
+				.then(CommandManager.argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, BATCH_MAX))
+					.executes(CompanionCommand::batch)))
 			.then(CommandManager.literal("skin")
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
@@ -86,7 +89,7 @@ public final class CompanionCommand {
 						.suggests((ctx, b) -> CommandSource.suggestMatching(com.botcraft.colony.Zones.KINDS, b))
 						.then(CommandManager.literal("here")
 							.executes(ctx -> colonyZone(ctx, -1))
-							.then(CommandManager.argument("size", com.mojang.brigadier.arguments.IntegerArgumentType.integer(3, 31))
+							.then(CommandManager.argument("size", com.mojang.brigadier.arguments.IntegerArgumentType.integer(3, 129))
 								.executes(ctx -> colonyZone(ctx, com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "size")))))
 						.then(CommandManager.literal("clear")
 							.executes(CompanionCommand::colonyZoneClear)))))
@@ -151,6 +154,51 @@ public final class CompanionCommand {
 			}
 		});
 		return 1;
+	}
+
+	/** Most companions one /companion batch spawns. */
+	private static final int BATCH_MAX = 64;
+
+	/**
+	 * /companion batch <count>: spawn that many companions at once, with random two-word names
+	 * ("AgentCreeper") and random default skins, spread around the player who asked.
+	 */
+	private static int batch(CommandContext<ServerCommandSource> ctx) {
+		ServerCommandSource src = ctx.getSource();
+		int count = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "count");
+		CompanionManager m = manager(ctx);
+		ServerPlayerEntity owner = src.getPlayer();
+		var world = src.getWorld();
+		Vec3d center = owner != null ? owner.getPos() : src.getPosition();
+		java.util.Random random = new java.util.Random();
+		List<String> spawned = new ArrayList<>();
+		String error = null;
+		for (int i = 0; i < count; i++) {
+			String name = com.botcraft.entity.BatchNames.next(random,
+				n -> m.byName(n) != null || src.getServer().getPlayerManager().getPlayer(n) != null);
+			// A ring around the player, a little further out for bigger batches, on free ground.
+			double angle = random.nextDouble() * Math.PI * 2;
+			double r = 2.0 + random.nextDouble() * Math.min(6.0, 1.0 + count / 8.0);
+			Vec3d at = center.add(Math.cos(angle) * r, 0, Math.sin(angle) * r);
+			if (owner != null && !world.isSpaceEmpty(owner.getDimensions(owner.getPose()).getBoxAt(at))) {
+				at = center;
+			}
+			float yaw = (float) Math.toDegrees(Math.atan2(center.z - at.z, center.x - at.x)) - 90.0F;
+			error = m.spawn(name, com.botcraft.entity.SkinResolver.SkinChoice.random(), owner, world, at, yaw);
+			if (error != null) {
+				break;
+			}
+			spawned.add(name);
+		}
+		if (!spawned.isEmpty()) {
+			String names = String.join(", ", spawned);
+			src.sendFeedback(() -> Text.literal("Spawned " + spawned.size() + " companion(s): " + names), true);
+		}
+		if (error != null) {
+			String why = error;
+			src.sendError(Text.literal("Stopped after " + spawned.size() + ": " + why));
+		}
+		return spawned.size();
 	}
 
 	private static int skin(CommandContext<ServerCommandSource> ctx) {
@@ -256,6 +304,9 @@ public final class CompanionCommand {
 				ctx.getSource().sendFeedback(() -> Text.literal("  " + z).formatted(Formatting.GRAY), false);
 			}
 		}
+		String upkeep = com.botcraft.colony.Upkeep.summary();
+		ctx.getSource().sendFeedback(() -> Text.literal("Upkeep: " + (upkeep == null ? "nothing to tidy" : upkeep)
+			+ "; " + com.botcraft.colony.Builds.recordedCount() + " built block(s) on record").formatted(Formatting.GRAY), false);
 		var stock = new java.util.ArrayList<>(colony.stock().entrySet());
 		stock.sort((a, b) -> b.getValue() - a.getValue());
 		if (stock.isEmpty()) {
@@ -323,7 +374,11 @@ public final class CompanionCommand {
 		}
 		ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
 		net.minecraft.util.math.BlockPos at = player.getBlockPos();
-		int n = size > 0 ? size : kind.equals(com.botcraft.colony.Zones.CORE) ? 7 : kind.equals(com.botcraft.colony.Zones.BEDS) ? 11 : 9;
+		int n = size > 0 ? size : kind.equals(com.botcraft.colony.Zones.CORE) ? 7 : kind.equals(com.botcraft.colony.Zones.BEDS) ? 11
+			: kind.equals(com.botcraft.colony.Zones.HOME) ? 2 * com.botcraft.colony.Zones.HOME_MIN_HALF + 1 : 9;
+		if (!kind.equals(com.botcraft.colony.Zones.HOME)) {
+			n = Math.min(n, 31); // only home is big
+		}
 		int h = n / 2;
 		com.botcraft.colony.Colony.Zone z;
 		if (kind.equals(com.botcraft.colony.Zones.BEDS)) {

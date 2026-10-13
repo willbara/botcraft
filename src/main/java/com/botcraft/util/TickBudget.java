@@ -6,6 +6,11 @@ package com.botcraft.util;
  */
 public final class TickBudget {
 	private static long deadline;
+	/**
+	 * Bench runs: never out of time, so how much gets searched each tick depends only on node
+	 * counts, not on how busy the machine is (runs then go the same way on any machine).
+	 */
+	public static boolean unlimited;
 
 	private TickBudget() {
 	}
@@ -15,6 +20,6 @@ public final class TickBudget {
 	}
 
 	public static boolean hasTime() {
-		return System.nanoTime() < deadline;
+		return unlimited || System.nanoTime() < deadline;
 	}
 }

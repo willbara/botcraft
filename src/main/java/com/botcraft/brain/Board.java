@@ -8,6 +8,7 @@ import com.botcraft.colony.Colony;
 import com.botcraft.colony.Kit;
 import com.botcraft.colony.StockTargets;
 import com.botcraft.colony.StockTargets.StockTarget;
+import com.botcraft.colony.Upkeep;
 import com.botcraft.util.AiLog;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -29,6 +30,8 @@ import java.util.Map;
  *       of something, a request for one batch of it is posted.</li>
  *   <li><b>Delivery requests</b> come from companions asking each other for things
  *       ({@link Sharing}); they're settled on the spot and kept here so they can be looked at.</li>
+ *   <li><b>Upkeep requests</b> come from {@link Upkeep}: litter to take down, holes to fill
+ *       and zone ground to level at home, as one "tidy up the base" request.</li>
  * </ul>
  *
  * <p>A request goes to whoever bids best. A bid is a sum of simple terms, all kept so
@@ -40,7 +43,7 @@ import java.util.Map;
  */
 public final class Board {
 	public enum Kind {
-		STOCK, DELIVER
+		STOCK, DELIVER, UPKEEP
 	}
 
 	public enum State {
@@ -96,6 +99,9 @@ public final class Board {
 		}
 
 		public String describe() {
+			if (kind == Kind.UPKEEP) {
+				return label + " (" + count + " job" + (count == 1 ? "" : "s") + ")";
+			}
 			return count + " " + label + (kind == Kind.STOCK ? " for the base" : " for " + forWhom);
 		}
 	}
@@ -163,8 +169,11 @@ public final class Board {
 				}
 			}
 		}
+		if (base) {
+			upkeep(colony, now);
+		}
 		for (Request r : new ArrayList<>(REQUESTS)) {
-			if (r.kind == Kind.STOCK && r.state == State.OPEN && !base) {
+			if (r.kind != Kind.DELIVER && r.state == State.OPEN && !base) {
 				close(r, State.DONE, "no base", now);
 			}
 			if (r.state == State.TAKEN) {
@@ -173,6 +182,30 @@ public final class Board {
 		}
 		REQUESTS.removeIf(r -> (r.state == State.DONE || r.state == State.FAILED) && now - r.closedAt > KEEP_CLOSED);
 		PLANS.entrySet().removeIf(e -> now - e.getValue().at() > BID_TTL);
+	}
+
+	/** Under the stock requests in importance: a tidy base matters, but less than food or tools. */
+	private static final double UPKEEP_PRIORITY = 0.4;
+	private static final String UPKEEP_KEY = "upkeep";
+
+	/** Post (or update, or close) the "tidy up the base" request from what {@link Upkeep} finds. */
+	private static void upkeep(Colony colony, long now) {
+		List<Upkeep.Work> work = Upkeep.current(colony, now, 0);
+		Request r = live(Kind.UPKEEP, UPKEEP_KEY);
+		if (work.isEmpty()) {
+			if (r != null && r.state == State.OPEN) {
+				close(r, State.DONE, "the base is tidy", now);
+			}
+			return;
+		}
+		if (r == null) {
+			r = new Request(nextId++, Kind.UPKEEP, UPKEEP_KEY, "tidy up the base", work.size(), null, now, UPKEEP_PRIORITY);
+			REQUESTS.add(r);
+			AiLog.log("board", "posted #{}: {} ({})", r.id, r.describe(), Upkeep.summary());
+			com.botcraft.ops.SoakStats.board("posted " + r.key);
+		} else if (r.state == State.OPEN) {
+			r.count = work.size();
+		}
 	}
 
 	/** Give back a taken request whose holder is gone, ordered elsewhere, or stopped working on it. */
@@ -218,15 +251,15 @@ public final class Board {
 			|| !colony.near(c.player().getServerWorld(), c.player().getBlockPos(), 256) || holding(c.name()) != null) {
 			return null;
 		}
-		List<Request> open = REQUESTS.stream().filter(r -> r.kind == Kind.STOCK && r.state == State.OPEN)
+		List<Request> open = REQUESTS.stream().filter(r -> r.kind != Kind.DELIVER && r.state == State.OPEN)
 			.sorted(Comparator.comparingDouble((Request r) -> -r.priority)).toList();
 		if (open.isEmpty()) {
 			return null;
 		}
 		List<Companion> pool = pool(c, colony);
 		for (Request r : open) {
-			StockTarget t = target(colony, r.key);
-			if (t == null) {
+			StockTarget t = r.kind == Kind.STOCK ? target(colony, r.key) : null;
+			if (r.kind == Kind.STOCK && t == null) {
 				continue;
 			}
 			boolean waitedLong = now - r.openedAt > BUSY_GRACE;
@@ -236,7 +269,7 @@ public final class Board {
 				if (busy && waitedLong) {
 					continue;
 				}
-				Bid b = bid(o, r, t, busy, now);
+				Bid b = r.kind == Kind.UPKEEP ? bidUpkeep(o, r, busy, now) : bid(o, r, t, busy, now);
 				if (b != null) {
 					bids.add(b);
 				}
@@ -305,6 +338,35 @@ public final class Board {
 		terms.put("helpful", 0.2 * o.data.helpfulness);
 		double score = terms.values().stream().mapToDouble(Double::doubleValue).sum();
 		return new Bid(o.name(), score, terms, plan.method(), plan.seconds(), plan.steps());
+	}
+
+	/**
+	 * How well {@code o} would tidy up the base: about five seconds a job plus the walk back,
+	 * with the same turns, failures, busyness and helpfulness terms as stock requests.
+	 */
+	private static Bid bidUpkeep(Companion o, Request r, boolean busy, long now) {
+		double seconds = Math.min(r.count, com.botcraft.brain.task.TidyTask.MAX_JOBS) * 5.0;
+		Map<String, Double> terms = new LinkedHashMap<>();
+		terms.put("time", -seconds / 120.0);
+		terms.put("to base", -Planner.secondsToBase(o) / 120.0);
+		if (busy) {
+			terms.put("busy", -BUSY);
+		}
+		int turns = recent(DONE, o.name(), now, TURN_WINDOW);
+		if (turns > 0) {
+			terms.put("turns", -0.25 * turns);
+		}
+		int fails = recent(FAILED, o.name() + "|" + r.key, now, FAIL_WINDOW);
+		if (fails > 0) {
+			terms.put("failed", -0.75 * fails);
+		}
+		terms.put("helpful", 0.2 * o.data.helpfulness);
+		double score = terms.values().stream().mapToDouble(Double::doubleValue).sum();
+		Colony colony = Colony.get();
+		BlockPos base = colony == null ? null : colony.base();
+		List<String> steps = base == null ? List.of("tidy")
+			: List.of("goto " + base.getX() + " " + base.getY() + " " + base.getZ() + " to the base", "tidy");
+		return new Bid(o.name(), score, terms, "tidy", seconds, steps);
 	}
 
 	/** How {@code o} would get this batch: spare it already carries, else whatever the planner picks. */
@@ -448,7 +510,7 @@ public final class Board {
 	@Nullable
 	public static Request holding(String name) {
 		for (Request r : REQUESTS) {
-			if (r.state == State.TAKEN && r.kind == Kind.STOCK && name.equals(r.takenBy)) {
+			if (r.state == State.TAKEN && r.kind != Kind.DELIVER && name.equals(r.takenBy)) {
 				return r;
 			}
 		}

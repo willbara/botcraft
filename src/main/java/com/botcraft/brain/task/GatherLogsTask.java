@@ -64,6 +64,8 @@ public class GatherLogsTask extends Task {
 	/** Attempts to step into the trunk of the current tree (then we pillar instead). */
 	private int climbTries;
 	private final SearchTrips search = new SearchTrips("gather", 48, 5);
+	/** Trees seen from afar that we've already set off for (so a wood that turns out no good isn't picked again). */
+	private final java.util.Set<BlockPos> triedFar = new java.util.HashSet<>();
 	@Nullable
 	private ItemEntity collecting;
 	private final Pickup pickup = new Pickup();
@@ -224,7 +226,18 @@ public class GatherLogsTask extends Task {
 				}
 				c.memory().forgetSighting("tree", seen.pos()); // in range, but gone (chopped)
 			}
-			search.start(c, SearchTrips.underground(p.getServerWorld(), here) ? null : remembered);
+			boolean underground = SearchTrips.underground(p.getServerWorld(), here);
+			if (remembered == null && !underground) {
+				// Nothing remembered: look further, as far as we can see (trees across the water,
+				// a forest past the hill), before wandering off at random.
+				remembered = com.botcraft.perception.Sight.nearestTrees(p.getServerWorld(), here,
+					t -> t.getSquaredDistance(here) < radius * radius || triedFar.contains(t));
+				if (remembered != null) {
+					triedFar.add(remembered);
+					AiLog.log(c.name(), "gather: trees in sight at {}", remembered.toShortString());
+				}
+			}
+			search.start(c, underground ? null : remembered);
 			setPhase(Phase.SEARCH);
 			return Status.RUNNING;
 		}
@@ -505,9 +518,12 @@ public class GatherLogsTask extends Task {
 		return Status.RUNNING;
 	}
 
+	/** Natural dirt we may dig: not under the tree, not someone's, not home's ground. */
 	private boolean isDiggableDirt(ServerWorld world, BlockPos pos) {
+		var colony = com.botcraft.colony.Colony.get();
 		return world.getBlockState(pos).isIn(BlockTags.DIRT) && world.getBlockState(pos.up()).isAir()
-			&& !(pos.getX() == treeBase.getX() && pos.getZ() == treeBase.getZ());
+			&& !(pos.getX() == treeBase.getX() && pos.getZ() == treeBase.getZ()) && !com.botcraft.colony.Builds.recorded(world, pos)
+			&& (colony == null || !colony.protectsGround(world, pos));
 	}
 
 	/** Exposed natural dirt/grass near us, not the block we stand on and not under the tree. */
@@ -652,6 +668,9 @@ public class GatherLogsTask extends Task {
 
 	/** A log column topped with tree-grown (non-persistent) leaves. */
 	static boolean isNaturalTree(ServerWorld world, BlockPos base) {
+		if (com.botcraft.colony.Builds.recorded(world, base)) {
+			return false;
+		}
 		BlockPos top = base;
 		for (int i = 0; i < 32 && world.getBlockState(top.up()).isIn(BlockTags.LOGS); i++) {
 			top = top.up();
@@ -681,7 +700,9 @@ public class GatherLogsTask extends Task {
 			out.add(cur);
 			for (BlockPos n : BlockPos.iterate(cur.add(-1, 0, -1), cur.add(1, 1, 1))) {
 				BlockPos im = n.toImmutable();
-				if (im.getY() >= treeBase.getY() && seen.add(im) && world.getBlockState(im).isIn(BlockTags.LOGS)) {
+				// Someone's logs (a cabin wall the tree grew against) aren't part of the tree.
+				if (im.getY() >= treeBase.getY() && seen.add(im) && world.getBlockState(im).isIn(BlockTags.LOGS)
+					&& !com.botcraft.colony.Builds.recorded(world, im) && !com.botcraft.colony.Builds.builtMaterial(world.getBlockState(im))) {
 					queue.add(im);
 				}
 			}

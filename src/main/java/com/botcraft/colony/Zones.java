@@ -21,13 +21,24 @@ import java.util.Map;
  *
  * <p>What uses them: new chests go in the core, beds go in the bed row, and nothing else gets
  * put down on the bed row, the farm, the pen or the paths.
+ *
+ * <p>Around all of them is the <b>home</b> zone: the base and everything it uses, plus a
+ * margin. At home companions don't mine or dig for dirt, avoid leaving bridges and pillars
+ * behind, and keep things tidy (see {@link Upkeep}); the other zones are kept level.
  */
 public final class Zones {
 	public static final String CORE = "core";
 	public static final String BEDS = "beds";
 	public static final String FARM = "farm";
 	public static final String PEN = "pen";
-	public static final List<String> KINDS = List.of(CORE, BEDS, FARM, PEN);
+	public static final String HOME = "home";
+	public static final List<String> KINDS = List.of(CORE, BEDS, FARM, PEN, HOME);
+	/** The zones inside home, which are kept level. */
+	public static final List<String> AREAS = List.of(CORE, BEDS, FARM, PEN);
+
+	/** Home reaches at least this far from the base spot, and this far past the other zones. */
+	public static final int HOME_MIN_HALF = 16;
+	private static final int HOME_MARGIN = 3;
 
 	/** Core: the base spot and this many blocks each way. */
 	private static final int CORE_HALF = 3;
@@ -65,9 +76,34 @@ public final class Zones {
 				}
 			}
 		}
+		Zone home = colony.zone(HOME);
+		if (home == null || !home.manual) {
+			Zone want = homeAround(colony, base);
+			if (home == null || home.x1 != want.x1 || home.z1 != want.z1 || home.x2 != want.x2 || home.z2 != want.z2) {
+				colony.setZone(want);
+				changed = true;
+			}
+		}
 		if (changed) {
 			Botcraft.LOG.info("Base zones planned: {}", colony.zones());
 		}
+	}
+
+	/** The base spot and every other zone, with a margin. */
+	private static Zone homeAround(Colony colony, BlockPos base) {
+		int x1 = base.getX() - HOME_MIN_HALF;
+		int z1 = base.getZ() - HOME_MIN_HALF;
+		int x2 = base.getX() + HOME_MIN_HALF;
+		int z2 = base.getZ() + HOME_MIN_HALF;
+		for (Zone z : colony.zones()) {
+			if (!z.kind.equals(HOME)) {
+				x1 = Math.min(x1, z.x1 - HOME_MARGIN);
+				z1 = Math.min(z1, z.z1 - HOME_MARGIN);
+				x2 = Math.max(x2, z.x2 + HOME_MARGIN);
+				z2 = Math.max(z2, z.z2 + HOME_MARGIN);
+			}
+		}
+		return new Zone(HOME, x1, z1, x2, z2, base.getY(), false);
 	}
 
 	/** The flattest of the four strips just outside the core. */
@@ -113,7 +149,7 @@ public final class Zones {
 					continue;
 				}
 				Zone z = new Zone(kind, cx - half, cz - half, cx + half, cz + half, y + 1, false);
-				if (colony.zones().stream().anyMatch(o -> o.overlaps(z, 2))) {
+				if (colony.zones().stream().anyMatch(o -> !o.kind.equals(HOME) && o.overlaps(z, 2))) {
 					continue;
 				}
 				double score = usable(map, z, y, kind.equals(FARM)) - dist / 100.0;
@@ -187,15 +223,64 @@ public final class Zones {
 
 	// ---- reading --------------------------------------------------------------------------------
 
-	/** The zone a column is in, or null. */
+	/** The zone a column is in (not counting home, which holds them all), or null. */
 	@Nullable
 	public static Zone at(Colony colony, int x, int z) {
 		for (Zone zone : colony.zones()) {
-			if (zone.contains(x, z)) {
+			if (!zone.kind.equals(HOME) && zone.contains(x, z)) {
 				return zone;
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * At home: inside the home zone (before it's planned, within {@link Colony#PROTECTED_RADIUS}
+	 * of the base spot), in the base's dimension.
+	 */
+	public static boolean inHome(Colony colony, ServerWorld world, BlockPos pos) {
+		if (world != colony.world() || colony.base() == null) {
+			return false;
+		}
+		Zone home = colony.zone(HOME);
+		if (home != null) {
+			return home.contains(pos);
+		}
+		BlockPos b = colony.base();
+		int dx = pos.getX() - b.getX();
+		int dz = pos.getZ() - b.getZ();
+		return dx * dx + dz * dz <= Colony.PROTECTED_RADIUS * Colony.PROTECTED_RADIUS;
+	}
+
+	/**
+	 * How high the ground should be in a column: the zone's ground for the core, bed row, farm
+	 * and pen (kept level); otherwise the usual height of the ground around it (the middle of
+	 * the 5x5 columns around it, so a pillar or a one-block hole doesn't count), or MIN_VALUE if
+	 * the base map hasn't seen it.
+	 */
+	public static int groundLevel(Colony colony, @Nullable BaseMap map, int x, int z) {
+		Zone zone = at(colony, x, z);
+		if (zone != null) {
+			return zone.y - 1;
+		}
+		if (map == null) {
+			return Integer.MIN_VALUE;
+		}
+		int[] ys = new int[25];
+		int n = 0;
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				BaseMap.Ground g = map.ground(x + dx, z + dz);
+				if (g != BaseMap.Ground.UNKNOWN) {
+					ys[n++] = map.groundY(x + dx, z + dz);
+				}
+			}
+		}
+		if (n < 5) {
+			return Integer.MIN_VALUE;
+		}
+		java.util.Arrays.sort(ys, 0, n);
+		return ys[n / 2];
 	}
 
 	/** A path from the core to the farm or the pen runs through this column (1 block either side). */

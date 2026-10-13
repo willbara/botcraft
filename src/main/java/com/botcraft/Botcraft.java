@@ -34,8 +34,23 @@ public class Botcraft implements ModInitializer {
 		ServerTickEvents.END_SERVER_TICK.register(CompanionManager::onEndTick);
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> CompanionManager.onPlayerJoin(handler.player));
 		ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> ChatRouter.onChat(sender, message.getSignedContent()));
-		// Drops from a companion's own work, so it can make sure it picks them up.
+		// Whatever was there is gone: drop it from the built and litter records. A companion
+		// breaking the ground at home leaves a hole to fill in later (see colony/Upkeep).
+		net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, blockEntity) -> {
+			if (world instanceof net.minecraft.server.world.ServerWorld sw && player instanceof com.botcraft.entity.CompanionPlayer) {
+				com.botcraft.colony.Upkeep.breaking(sw, pos, state);
+			}
+			return true;
+		});
 		net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, blockEntity) -> {
+			if (world instanceof net.minecraft.server.world.ServerWorld sw) {
+				com.botcraft.colony.Builds.forget(sw, pos);
+				com.botcraft.colony.Colony colony = com.botcraft.colony.Colony.get();
+				if (colony != null) {
+					colony.forgetPlaced(sw.getRegistryKey().getValue().toString(), pos);
+				}
+			}
+			// Drops from a companion's own work, so it can make sure it picks them up.
 			CompanionManager m = CompanionManager.get();
 			Companion c = m == null ? null : m.byPlayer((net.minecraft.server.network.ServerPlayerEntity) player);
 			if (c != null) {

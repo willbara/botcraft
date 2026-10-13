@@ -60,9 +60,11 @@ public final class CompanionManager {
 	static void onServerStarted(MinecraftServer server) {
 		LegacyNames.migrateWorld(server);
 		com.botcraft.colony.Colony.load(server);
+		com.botcraft.colony.Builds.load(server);
 		instance = new CompanionManager(server);
 		instance.loadAndSpawnAll();
 		com.botcraft.ops.Soak.maybeStart(server);
+		com.botcraft.ops.Bench.maybeStart(server);
 	}
 
 	static void onServerStopping(MinecraftServer server) {
@@ -85,6 +87,9 @@ public final class CompanionManager {
 
 	static void onServerStopped(MinecraftServer server) {
 		com.botcraft.colony.Colony.unload();
+		com.botcraft.colony.Builds.save(server);
+		com.botcraft.colony.Builds.unload();
+		com.botcraft.perception.Sight.clear();
 		com.botcraft.brain.Board.clear();
 		instance = null;
 	}
@@ -118,6 +123,7 @@ public final class CompanionManager {
 		if (colony != null) {
 			colony.save();
 		}
+		com.botcraft.colony.Builds.save(server);
 		List<CompanionData> list = new ArrayList<>();
 		for (Companion c : companions.values()) {
 			list.add(c.data);
@@ -343,6 +349,7 @@ public final class CompanionManager {
 		com.botcraft.ops.SoakStats.tickTime(took, budget);
 		com.botcraft.ops.SoakStats.serverTick(server.getTickTime());
 		com.botcraft.ops.Soak.tick(server);
+		com.botcraft.ops.Bench.tick(server);
 		com.botcraft.chat.Social.tick(companions.values(), tickCount);
 		if (tickCount % 100 == 0) {
 			try {
