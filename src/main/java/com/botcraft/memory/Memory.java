@@ -70,6 +70,9 @@ public class Memory {
 		public long lastSeen;
 		public int orders;
 		public int thanks;
+		/** How we feel about them (null until something happens between us). */
+		@Nullable
+		public com.botcraft.brain.Relationship rel;
 	}
 
 	public Map<String, Place> places = new LinkedHashMap<>();
@@ -176,6 +179,11 @@ public class Memory {
 	@Nullable
 	public Person knownPerson(String name) {
 		return people.get(name.toLowerCase(Locale.ROOT));
+	}
+
+	/** Something about a person changed (their relationship): save it. */
+	public void touch() {
+		dirty = true;
 	}
 
 	// ---- persistence ----------------------------------------------------------------------------

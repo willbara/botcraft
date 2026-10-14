@@ -67,7 +67,7 @@ public final class Social {
 				if (!idle(b) || now < pairCooldown.getOrDefault(key, 0L)) {
 					continue;
 				}
-				float chance = 0.04F * (a.data.chattiness + b.data.chattiness);
+				float chance = 0.04F * (a.data.chattiness + b.data.chattiness) * (a.brain().personality().banter() + b.brain().personality().banter()) / 2;
 				pairCooldown.put(key, now + PAIR_COOLDOWN / 4); // re-roll every ~1.5 min at most
 				if (RANDOM.nextFloat() < chance) {
 					pairCooldown.put(key, now + PAIR_COOLDOWN);
@@ -170,6 +170,7 @@ public final class Social {
 
 	public static void onDeath(Companion dead, Collection<Companion> all) {
 		for (Companion o : near(dead, all, 32)) {
+			o.mood().bump(com.botcraft.brain.Mood.Kind.GRIEF, 0.3F + 0.4F * o.relations().affinity(dead.name()), o.now());
 			o.speech().event("social.friend_died", Map.of("friend", dead.name()), 20 * 30, 0.8F);
 		}
 	}

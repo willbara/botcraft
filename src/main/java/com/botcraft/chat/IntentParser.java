@@ -28,6 +28,14 @@ public final class IntentParser {
 
 	private static final Pattern ALL_WORDS = Pattern.compile("\\b(everyone|everybody|all of you|you all|you guys|guys|team|y'?all|companions)\\b");
 	private static final Pattern NUMBER = Pattern.compile("\\b(\\d{1,4})\\b");
+	private static final Pattern STACKS = Pattern.compile(
+		"\\b(?:(a|one|two|three|four|five|six|seven|eight|nine|ten|\\d{1,2}) )?stacks?( and a half)?\\b");
+	private static final Pattern AND_A_HALF_STACKS = Pattern.compile(
+		"\\b(a|one|two|three|four|five|six|seven|eight|nine|ten|\\d{1,2}) and a half stacks?\\b");
+	private static final Pattern HALF_STACK = Pattern.compile("\\bhalf (a )?stack\\b");
+	private static final Pattern QUARTER_STACK = Pattern.compile("\\b(a )?quarter (of )?(a )?stack\\b");
+	private static final Pattern TRUST = Pattern.compile(
+		"\\b(?:do you trust (me|[a-z0-9_]{3,16})|do you like me|are we (?:friends|cool|good|ok|okay)|what do you think (?:of|about) me|how do you feel about me|do you hate me|are you mad at me)\\b");
 	private static final Pattern APPEND = Pattern.compile("^(also|and also|after that|afterwards|when you'?re done|when you are done|next|then)\\b\\s*");
 	private static final Pattern CLAUSE_SPLIT = Pattern.compile(
 		"\\s*(?:,?\\s*\\band then\\b|,?\\s*\\bthen\\b|,?\\s*\\bafter that\\b|,?\\s*\\bafterwards\\b|,?\\s*\\band also\\b|;|\\.)\\s*");
@@ -116,7 +124,7 @@ public final class IntentParser {
 
 	/** Words dropped from the start of an item phrase. */
 	private static final Pattern LEAD_FILLER = Pattern.compile(
-		"^(?:(?:me|us|yourself|myself|ourselves|you|for|some|a|an|the|few|couple|of|to|more|another|any|up|out|down|go|lots|bunch|stack|stacks|your|my|our|those|these|his|her|its|all|all of|\\d+|one|two|three|four|five|six|seven|eight|nine|ten|dozen|twelve|fifteen|twenty|thirty|fifty|of)\\s+)+");
+		"^(?:(?:me|us|yourself|myself|ourselves|you|for|some|a|an|the|few|couple|of|to|more|another|any|up|out|down|go|lots|bunch|stack|stacks|half|quarter|and a half|your|my|our|those|these|his|her|its|all|all of|\\d+|one|two|three|four|five|six|seven|eight|nine|ten|dozen|twelve|fifteen|twenty|thirty|fifty|of)\\s+)+");
 	private static final Pattern TRAIL_FILLER = Pattern.compile(
 		"\\s+(?:for me|for us|please|pls|now|too|again|here|over here|right now|quickly|asap|real quick|if you can|from (the )?\\w+)$");
 
@@ -129,7 +137,11 @@ public final class IntentParser {
 	 * @param direct    the name was used as a direct address (start/end of the message or @name),
 	 *                  not just mentioned in passing; unknown messages only get a reply when direct
 	 */
-	public record Parsed(List<String> addressed, List<Intent> intents, boolean append, boolean direct) {
+	/**
+	 * @param rest what was said once the names were taken out (normalized), for follow-ups
+	 *             ("make it 30") and teaching ("when I say lumber I mean logs")
+	 */
+	public record Parsed(List<String> addressed, List<Intent> intents, boolean append, boolean direct, String rest) {
 		public Intent intent() {
 			return intents.isEmpty() ? Intent.of(Intent.Type.UNKNOWN) : intents.get(0);
 		}
@@ -144,7 +156,7 @@ public final class IntentParser {
 	 *                   "give X the logs"
 	 */
 	public static Parsed parse(String message, Collection<String> companionNames, Collection<String> otherNames) {
-		String text = expandSlang(normalize(message));
+		String text = Lexicon.apply(expandSlang(normalize(message)));
 		List<String> addressed = new ArrayList<>();
 		boolean direct = false;
 		String rest = text;
@@ -230,7 +242,7 @@ public final class IntentParser {
 		if (intents.isEmpty()) {
 			intents.add(Intent.of(Intent.Type.UNKNOWN));
 		}
-		return new Parsed(addressed, intents, append, direct);
+		return new Parsed(addressed, intents, append, direct, rest.replaceAll("^[ ,]+|[ ,]+$", ""));
 	}
 
 	private static final Map<String, String> SLANG = Map.ofEntries(
@@ -269,7 +281,8 @@ public final class IntentParser {
 		"stone", "cobblestone", "pickaxe", "sword", "shovel", "torch", "torches", "furnace", "crafting", "table", "chest", "food",
 		"copper", "redstone", "emerald", "emeralds", "planks", "sticks", "helmet", "chestplate", "leggings", "boots", "shield",
 		"please", "thanks", "everyone", "creeper", "zombie", "skeleton", "spider", "favorite", "favourite", "around", "something",
-		"store", "stash", "deposit", "chest", "chests", "storage", "unload", "armor", "armour", "gear", "tools", "golden", "leather");
+		"store", "stash", "deposit", "chest", "chests", "storage", "unload", "armor", "armour", "gear", "tools", "golden", "leather",
+		"stack", "stacks", "half", "quarter", "trust", "means", "mean", "instead", "again");
 
 	static String correctTypos(String clause, Collection<String> names) {
 		StringBuilder sb = new StringBuilder();
@@ -450,7 +463,7 @@ public final class IntentParser {
 	 */
 	static List<String> splitObjects(String clause) {
 		Matcher m = VERB_OBJECTS.matcher(clause);
-		if (!m.matches()) {
+		if (!m.matches() || clause.contains(" and a half")) { // "a stack and a half of logs" is one thing
 			return List.of(clause);
 		}
 		String[] things = m.group(2).split("\\s*(?:\\band\\b|,)\\s*");
@@ -626,6 +639,11 @@ public final class IntentParser {
 		if (COME.matcher(text).find()) {
 			return Intent.of(Intent.Type.COME_HERE);
 		}
+		Matcher trust = TRUST.matcher(text);
+		if (trust.find()) {
+			String who = trust.group(1) == null || trust.group(1).equals("me") ? "" : trust.group(1);
+			return new Intent(Intent.Type.TRUST, "", -1, who);
+		}
 		Matcher fav = FAVORITE.matcher(text);
 		if (fav.find()) {
 			return new Intent(Intent.Type.FAVORITE, fav.group(1).trim(), -1);
@@ -684,10 +702,34 @@ public final class IntentParser {
 		return p;
 	}
 
+	private static int stacksOf(String n) {
+		if (n == null || n.equals("a") || n.equals("one")) {
+			return 1;
+		}
+		return n.matches("\\d+") ? Math.max(1, Integer.parseInt(n)) : NUMBER_WORDS.getOrDefault(n, 1);
+	}
+
 	/** Explicit count in the text, or -1. */
 	static int count(String text) {
+		// Stacks first: "half a stack", "two stacks", "a stack and a half", "one and a half stacks".
+		if (HALF_STACK.matcher(text).find()) {
+			return 32;
+		}
+		if (QUARTER_STACK.matcher(text).find()) {
+			return 16;
+		}
+		Matcher half = AND_A_HALF_STACKS.matcher(text);
+		if (half.find()) {
+			return Math.min(9999, stacksOf(half.group(1)) * 64 + 32);
+		}
 		Matcher m = NUMBER.matcher(text);
-		if (m.find()) {
+		boolean number = m.find();
+		Matcher st = STACKS.matcher(text);
+		// "2 stacks" is stacks; "5 logs and a stack of stone" keeps the 5 (as before).
+		if (st.find() && (!number || (st.group(1) != null && st.group(1).matches("\\d+")))) {
+			return Math.min(9999, stacksOf(st.group(1)) * 64 + (st.group(2) != null ? 32 : 0));
+		}
+		if (number) {
 			return Math.max(1, Integer.parseInt(m.group(1)));
 		}
 		for (String w : text.split(" ")) {

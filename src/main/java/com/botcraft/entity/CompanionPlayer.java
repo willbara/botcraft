@@ -61,6 +61,20 @@ public class CompanionPlayer extends ServerPlayerEntity {
 		this.handleFall(0.0, heightDifference, 0.0, onGround);
 	}
 
+	/** Damage that got through: the companion feels it, and remembers who did it (see faction.Incidents). */
+	@Override
+	public boolean damage(net.minecraft.entity.damage.DamageSource source, float amount) {
+		boolean hurt = super.damage(source, amount);
+		if (hurt && amount > 0) {
+			try {
+				com.botcraft.faction.Incidents.companionHurt(this, source, amount);
+			} catch (RuntimeException e) {
+				com.botcraft.Botcraft.LOG.error("Error handling damage to companion {}", getGameProfile().getName(), e);
+			}
+		}
+		return hurt;
+	}
+
 	/** Swim downward, like holding sneak in water (vanilla does this on the client only). */
 	public void swimDown() {
 		if (isTouchingWater() && shouldSwimInFluids()) {

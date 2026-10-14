@@ -118,7 +118,10 @@ public class Speech {
 		}
 		Map<String, String> vars = vars(to);
 		vars.putAll(extra);
-		String variant = c.data.bravery > 0.65F ? "brave" : c.data.bravery < 0.35F ? "timid" : "";
+		// The mood shows first (if there are lines for it), else the character.
+		String feeling = c.mood().variant();
+		String variant = !feeling.isEmpty() && Templates.has(key + "." + feeling) ? feeling
+			: c.data.bravery > 0.65F ? "brave" : c.data.bravery < 0.35F ? "timid" : "";
 		String raw = Templates.pick(key, variant, vars, random, recentLines::contains);
 		if (raw.isEmpty()) {
 			return false;
@@ -162,7 +165,8 @@ public class Speech {
 			v.put("food", Integer.toString(food));
 			v.put("logs", Integer.toString(Inventories.count(p.getInventory(), Inventories::isLog)));
 			v.put("task", c.describeActivity());
-			v.put("mood", hp >= 18 && food >= 16 ? "great" : hp < 8 ? "pretty beat up" : food < 8 ? "hungry" : "okay");
+			String feeling = c.mood().describe();
+			v.put("mood", hp < 8 ? "pretty beat up" : food < 8 ? "hungry" : !feeling.isEmpty() ? feeling : hp >= 18 && food >= 16 ? "great" : "okay");
 			v.put("time_note", c.perception().isNight() ? "It's night, careful." : "");
 		}
 		return v;

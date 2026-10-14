@@ -41,8 +41,8 @@ public final class BaseMap {
 	/** Base furniture worth knowing about. */
 	public enum Feature { CHEST, FURNACE, CRAFTING_TABLE, BED, TORCH }
 
-	@Nullable
-	private static BaseMap instance;
+	/** One map per faction's base (see faction.Scope). */
+	private static final Map<String, BaseMap> INSTANCES = new java.util.HashMap<>();
 
 	private final BlockPos center;
 	private final String dim;
@@ -59,10 +59,16 @@ public final class BaseMap {
 		this.dim = dim;
 	}
 
-	/** The map of the current base, or null before the first base is set. */
+	/** The map of the current base (of the faction in scope), or null before its base is set. */
 	@Nullable
 	public static BaseMap get() {
-		return instance;
+		return of(com.botcraft.faction.Scope.current());
+	}
+
+	/** The map of a faction's base, or null before it has one. */
+	@Nullable
+	public static BaseMap of(String faction) {
+		return INSTANCES.get(faction);
 	}
 
 	/** Called every server tick: follow the base if it moved, and read the next few columns. */
@@ -70,12 +76,14 @@ public final class BaseMap {
 		ServerWorld world = colony.world();
 		BlockPos base = colony.base();
 		if (world == null || base == null) {
-			instance = null;
+			INSTANCES.remove(colony.id());
 			return;
 		}
 		String dim = world.getRegistryKey().getValue().toString();
+		BaseMap instance = INSTANCES.get(colony.id());
 		if (instance == null || !instance.center.equals(base) || !instance.dim.equals(dim)) {
 			instance = new BaseMap(base, dim);
+			INSTANCES.put(colony.id(), instance);
 		}
 		instance.scan(world);
 	}
@@ -218,6 +226,6 @@ public final class BaseMap {
 
 	/** For tests: start over. */
 	public static void clear() {
-		instance = null;
+		INSTANCES.clear();
 	}
 }

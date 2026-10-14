@@ -46,8 +46,13 @@ public final class Colony {
 	/** Companions further than this don't come back just to fetch something. */
 	public static final double FETCH_RANGE = 96;
 
+	/**
+	 * One colony per faction (see faction.Scope): the default faction's is colony.json, as before
+	 * factions; others are colonies/&lt;id&gt;.json, loaded when first needed.
+	 */
+	private static final Map<String, Colony> INSTANCES = new java.util.LinkedHashMap<>();
 	@Nullable
-	private static Colony instance;
+	private static MinecraftServer loadedFor;
 
 	/** The saved form. */
 	private static final class Data {
@@ -119,20 +124,34 @@ public final class Colony {
 	private final Map<String, java.util.LinkedHashSet<Long>> dug = new HashMap<>();
 
 	private final MinecraftServer server;
+	/** The faction this is the base of. */
+	private final String id;
 	private Data data = new Data();
 	private Map<Item, Integer> stockCache = Map.of();
 	private long stockAt = -1000;
 	private boolean dirty;
 
-	private Colony(MinecraftServer server) {
+	private Colony(MinecraftServer server, String id) {
 		this.server = server;
+		this.id = id;
+	}
+
+	/** The faction this colony belongs to. */
+	public String id() {
+		return id;
 	}
 
 	// ---- lifecycle -----------------------------------------------------------------------------
 
 	public static void load(MinecraftServer server) {
-		Colony c = new Colony(server);
-		Path f = file(server);
+		INSTANCES.clear();
+		loadedFor = server;
+		INSTANCES.put(com.botcraft.faction.Factions.DEFAULT, read(server, com.botcraft.faction.Factions.DEFAULT));
+	}
+
+	private static Colony read(MinecraftServer server, String id) {
+		Colony c = new Colony(server, id);
+		Path f = file(server, id);
 		if (Files.exists(f)) {
 			try (Reader r = Files.newBufferedReader(f, StandardCharsets.UTF_8)) {
 				Data d = GSON.fromJson(r, Data.class);
@@ -157,7 +176,7 @@ public final class Colony {
 				Botcraft.LOG.error("Could not read {}", f, e);
 			}
 		}
-		instance = c;
+		return c;
 	}
 
 	private static void readLedger(@Nullable Map<String, long[]> saved, Map<String, java.util.LinkedHashSet<Long>> into) {
@@ -173,29 +192,59 @@ public final class Colony {
 	}
 
 	public static void unload() {
-		if (instance != null) {
-			instance.save();
+		for (Colony c : INSTANCES.values()) {
+			c.save();
 		}
-		instance = null;
+		INSTANCES.clear();
+		loadedFor = null;
 	}
 
+	/** The colony of the faction in scope (see faction.Scope); null before the server has started. */
 	@Nullable
 	public static Colony get() {
-		return instance;
+		return of(com.botcraft.faction.Scope.current());
+	}
+
+	/** A faction's colony (loaded or started when first asked for). */
+	@Nullable
+	public static Colony of(String faction) {
+		if (loadedFor == null) {
+			return null;
+		}
+		String key = faction == null ? com.botcraft.faction.Factions.DEFAULT : faction;
+		Colony c = INSTANCES.get(key);
+		if (c == null) {
+			c = read(loadedFor, key);
+			INSTANCES.put(key, c);
+		}
+		return c;
+	}
+
+	/** Every colony loaded so far. */
+	public static java.util.Collection<Colony> all() {
+		return java.util.List.copyOf(INSTANCES.values());
+	}
+
+	/** Forget a faction's colony (the faction was removed); its file stays. */
+	public static void drop(String faction) {
+		Colony c = INSTANCES.remove(faction);
+		if (c != null) {
+			c.save();
+		}
 	}
 
 	public void save() {
 		if (!dirty) {
 			return;
 		}
-		Path f = file(server);
+		Path f = file(server, id);
 		data.placed = new HashMap<>();
 		placed.forEach((dim, set) -> data.placed.put(dim, set.stream().mapToLong(Long::longValue).toArray()));
 		data.dug = new HashMap<>();
 		dug.forEach((dim, set) -> data.dug.put(dim, set.stream().mapToLong(Long::longValue).toArray()));
 		try {
 			Files.createDirectories(f.getParent());
-			Path tmp = f.resolveSibling("colony.json.tmp");
+			Path tmp = f.resolveSibling(f.getFileName() + ".tmp");
 			try (Writer w = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
 				GSON.toJson(data, w);
 			}
@@ -206,8 +255,9 @@ public final class Colony {
 		}
 	}
 
-	private static Path file(MinecraftServer server) {
-		return server.getSavePath(WorldSavePath.ROOT).resolve("botcraft").resolve("colony.json");
+	private static Path file(MinecraftServer server, String id) {
+		Path dir = server.getSavePath(WorldSavePath.ROOT).resolve("botcraft");
+		return com.botcraft.faction.Factions.DEFAULT.equals(id) ? dir.resolve("colony.json") : dir.resolve("colonies").resolve(id + ".json");
 	}
 
 	// ---- the base -------------------------------------------------------------------------------
@@ -262,7 +312,7 @@ public final class Colony {
 		if (b == null || w != world() || !com.botcraft.util.Experiments.on("spareBase") || !Zones.inHome(this, w, pos)) {
 			return false;
 		}
-		BaseMap map = BaseMap.get();
+		BaseMap map = BaseMap.of(id);
 		int ground = b.getY() - 1;
 		if (map != null && map.ground(pos.getX(), pos.getZ()) != BaseMap.Ground.UNKNOWN) {
 			ground = Math.min(ground, map.groundY(pos.getX(), pos.getZ()));

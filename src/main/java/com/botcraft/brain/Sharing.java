@@ -41,10 +41,8 @@ public final class Sharing {
 	public static int spare(Companion giver, Predicate<ItemStack> what, boolean tool) {
 		CompanionPlayer p = giver.player();
 		int have = Inventories.count(p.getInventory(), what);
-		if (tool) {
-			return Math.max(0, have - 1);
-		}
-		return Math.max(0, have - 2);
+		// Generous companions keep less back for themselves.
+		return Math.max(0, have - giver.brain().personality().reserve(tool));
 	}
 
 	/**

@@ -35,4 +35,16 @@ public class CompanionData {
 	public Float initiative;
 	/** Defend-owner mode ("defend me"). */
 	public boolean defendOwner;
+
+	/**
+	 * The traits beyond the four above (diligence, aggression, caution...), see brain.Personality.
+	 * Missing ones are filled in from the UUID, so older saves get them too.
+	 */
+	public java.util.Map<String, Float> traits;
+	/** What each trait was before experience nudged it (drift stays within a limit of this). */
+	public java.util.Map<String, Float> traitBase;
+	/** The preset it was given ("guard", "miner"...), or null. */
+	public String archetype;
+	/** The faction it belongs to (see faction.Factions); null = the default colony. */
+	public String faction;
 }

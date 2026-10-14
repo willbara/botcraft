@@ -424,8 +424,8 @@ public class Life {
 		return null;
 	}
 
-	private static long darkCheckedAt = -10_000;
-	private static int darkSpotsAtBase;
+	/** Per faction base: when its dark spots were last counted, and how many there were. */
+	private static final Map<String, long[]> DARK_AT_BASE = new HashMap<>();
 
 	/** The base has dark ground and we have (or can make) torches: light it up. */
 	@Nullable
@@ -436,12 +436,13 @@ public class Life {
 			|| !colony.near(p.getServerWorld(), p.getBlockPos(), 48)) {
 			return null;
 		}
-		if (now - darkCheckedAt > 20 * 30) { // shared by everyone, refreshed every 30 s
-			darkCheckedAt = now;
-			darkSpotsAtBase = com.botcraft.brain.Lighting.darkSpots(colony.world(), colony.base(),
+		long[] dark = DARK_AT_BASE.computeIfAbsent(colony.id(), k -> new long[]{-10_000, 0});
+		if (now - dark[0] > 20 * 30) { // shared by everyone at this base, refreshed every 30 s
+			dark[0] = now;
+			dark[1] = com.botcraft.brain.Lighting.darkSpots(colony.world(), colony.base(),
 				com.botcraft.brain.task.LightHomeTask.RADIUS).size();
 		}
-		if (darkSpotsAtBase == 0) {
+		if (dark[1] == 0) {
 			return null;
 		}
 		int torches = Inventories.count(inv, s -> s.isOf(Items.TORCH));
