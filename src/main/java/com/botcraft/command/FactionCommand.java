@@ -100,6 +100,10 @@ public final class FactionCommand {
 						.then(CommandManager.argument("value", StringArgumentType.word())
 							.suggests((ctx, b) -> CommandSource.suggestMatching(List.of("allied", "neutral", "hostile", "-50", "0", "75"), b))
 							.executes(FactionCommand::relation)))))
+			.then(CommandManager.literal("raid")
+				.then(CommandManager.argument("faction", StringArgumentType.word())
+					.suggests(FACTIONS)
+					.executes(FactionCommand::raid)))
 			.then(CommandManager.literal("ceasefire")
 				.executes(FactionCommand::ceasefire))
 			.then(CommandManager.literal("info")
@@ -310,23 +314,31 @@ public final class FactionCommand {
 			ctx.getSource().sendError(Text.literal("Name two different factions"));
 			return 0;
 		}
-		int value;
-		switch (v) {
-			case "allied", "ally", "allies" -> value = 75;
-			case "neutral", "peace" -> value = 0;
-			case "hostile", "enemy", "enemies", "war" -> value = -60;
-			default -> {
-				try {
-					value = Integer.parseInt(v);
-				} catch (NumberFormatException e) {
-					ctx.getSource().sendError(Text.literal("Use allied, neutral, hostile or a number from -100 to 100"));
-					return 0;
-				}
-			}
+		Integer value = switch (v) {
+			case "allied", "ally", "allies" -> 75;
+			case "neutral", "peace" -> 0;
+			case "hostile", "enemy", "enemies", "war" -> -60;
+			default -> v.matches("-?\\d{1,3}") ? Integer.valueOf(v) : null;
+		};
+		if (value == null) {
+			ctx.getSource().sendError(Text.literal("Use allied, neutral, hostile or a number from -100 to 100"));
+			return 0;
 		}
 		Factions.setRelation(a.id, b.id, value);
 		say(ctx, a.name + " and " + b.name + ": " + value + (Factions.hostile(a.id, b.id) ? " (enemies)" : Factions.friendly(a.id, b.id) ? " (allies)" : ""),
 			Formatting.WHITE);
+		return 1;
+	}
+
+	/** /companion faction raid <faction>: send that faction's fighters against its nearest enemy now. */
+	private static int raid(CommandContext<ServerCommandSource> ctx) {
+		Faction f = Factions.find(StringArgumentType.getString(ctx, "faction"));
+		if (f == null) {
+			ctx.getSource().sendError(Text.literal("No such faction"));
+			return 0;
+		}
+		String result = com.botcraft.faction.Raids.consider(f, ctx.getSource().getServer().getOverworld().getTime(), true);
+		say(ctx, f.name + ": " + result + (CompanionConfig.get().griefing ? "" : " (griefing is off: a skirmish, nothing broken or taken)"), Formatting.WHITE);
 		return 1;
 	}
 

@@ -182,6 +182,14 @@ public class Life {
 		}
 	}
 
+	/** Something else took over (a raid): the goal we were on isn't ours to finish any more. */
+	public void abandon(long now) {
+		if ("board".equals(lastGoal)) {
+			finishBoard(false, now);
+		}
+		lastGoal = null;
+	}
+
 	public void succeeded(long now) {
 		if (lastGoal != null) {
 			tree.succeeded(lastGoal);
@@ -283,6 +291,11 @@ public class Life {
 			}
 			return null;
 		}
+		// A faction without a base (teams and dynamic factions): the founder picks a spot and settles it.
+		Goal found = foundGoal(c, now);
+		if (found != null) {
+			return found;
+		}
 		List<Goal> goals = new ArrayList<>();
 		// Storage: put things away when we're at the base anyway, or come back when our pockets are full.
 		Goal store = storeGoal(c, inv, now);
@@ -306,6 +319,15 @@ public class Life {
 			String fetch = Jobs.withdrawSpec(c, "food", Inventories::isGoodFood, 8);
 			goals.add(fetch != null ? new Goal("fetch_food", List.of(fetch), "there's food at home")
 				: new Goal("hunt", List.of("hunt meat 4", "smelt food 4"), "I'm getting hungry"));
+		}
+		// The farm: harvest what's ripe, replant, till (food that doesn't run away). Wheat makes bread.
+		Goal farm = farmGoal(c, inv, now);
+		if (farm != null) {
+			goals.add(farm);
+		}
+		int wheat = Inventories.count(inv, s -> s.isOf(Items.WHEAT));
+		if (wheat >= 3 && food < 8 && allowed("bread", now)) {
+			goals.add(new Goal("bread", List.of("craft bread " + Math.min(8, wheat / 3)), "I've got wheat for bread"));
 		}
 		// Better armour, tools or weapons lying in the chests (someone made spares, or died and
 		// got them back): wear and carry the best there is before making anything new.
@@ -512,6 +534,87 @@ public class Life {
 		return null;
 	}
 
+	/**
+	 * Tend the base's farm when there's something to do there: ripe crops, or empty soil and
+	 * seeds to plant (pulling up grass for seeds when we have none). Only near home, in daylight.
+	 */
+	@Nullable
+	private Goal farmGoal(Companion c, PlayerInventory inv, long now) {
+		var colony = com.botcraft.colony.Colony.get();
+		var p = c.player();
+		if (!CompanionConfig.get().farming || !com.botcraft.util.Experiments.on("farming") || colony == null || !allowed("farm", now) || colony.world() != p.getServerWorld()
+			|| !colony.near(p.getServerWorld(), p.getBlockPos(), 64)) {
+			return null;
+		}
+		var zone = colony.zone(com.botcraft.colony.Zones.FARM);
+		if (zone == null) {
+			return null;
+		}
+		long[] seen = FARM_SEEN.computeIfAbsent(colony.id(), k -> new long[]{-10_000, 0, 0, 0, 0});
+		if (now - seen[0] > 20 * 20) { // shared by everyone at this base, refreshed every 20 s
+			var n = com.botcraft.brain.task.FarmTask.needs(p.getServerWorld(), zone);
+			seen[0] = now;
+			seen[1] = n.ripe();
+			seen[2] = n.empty();
+			seen[3] = n.tillable();
+			seen[4] = n.grass();
+		}
+		var needs = new com.botcraft.brain.task.FarmTask.Needs((int) seen[1], (int) seen[2], (int) seen[3], (int) seen[4]);
+		boolean seeds = com.botcraft.brain.task.FarmTask.seeds(p) > 0;
+		boolean hoe = com.botcraft.brain.task.FarmTask.hasHoe(p);
+		if (!needs.worthIt(seeds, hoe)) {
+			return null;
+		}
+		String why = needs.ripe() > 0 ? "the crops are ripe" : seeds ? "the farm needs planting" : "I need seeds for the farm";
+		return new Goal("farm", List.of("farm"), why);
+	}
+
+	/**
+	 * Our faction has no base yet: if we're its founder (the most ambitious member living on its
+	 * own), survey the area and go settle the best spot. Not in single mode, where the owner says
+	 * where home is.
+	 */
+	@Nullable
+	private Goal foundGoal(Companion c, long now) {
+		if (!com.botcraft.faction.Factions.enabled() || !CompanionConfig.get().dynamicBases || !com.botcraft.util.Experiments.on("dynamicBases")
+			|| !allowed("found_base", now)) {
+			return null;
+		}
+		var colony = com.botcraft.colony.Colony.get();
+		if (colony == null || colony.hasBase() || !isFounder(c)) {
+			return null;
+		}
+		var site = com.botcraft.colony.SiteSurvey.choose(c);
+		if (site == null) {
+			tree.rest("found_base", now + 20 * 60); // nowhere good around here; look again in a minute
+			return null;
+		}
+		BlockPos s = site.pos();
+		return new Goal("found_base", List.of("goto " + s.getX() + " " + s.getY() + " " + s.getZ() + " to our new home", "found"),
+			"we need a base (" + site.why() + ")");
+	}
+
+	/** The member of our faction who founds its base: the most ambitious one living on its own. */
+	private static boolean isFounder(Companion c) {
+		Companion best = null;
+		double bestScore = -1;
+		for (Companion o : com.botcraft.faction.Factions.members(com.botcraft.faction.Factions.idOf(c))) {
+			if (!o.isOnline() || !"free".equals(o.data.mode)) {
+				continue;
+			}
+			Personality p = o.brain().personality();
+			double score = p.ambition() + 0.3 * p.sociability();
+			if (best == null || score > bestScore || (score == bestScore && o.name().compareTo(best.name()) < 0)) {
+				best = o;
+				bestScore = score;
+			}
+		}
+		return best == c;
+	}
+
+	/** Per base: when the farm was last looked at, and ripe/empty/tillable/grass counts. */
+	private static final Map<String, long[]> FARM_SEEN = new HashMap<>();
+
 	/** A mining job started at the base at night means walking out into the dark to a cave. */
 	private static boolean leavingBaseToMine(Companion c) {
 		var colony = com.botcraft.colony.Colony.get();
@@ -610,6 +713,7 @@ public class Life {
 	/** Self-chosen jobs that keep a companion outdoors and away from home after dark. */
 	private static boolean outdoorErrand(@Nullable Task job) {
 		return job instanceof com.botcraft.brain.task.HuntTask || job instanceof com.botcraft.brain.task.GatherLogsTask
+			|| job instanceof com.botcraft.brain.task.FarmTask
 			|| (job instanceof com.botcraft.brain.task.GoToTask g && g.label().equals("exploring"));
 	}
 

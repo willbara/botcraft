@@ -4,7 +4,7 @@
 
 | Command | What it covers |
 |---|---|
-| `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
+| `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts, stack amounts, trust and farming phrases), `Templates` (every key fills with no leftover placeholders), `SkinUtil` (each default skin maps to a stable v3 UUID), `Followups` ("make it 30", "and coal too", "no, I meant gold", "same again", "you too"), `Lexicon` (teaching words and routines), `Personality` (seeded traits, archetypes, bounded drift), `Mood` (half-lives, strongest feeling), `Relationship` (grudges, decay, caps), `Standing` (two hits make an enemy, hysteresis, healing over days), `GoalTree` (personality weights, commitment, doubling backoff, strict order) and `Thompson` (Beta draws). |
 | `./gradlew runGametest` | Headless server, 103 GameTests (the table below lists the early ones, and the pathfinding symptom tests). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/botcraft.json` to see AI traces. |
 | `tools/navbench.sh <name> [workers] [minutes]` | The navigation bench: one companion per server walks its share of 100 fixed start/goal pairs (`tools/navbench-pairs.json`, from seed 12345: 50 across the surface, 25 from the surface down into a cave, 15 from a cave up, 10 cave to cave), carrying a netherite pickaxe with Efficiency V (like the manual Baritone runs it was compared with), 32 cobblestone and bread. Each trip records whether it arrived, ticks, blocks walked against the straight line, searches, nodes, ticks spent waiting on searches, stuck events, jumps, AI ms per server tick and server tick ms. `tools/navbench-compare.py <name> <name>...` puts runs side by side, with times and path lengths over the trips every run completed. The pair list can grow: add a pair where a companion was seen to fail. `tools/navbench-generate.sh` remakes it. `CLASSES_FROM=<dir>` runs an older build's classes. |
 | `tools/bench.sh <name> [trials] [goal] [minutes] [seed]` | The bench: one companion with an empty inventory on a fixed-seed world (12345), told to get a diamond pickaxe (or `iron_pickaxe`, `stone_pickaxe`), from a different fixed start point per trial; trials run side by side. Each milestone (first log, crafting table, wooden pickaxe, first stone, stone pickaxe, coal, furnace, raw iron, iron ingot, iron pickaxe, below y 0, diamond, diamond pickaxe) is timed, with what went wrong in between: stuck events, failed searches, search nodes, failed jobs, deaths. Path search is limited by node counts, not the clock, so the machine's load doesn't change a run. Reports in `run/bench/<name>/t*/`; `tools/bench-watch.sh <name>` follows a run live (milestones, re-orders, exceptions per trial); `tools/bench-compare.py <name> <name>...` puts runs side by side (trials reaching each milestone, median times). The standard check for whether a change made companions better: the times should only go down. Needs one `./gradlew runSoak` first for the launch files. |
@@ -238,6 +238,47 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] "the base needs 20 torches" (one companion answers), `/companion colony want glass 8`: the targets update; "we have enough cobblestone" sets it to 0 and the cobblestone request disappears.
 - [ ] Give a companion holding a request an order ("follow me"): the request goes back to open within a few seconds.
 - [ ] `/companion why <name>` on a companion working a request shows the request and its bid.
+
+### 27. Personality, mood, goals (0.12)
+- [ ] `/companion info Bob` shows twelve traits, a mood ("calm" at first), the faction, and (after some chat) feelings about people.
+- [ ] `/companion archetype Bob hothead` then `/companion info Bob`: aggression 0.95, bravery 0.85, caution 0.1. `/companion trait Bob humor 1` sets one trait.
+- [ ] Hit Bob (as a non-owner, or with `ownerAuthority: standing`): `/companion info Bob` shows fear and anger, and a lowered affinity for you.
+- [ ] "Bob, do your own thing", wait a minute, `/companion goals Bob`: roots with scored goals, one marked `>`, others "not needed now". Make a goal fail (e.g. take away its axe mid-job): it shows "put aside N min" and "[failed 1x]".
+- [ ] "Bob, how do you feel?" reflects its mood after a fight or a failure.
+
+### 28. Chat follow-ups and teaching
+- [ ] "Bob, get 10 logs", then "make it 20" (no name): Bob re-plans for 20. "and coal too" adds mining coal. "no, I meant birch" swaps the wood. "Ann, you too": Ann gets the same order.
+- [ ] "Bob, get half a stack of cobblestone" asks for 32; "two stacks" 128.
+- [ ] "Bob, when I say lumber I mean logs", then "Bob, get me 5 lumber" chops 5 logs. "Bob, morning routine means get food then light the base", then "Bob, morning routine" queues both. Restart: still known. "Bob, forget lumber" removes it.
+- [ ] A player who isn't the owner can't teach words (Bob says it doesn't take orders from them).
+
+### 29. Standing and authority
+- [ ] With a second account (not the owner): "Bob, follow me" is refused; "Bob, what time is it?" is answered; "Bob, where are you?" is refused as private.
+- [ ] `/companion standing colony <player> 30` (friendly): "Bob, give me a log" works, "Bob, follow me" is refused. At 70 (trusted): orders work.
+- [ ] As that player, hit Bob once: a warning ("Hey! Watch it.") if they were friendly, else "<player> just attacked me!". Hit again: standing hostile; armed companions nearby fight them (defend mode: while they're at the base or right after the attack). "sorry" raises the standing; a second "sorry" within 5 minutes gets "Words are cheap".
+- [ ] As that player, open a base chest: "Hey, that's our chest!" and -15 standing (once a minute). Right-click a companion while hostile: it won't open its inventory. Give a companion something through its inventory: thanks, and standing goes up.
+- [ ] As a non-owner, kill a zombie that's attacking a companion: "Thanks for the save" and +5.
+- [ ] Set `ownerAuthority: standing`, restart, hit your own companion three times: it stops taking your orders. Back to `absolute`: it obeys again.
+
+### 30. Teams (red vs blue)
+- [ ] Spawn 6 companions (`/companion batch 6`), set them free, then `/companion faction teams red blue`: chat lists the two teams; names show red and blue in the tab list and chat; teammates can't hurt each other.
+- [ ] With no bases set, within a minute or two (daytime) one member of each team says it's founding a base and walks to a flat spot at least 64 blocks from the other team's base; `/companion faction info red` shows the base; `/companion colony` (default colony) is unaffected.
+- [ ] Each team gets its own zones (farm, beds...), its own board and stock; companions only share with teammates.
+- [ ] "red team, follow me" makes only red companions follow (you own them all).
+- [ ] With `warfare: defend`, a red companion walking into blue's base gets attacked; with `/companion faction warfare pvp`, they fight on sight.
+- [ ] `/companion faction ceasefire` stops the fighting; `/companion faction relation red blue allied` makes them share requests.
+
+### 31. Raids and dynamic factions
+- [ ] Teams with bases, armed companions: `/companion faction raid red` sends up to four red fighters ("Raid on Blue! Follow me!"). They walk to blue's base and fight. With `griefing: false` it's a skirmish and nothing is taken; with `griefing: true` they break through blue's walls (not doors, beds or gates), take diamonds, iron, gear and food from blue's chests, then go home and deposit.
+- [ ] Raiders below 40% health pull out ("Falling back!").
+- [ ] `/companion faction mode dynamic`: warfare becomes raid for every faction; raids start on their own (at most every 15 minutes per faction) when one side clearly outmatches the other.
+- [ ] Dynamic mode with 8+ companions over a long run: unhappy companions grumble ("Nobody around here listens to me."); eventually a group splits off as "<Name>'s Band", hostile to the old faction, and founds its own base. Empty factions disband. Check `logs/latest.log` for `faction` lines.
+
+### 32. Farming and combat
+- [ ] At a base with a farm zone (`/companion colony` lists it), give Bob wheat seeds and a hoe: "Bob, farm" tills the farm, plants, and says what it did. Without seeds, it pulls up grass for some. Without a hoe (but with seeds and grass to till), it crafts a wooden hoe first.
+- [ ] Grow wheat to ripeness (bonemeal): "Bob, harvest the wheat" harvests and replants. In free mode with ripe crops, Bob goes farming by itself, and bakes bread with 3 wheat when short of food.
+- [ ] Give Bob a shield: it moves to the off hand within 2 seconds. Against a skeleton, Bob raises it while the skeleton draws (arrows are blocked) and walks in. Against a hissing creeper, it backs off behind the shield.
+- [ ] Fighting zombies, Bob often jumps and hits on the way down (critical hit particles). A hothead does it more often.
 
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

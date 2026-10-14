@@ -160,5 +160,12 @@
   "teach.learned": ["Got it: \"{word}\" means {meaning}.", "Okay, {word} = {meaning}. Noted.", "I'll remember that: {word} means {meaning}."],
   "teach.routine": ["Okay, \"{word}\" means: {plan}.", "Got it. When you say {word}, I'll {plan}.", "Routine saved: {word}."],
   "teach.unknown": ["I don't know what {meaning} means either.", "Sorry, I can't make sense of \"{meaning}\"."],
-  "context.nothing": ["Same as what?", "I'm not sure what you mean by that.", "Which thing?"]
+  "context.nothing": ["Same as what?", "I'm not sure what you mean by that.", "Which thing?"],
+  "faction.founded": ["This is it. {faction} lives here now!", "Home sweet home. Welcome to {faction}'s base!", "Right, we settle here. Everyone, this is home!", "Found a good spot. {faction}'s base starts here."],
+  "raid.go": ["We're hitting {faction}. Let's go!", "Raid on {faction}! Follow me!", "Time to pay {faction} a visit.", "Grab your swords, we're going after {faction}."],
+  "raid.arrive": ["{faction}'s base, right ahead. Go go go!", "We're here. Watch for their guards!", "There it is. Stay together!"],
+  "raid.loot": ["Got {count} things from {faction}'s chests. Back home!", "That'll teach {faction}. Heading back with the loot.", "Loot's in my pockets. Let's get out of here!"],
+  "raid.retreat": ["I'm hurt, pulling back!", "Too hot here, I'm out!", "Falling back!"],
+  "faction.grumble": ["Nobody around here listens to me.", "I'm not sure I belong in {faction}.", "Some days I think I'd do better on my own.", "I do all the work and for what?", "This place is getting crowded."],
+  "faction.split": ["That's it, I'm done with {old}. Who's with me? We're {faction} now!", "{old} can manage without us. {faction}, let's go!", "We're leaving {old}. {faction} will find its own home."]
 }
