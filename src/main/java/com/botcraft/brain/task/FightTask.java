@@ -33,6 +33,12 @@ public class FightTask extends Task {
 	private int kills;
 	/** Fighting a player because they're an enemy (stop when they aren't any more). */
 	private boolean pvp;
+	/** Jumped for a critical hit: strike while falling, for this many more ticks. */
+	private int critTicks;
+	/** How often it goes for a critical hit when it can (set from aggression). */
+	private float critChance = 0.4F;
+	/** Holding the shield up. */
+	private boolean blocking;
 
 	public FightTask(Companion c, LivingEntity target) {
 		super(c);
@@ -58,8 +64,52 @@ public class FightTask extends Task {
 		return 20 * 45;
 	}
 
+	/**
+	 * Raise the shield while something we can block is coming (a skeleton drawing its bow, a
+	 * creeper hissing, a player drawing a bow), lower it otherwise.
+	 *
+	 * @return true while blocking (the tick is spent behind the shield)
+	 */
+	private boolean shieldUp(CompanionPlayer p, double d) {
+		boolean shield = p.getOffHandStack().isOf(net.minecraft.item.Items.SHIELD) && com.botcraft.util.Experiments.on("shield");
+		boolean creeper = target instanceof CreeperEntity cr && cr.getFuseSpeed() > 0 && d < 5.0;
+		boolean incoming = creeper
+			|| (target instanceof net.minecraft.entity.mob.AbstractSkeletonEntity sk && sk.isUsingItem() && d > 3.0 && p.canSee(target))
+			|| (target instanceof net.minecraft.entity.player.PlayerEntity pl && pl.isUsingItem()
+				&& pl.getActiveItem().getItem() instanceof net.minecraft.item.RangedWeaponItem && d > 3.0);
+		if (shield && incoming) {
+			if (!p.isUsingItem()) {
+				p.interactionManager.interactItem(p, p.getWorld(), p.getOffHandStack(), net.minecraft.util.Hand.OFF_HAND);
+			}
+			blocking = true;
+			c.nav().stop();
+			if (creeper) {
+				Vec3d away = p.getPos().subtract(target.getPos()).normalize();
+				c.actions().moveTo(p.getPos().add(away.multiply(2)), 0.5); // back off behind the shield
+			} else {
+				c.actions().moveTo(target.getPos(), 0.6); // close in behind it
+			}
+			return true;
+		}
+		if (blocking) {
+			blocking = false;
+			if (p.isUsingItem() && p.getActiveHand() == net.minecraft.util.Hand.OFF_HAND) {
+				p.stopUsingItem();
+			}
+		}
+		return false;
+	}
+
+	@Override
+	protected void onStop() {
+		blocking = false;
+		critTicks = 0;
+		super.onStop();
+	}
+
 	@Override
 	protected void onStart(boolean resumed) {
+		critChance = 0.25F + 0.5F * c.brain().personality().aggression();
 		pvp = target instanceof net.minecraft.server.network.ServerPlayerEntity sp && com.botcraft.faction.Hostility.isEnemy(c, sp);
 		double dmg = Inventories.equipBestWeapon(c.player());
 		AiLog.log(c.name(), "fight {} with {} (damage {})", target.getType().getUntranslatedName(),
@@ -99,6 +149,12 @@ public class FightTask extends Task {
 		}
 		c.actions().lookAt(target);
 
+		// Shield up against an arrow being drawn or a creeper about to blow (if we carry one),
+		// walking in behind it; down again to hit back.
+		if (shieldUp(p, d)) {
+			return Status.RUNNING;
+		}
+
 		// A hissing creeper: get out of blast range, then come back and hit it again.
 		if (target instanceof CreeperEntity creeper && creeper.getFuseSpeed() > 0 && d < 5.0) {
 			Vec3d away = p.getPos().subtract(target.getPos()).normalize();
@@ -113,6 +169,17 @@ public class FightTask extends Task {
 			Vec3d away = p.getPos().subtract(target.getPos()).normalize();
 			Vec3d side = new Vec3d(-away.z, 0, away.x).multiply(strafeDir * 0.6);
 			c.actions().moveTo(p.getPos().add(away).add(side), 0.8);
+			return Status.RUNNING;
+		}
+
+		// A critical hit lands on the way down from a jump.
+		if (critTicks > 0) {
+			critTicks--;
+			if (!p.isOnGround() && p.fallDistance > 0.0F && c.actions().attack(target)) {
+				critTicks = 0;
+				backOff = 4 + random.nextInt(5);
+				strafeDir = random.nextBoolean() ? 1 : -1;
+			}
 			return Status.RUNNING;
 		}
 
@@ -134,6 +201,13 @@ public class FightTask extends Task {
 			}
 		} else {
 			c.nav().stop();
+			// In reach with the swing nearly charged: some go for a critical hit (more so the aggressive ones).
+			if (com.botcraft.util.Experiments.on("crits") && p.isOnGround() && !p.isTouchingWater() && !p.isClimbing()
+				&& p.getAttackCooldownProgress(0.5F) > 0.75F && random.nextFloat() < critChance) {
+				c.actions().jump();
+				critTicks = 12;
+				return Status.RUNNING;
+			}
 		}
 		if (c.actions().attack(target)) {
 			// Step back after a hit (most mobs get knocked back too), strafing a bit.

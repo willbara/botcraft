@@ -63,6 +63,23 @@ public final class MethodStats {
 		return (ok + 2.0) / (attempts + 2.0);
 	}
 
+	/**
+	 * A success rate drawn from what we know (see {@link Thompson}), so a method that was unlucky
+	 * early isn't written off for good. The draw is the same for a few minutes at a time, so plans
+	 * (and bids) don't flicker from one moment to the next.
+	 */
+	public static double sampledSuccessRate(Companion c, String method) {
+		if (!com.botcraft.util.Experiments.on("thompson")) {
+			return successRate(c, method);
+		}
+		int attempts = get(c, method, "attempts");
+		int ok = Math.min(attempts, get(c, method, "successes"));
+		long window = c.now() / (20 * 60 * 5);
+		java.util.Random r = new java.util.Random(java.util.Objects.hash(c.name(), method, window));
+		// Same prior weight as successRate (two optimistic tries), drawn instead of averaged.
+		return Thompson.beta(ok + 2.0, attempts - ok + 1.0, r);
+	}
+
 	public static int deaths(Companion c, String method) {
 		return get(c, method, "deaths");
 	}
