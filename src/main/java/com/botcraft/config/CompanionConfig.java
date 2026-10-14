@@ -88,6 +88,8 @@ public class CompanionConfig {
 	public boolean forceSurvival = true;
 	/** Permission level required for /companion. */
 	public int commandPermissionLevel = 2;
+	/** Free mode tends the base's farm zone (harvest, replant, till). Asking a companion to farm works either way. */
+	public boolean farming = true;
 	/** Put torches down in dark caves and around a dark base. */
 	public boolean placeTorches = true;
 	/** Easter eggs (a companion named "popbob" is hostile and griefs). */
@@ -120,10 +122,13 @@ public class CompanionConfig {
 	public int requestStanding = 20;
 	/** At or below this standing a player is an enemy. */
 	public int hostileStanding = -30;
-	/** Raids may break blocks a player built (only players who are members of an enemy faction). */
-	public boolean raidPlayerBuilds = false;
-	/** Most blocks one raid may break. */
-	public int maxBlocksPerRaid = 32;
+	/**
+	 * Factions without a base (in teams and dynamic mode) pick a spot and found one themselves;
+	 * the zones are then laid out as usual. Zones set by hand are never moved.
+	 */
+	public boolean dynamicBases = true;
+	/** Dynamic mode: most factions there can be (splits stop at this many). */
+	public int maxFactions = 6;
 	/** Which defaults this file was written with (missing = before 0.11.0), so old defaults can be upgraded. */
 	public int configVersion = 0;
 	private static final int CONFIG_VERSION = 2;
@@ -207,10 +212,11 @@ public class CompanionConfig {
 			ownerAuthority = "absolute";
 		}
 		ownerStartStanding = Math.max(-100, Math.min(100, ownerStartStanding));
+		maxFactions = Math.max(1, Math.min(32, maxFactions));
 		playerStartStanding = Math.max(-100, Math.min(100, playerStartStanding));
 		orderStanding = Math.max(-100, Math.min(100, orderStanding));
 		requestStanding = Math.max(-100, Math.min(orderStanding, requestStanding));
 		hostileStanding = Math.max(-100, Math.min(requestStanding - 1, hostileStanding));
-		maxBlocksPerRaid = Math.max(0, maxBlocksPerRaid);
+
 	}
 }

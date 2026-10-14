@@ -106,6 +106,9 @@ public final class Social {
 		}
 		String topic = forced != null && (topics.contains(forced)) ? forced : topics.get(RANDOM.nextInt(topics.size()));
 		AiLog.log(a.name(), "banter with {} about {}", b.name(), topic);
+		// Chatting brings companions closer (it's how friendships, and so factions, form).
+		a.relations().note(b.name(), com.botcraft.brain.Relationship.Event.TEAMWORK);
+		b.relations().note(a.name(), com.botcraft.brain.Relationship.Event.TEAMWORK);
 		Map<String, String> va = with(b);
 		Map<String, String> vb = with(a);
 		switch (topic) {

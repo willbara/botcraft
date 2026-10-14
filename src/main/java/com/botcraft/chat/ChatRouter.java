@@ -552,6 +552,17 @@ public final class ChatRouter {
 						jobs.addAll(specs);
 					}
 				}
+				case FARM -> {
+					var colony = com.botcraft.colony.Colony.get();
+					if (colony == null || colony.zone(com.botcraft.colony.Zones.FARM) == null) {
+						vars.put("reason", colony == null || !colony.hasBase() ? "we don't have a base yet (say \"this is home\")"
+							: "the base hasn't got a farm yet (it's laid out once the base map has seen the area)");
+						speech.reply("cant.do", sender, vars);
+						error = vars.get("reason");
+					} else {
+						jobs.add(intent.count() > 0 ? "farm " + intent.count() : "farm");
+					}
+				}
 				case HUNT -> {
 					String what = intent.item();
 					int n = intent.count() < 0 ? 3 : intent.count();

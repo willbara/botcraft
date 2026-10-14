@@ -1,6 +1,8 @@
 # Botcraft
 
-AI companions for Minecraft 1.20.1 (Fabric) that join the server as real players. A companion can follow you or live on its own: it chops whole trees, mines (caves first, whole veins), crafts, smelts, hunts and cooks, fights monsters, sleeps when you sleep, helps the other companions, remembers what it has seen, and chats with you and with the others.
+AI companions for Minecraft 1.20.1 (Fabric) that join the server as real players. A companion can follow you or live on its own: it chops whole trees, mines (caves first, whole veins), crafts, smelts, hunts and cooks, farms, fights monsters (with crits and a shield), sleeps when you sleep, helps the other companions, remembers what it has seen, and chats with you and with the others.
+
+Each companion has a personality (twelve traits, presets such as guard or miner), moods that come and go, and feelings about the people it knows. Companions can live as one colony, as fixed teams (red vs blue), or as factions that form, split up, found their own bases and raid each other. Every faction remembers how each player has treated it, and only players on good terms may give orders.
 
 - **Server-side only.** It works on dedicated servers and in singleplayer, and clients don't need the mod.
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.
@@ -25,11 +27,18 @@ this chest is for ores                      while looking at a chest at the base
 everyone, do your own thing                 free mode: they live and progress on their own
 ```
 
-In free mode a companion keeps itself fed, makes its tools, sleeps in its own bed, works up from stone tools to diamond gear, and fills the base's stockpile through a request board that sends each job to whoever is best placed for it. `/companion colony` shows the base and the board, and `/companion why Bob` shows what Bob is doing and why.
+In free mode a companion keeps itself fed, makes its tools, sleeps in its own bed, works up from stone tools to diamond gear, tends the farm, and fills the base's stockpile through a request board that sends each job to whoever is best placed for it. It chooses through a goal tree weighed by its personality. `/companion colony` shows the base and the board, `/companion why Bob` shows what Bob is doing and why, and `/companion goals Bob` shows Bob's goal tree.
+
+```
+/companion faction teams red blue           two teams, enemies; each finds and founds its own base
+red team, follow me                         address a whole team
+Bob, when I say lumber I mean logs          teach a word (or a routine: "morning routine means ...")
+Bob, get 10 iron  ...  make it 20           follow-ups: "make it 20", "and coal too", "Ann, you too"
+```
 
 Right-click a companion to open its inventory and take or give items.
 
-A companion only listens when you say its name or "everyone". Only its owner can give it orders, but anyone can ask it questions ("Bob, where are you?", "what's in the chests?").
+A companion only listens when you say its name, "everyone", or its team ("red team, ..."). Its owner can always give it orders (unless `ownerAuthority` is `standing`). Other players need good standing with its faction: trusted players may give orders, friendly ones may ask favours, and others may only chat. Hit a companion and its faction remembers.
 
 ## Commands
 
@@ -48,6 +57,11 @@ All commands need permission level 2 by default (`commandPermissionLevel`).
 | `/companion colony` | The shared base: its chests, what's stored, the stock targets, and the request board with each request's top bids. |
 | `/companion colony want <item> <count>` | How many of something the base should keep (`0` stops collecting it). |
 | `/companion why <name>` | Its reasoning: current activity and queue, its board request, its progression target, the chosen plan with its cost, and the alternatives. |
+| `/companion goals <name>` | Its goal tree: what free mode is choosing between, the scores, what's put aside after failing and for how long. |
+| `/companion archetype <name> <type>` | Give it a preset character: miner, farmer, guard, scout, builder, trader, leader, hothead, coward or joker. |
+| `/companion trait <name> <trait> <0..1>` | Set one personality trait. |
+| `/companion faction` | Factions: `mode single\|teams\|dynamic`, `teams red blue [owner]`, `warfare off\|defend\|pvp\|raid [faction]`, `create`, `remove`, `join <companion> <faction>`, `member <faction> <player> <rank>`, `relation <a> <b> <allied\|neutral\|hostile>`, `raid <faction>`, `ceasefire`, `info <faction>`. |
+| `/companion standing <faction> [player] [value]` | What a faction thinks of players (-100..100), or set it. |
 | `/companion stop <name>` | Stays put and drops any job. |
 | `/companion task <name> <text>` | Anything you could say in chat, for example `get 10 logs then craft a stone pickaxe`. |
 
@@ -57,8 +71,9 @@ Skins can be one of the built-in defaults (`steve`, `alex`, `kai`, `noor`...), a
 
 - [docs/GUIDE.md](docs/GUIDE.md): everything you can say to a companion, what companions do on their own, limitations, every config key, and how the mod works.
 - [docs/TESTING.md](docs/TESTING.md): the automated tests and the manual in-game checklist.
+- [docs/PLAN.md](docs/PLAN.md): where this is going: the goal tree, personality, communication, factions, jobs and combat, and what's done so far.
 
-The biggest gaps right now: melee combat only, no farming or breeding yet, no Nether or End, and chat is understood with patterns rather than a language model, so unusual phrasing can get a "Sorry, what was that?". The guide lists the rest under [Limitations](docs/GUIDE.md#limitations).
+The biggest gaps right now: no bows, no breeding, no Nether or End, and chat is understood with patterns rather than a language model, so unusual phrasing can get a "Sorry, what was that?". The guide lists the rest under [Limitations](docs/GUIDE.md#limitations).
 
 ## Building and testing
 

@@ -389,4 +389,12 @@ class IntentParserTest {
 	void restIsWhatWasSaidWithoutTheName() {
 		assertEquals("make it 30", IntentParser.parse("bob, make it 30", List.of("bob")).rest());
 	}
+
+	@Test
+	void farming() {
+		assertEquals(Intent.Type.FARM, IntentParser.parse("bob go farm", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.FARM, IntentParser.parse("bob, harvest the wheat please", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.FARM, IntentParser.parse("bob tend the crops", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.GATHER, IntentParser.parse("bob get some wheat", List.of("bob")).intent().type());
+	}
 }

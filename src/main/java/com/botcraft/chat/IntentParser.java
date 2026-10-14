@@ -86,6 +86,10 @@ public final class IntentParser {
 	private static final Pattern GIVE = Pattern.compile("\\b(give|hand|toss|throw|pass|drop) (me|over|it|them|the|your|those|some|all|everything|\\d+)\\b");
 	private static final Pattern HUNT = Pattern.compile(
 		"\\b(hunt(ing)?|go hunting|kill (some |a |an |the |\\d+ |a few )?(cows?|pigs?|sheep|chickens?|rabbits?|animals?)|get (us |me )?(some )?(food|meat|dinner|lunch))\\b");
+	/** Farming: "go farm", "tend the crops", "harvest the wheat", "plant some potatoes". */
+	private static final Pattern FARM = Pattern.compile(
+		"\\b(?:go farm(?:ing)?|farm(?:ing)?$|^farm|tend (?:to )?(?:the )?(?:farm|crops|field|garden)|work (?:on )?the (?:farm|field)|harvest (?:the |some |our )?(?:crops|wheat|carrots|potatoes|beetroots?|farm|field)"
+			+ "|plant (?:the |some )?(?:seeds|crops|wheat|carrots|potatoes|beetroots?)|look after the (?:farm|crops))\\b");
 	private static final Pattern SMELT = Pattern.compile("\\b(smelt|cook|roast|bake|grill|fry)\\b");
 	/** Wishes: "i need some iron", "we're out of coal", "i'm hungry" (someone should do something about it). */
 	private static final Pattern NEED = Pattern.compile(
@@ -589,6 +593,9 @@ public final class IntentParser {
 			if (!item.isEmpty()) {
 				return new Intent(Intent.Type.GIVE, item, count(text));
 			}
+		}
+		if (FARM.matcher(text).find()) {
+			return new Intent(Intent.Type.FARM, "", count(text));
 		}
 		Matcher hunt = HUNT.matcher(text);
 		if (hunt.find()) {

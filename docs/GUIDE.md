@@ -20,7 +20,17 @@ The full reference: everything you can say to a companion, what companions do on
 A companion only responds when you say its name ("Bob, follow me") or address all of yours ("everyone stop", "all of you, mine coal"). Chat that doesn't name a companion is ignored, so an order for one never interrupts another.
 
 - Names tolerate one typo in a direct address ("herobrin, follow me"), for names of four or more letters.
-- Only the owner can give orders. Anyone can ask questions.
+- **Teams.** Outside single mode, "red team, follow me" addresses every companion in that faction. "everyone" also reaches companions in factions you lead or are an officer of.
+- **Who may ask what** depends on who you are to the companion (see [Factions, standing and warfare](#factions-standing-and-warfare)):
+
+| You are | You may |
+|---|---|
+| its owner (the player who spawned it) | give any order (unless `ownerAuthority` is `standing`) |
+| a leader or officer of its faction | give any order |
+| trusted (standing 60 or more) | give any order |
+| friendly (standing 20 or more) | ask small favours: give/bring me something, come here, hunt, smelt, craft, farm, light, dance, cancel; and ask anything |
+| neutral | ask public questions and chat (not where it is, what it carries, or what's in the chests) |
+| an enemy (standing -30 or less, or just hit it) | nothing but "sorry" |
 
 ### Combining orders
 
@@ -28,6 +38,13 @@ A companion only responds when you say its name ("Bob, follow me") or address al
 - **"After you X, Y"** runs X first: "after you get logs, make a crafting table".
 - **Add to the current plan** instead of replacing it by starting with "also …" or "when you're done …".
 - **Purpose clauses keep the goal:** "make a furnace to smelt iron" means "smelt iron", because the planner works out the furnace itself.
+- **Follow-ups** change your last order (for about 90 seconds, to the same companions, without saying their names again):
+  - "make it 30" / "20 instead" / "actually, make it a stack": a new count;
+  - "no, I meant gold": a different thing;
+  - "and coal too": add the same kind of job for another thing;
+  - "same again" / "one more time": repeat it;
+  - "Alice, you too": give Alice the same order.
+- **Amounts:** "a stack" (64), "half a stack" (32), "two stacks" (128), "a stack and a half" (96), "2 and a half stacks" (160), "a couple" (2), "a dozen" (12).
 
 ### Orders
 
@@ -62,6 +79,12 @@ A companion only responds when you say its name ("Bob, follow me") or address al
 | go home / come home | Go home. |
 | go to sleep / go to bed | Find a free bed and sleep (only at night). With no free bed around but one in its pockets, it puts that one down first. |
 | do your own thing / go explore / you're free | Free mode: live and progress on its own around home. Any other order ends it. |
+| farm / go farming / tend the crops / harvest the wheat / plant some potatoes | Look after the base's farm zone: harvest ripe crops, replant, till soil (making a wooden hoe if it has seeds and soil to till), and pull up grass for seeds. "harvest 10 wheat" stops after 10. |
+| join the red team / you're with blue now | Move to that faction (outside single mode; needs order rights). |
+| when I say lumber I mean logs / "lumber means logs" | Teach a word. It's swapped for its meaning in everything anyone says afterwards. Saved per world. |
+| morning routine means get food then light the base | Teach a routine: saying "Bob, morning routine" now does both. |
+| forget lumber | Forget a taught word. |
+| sorry | After hurting a companion or its faction: a small standing repair (more if it trusts you). Repeated apologies within 5 minutes don't count. |
 
 Item names are resolved against the game's own item list:
 - wood words mean chopping;
@@ -83,7 +106,10 @@ Item names are resolved against the game's own item list:
 | what can you do? / help | A short list of abilities. |
 | hi / thanks / bye / tell me a joke / who are you / what time is it | Small talk. It remembers people it has met. |
 | what's your favourite food? / do you like creepers? | Each companion has stable tastes and opinions. |
-| good job / you suck / sorry / i love you | It reacts in character. |
+| good job / you suck / sorry / i love you | It reacts in character, and remembers (praise and insults change how it feels about you). |
+| do you trust me? / are we cool? / do you like me? | How it and its faction see you: trusted, friendly, neutral or not at all. |
+| do you trust alex? / what do you think of Ann? | How it feels about another player or companion. |
+| how do you feel? | Its mood (shaken, happy, frustrated, tired, bored, sad, annoyed) or its health and hunger. |
 
 The parser also copes with:
 - **typos in command words:** "folow", "mien", "crfat";
@@ -210,6 +236,17 @@ While mining:
   - **Cooking:** raw meat counts as food in a pinch, but it gets cooked, since a steak fills far more than raw beef.
 - **Eating.** A hungry companion eats its best food, asks a friend, or hunts.
 
+### Farming
+
+- **The farm** is the base's farm zone (a flat 9x9 near water, laid out with the other zones, or set by hand with `/companion colony zone farm here`).
+- **Tending it** ("farm", or free mode when there's something to do), nearest work first:
+  1. **Harvest** ripe wheat, carrots, potatoes and beetroot.
+  2. **Plant** empty farmland. Potatoes and carrots go first (they're food straight away), then wheat seeds, then beetroot seeds.
+  3. **Pull up grass** in the farm, and around it when it has no seeds (grass drops seeds now and then).
+  4. **Till** grass and dirt with a hoe when there are seeds to plant. It makes a wooden hoe first if it has none.
+- **Picking up.** Drops are picked up like any others.
+- **Free mode** goes farming by day, within 64 blocks of the base, when the crops are ripe or there's planting to do, and bakes bread from 3 wheat when short of food. The farm is looked at every 20 seconds, shared by everyone at the base.
+
 ### Picking up after itself
 
 - **Drop tracking.** Every block a companion breaks and every animal or mob it kills marks a drop spot.
@@ -220,6 +257,9 @@ While mining:
 ### Combat and safety
 
 - **Fighting.** With at least 4 melee damage it fights any hostile mob, creepers included, backing off while a creeper hisses.
+- **Critical hits.** In reach with its swing nearly charged, it often jumps and strikes on the way down (vanilla's critical hit, 50% more damage). Aggressive companions do it more.
+- **Shields.** A shield it carries goes in its off hand. It raises it while a skeleton draws its bow, a player draws a bow or a creeper hisses close by, walking in behind it toward a skeleton and backing off from a creeper, and lowers it to hit back. A shield is on the progression ladder after the iron sword.
+- **Players and other factions.** It fights players its faction considers enemies, other factions' companions it's at war with, and anyone who just hit it, as warfare allows (see [Factions, standing and warfare](#factions-standing-and-warfare)). It stops when they stop being enemies (an apology, a ceasefire, or in `defend` mode once they leave the base).
 - **Mobs under water** (drowned, guardians) aren't chased into the water. It only hits back when one is right on top of it.
 - **Fleeing.** Unarmed, it runs (never off a cliff). At low health it retreats from monsters that are close, and from anything that shoots (skeletons, pillagers, witches, blazes) that can see it within 16 blocks; from those, safe means out of their sight or 24 blocks off, and it prefers somewhere they can't see. Too hurt to fight, it only hits back when a mob is right on it. Hurt with no food, it can't heal (natural healing needs a nearly full hunger bar), so it asks a friend for food or hunts.
 - **Armour.** It wears the best armour it has.
@@ -319,6 +359,70 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - If nothing arrives, the companion gets the item itself.
 - **Social life.** Companions greet each other and banter when idle: weather, work, favourites, jokes, complaints. They also share where they found ores, which the listener remembers. They praise each other's kills, mourn deaths and come to each other's help.
 
+### Personality and mood
+
+- **Twelve traits,** each 0 to 1, stable per companion: chattiness, bravery, curiosity, helpfulness (the original four), and diligence, aggression, caution, sociability, generosity, ambition, loyalty and humor. Companions from before 0.12 get the new eight from their UUID, so they don't change between restarts. `/companion info <name>` shows them.
+- **What they do:**
+  - bravery and caution: how hurt it gets before retreating;
+  - caution: how much risk and past deaths weigh in the planner;
+  - aggression: how readily it fights players and enemies, and how often it goes for a critical hit;
+  - diligence: how strongly it sticks with a goal once started;
+  - ambition: how much its own progression matters, and who founds a faction's base;
+  - loyalty and helpfulness: how much the base's needs matter, and how likely it is to leave a faction;
+  - curiosity: exploring;
+  - generosity: how much it keeps back when a friend asks for something;
+  - sociability and chattiness: banter.
+- **Archetypes.** `/companion archetype <name> <miner|farmer|guard|scout|builder|trader|leader|hothead|coward|joker>` sets a preset; `/companion trait <name> <trait> <0..1>` sets one trait.
+- **Experience** nudges traits a little (never more than 0.2 from where they started): each death makes it a bit less brave, kills make it a bit more aggressive.
+- **Mood** is short-lived and fades on its own: fear (damage, crowds of monsters), joy (jobs done, kills, praise, gifts), frustration (failures, deaths), fatigue (long work; cleared by sleeping), boredom (the same goal over and over), grief (a friend died nearby) and anger (a player hit it). Fear makes it retreat sooner; fatigue makes progression less appealing and boredom exploring more; and strong moods change how it talks (dialogue keys can have `.scared`, `.happy`, `.grumpy`, `.tired`, `.sad` and `.angry` variants).
+- **Relationships.** It remembers how it feels about each player and companion: liking (-1 to 1), trust (0 to 1, starting at 0.5) and favours owed. Gifts, help in a fight, thanks and praise raise them; insults, hits, deaths and theft lower them; they drift back toward neutral over a few in-game days. They show in `/companion info`.
+
+### Factions, standing and warfare
+
+- **Modes** (`factionMode`, or `/companion faction mode`):
+  - **single** (the default): one colony, exactly as before 0.12.
+  - **teams:** fixed teams. `/companion faction teams red blue` splits the companions evenly between new teams Red and Blue (`... red blue owner` keeps each owner's companions together; any number of teams). Teams start as enemies.
+  - **dynamic:** factions form and split on their own, and fight and raid each other.
+- **A faction has its own everything:** its own base (the default colony keeps `colony.json`; others are `colonies/<id>.json`), its own base map, zones, upkeep and request board, and its own stock. Companions only bid on, share with and ask for help from their own faction (or allies). Names show in the faction's colour (a vanilla scoreboard team), and members can't hurt each other.
+- **Bases found themselves** (outside single mode, `dynamicBases`): a faction without a base sends its most ambitious member, by day, to the best spot nearby: flat ground, water and trees close, no lava, not the sea, not on someone's buildings, at least 64 blocks from another faction's base. It founds the base there (every member's home), and the zones are laid out as usual. Zones set by hand are never moved. In single mode, you still say "this is home".
+- **Player standing.** Each faction keeps a standing for every player it has dealt with, from -100 to 100, starting at `playerStartStanding` (0); players who own a companion in the faction, or are members, start at `ownerStartStanding` (90).
+
+  | What you do | Standing |
+  |---|---|
+  | hit one of its companions | -25 (the first hit while friendly gets a warning) |
+  | kill one | -60 |
+  | open its base chests without being trusted (once a minute at most) | -15 |
+  | take things out of a companion's inventory without order rights | -15 per stack |
+  | break something built at its base | -5 per block |
+  | kill a mob that was after one of its companions | +5 |
+  | give a companion something (through its inventory screen) | +2 per stack |
+  | say sorry afterwards | +10 (+20 if that companion trusts you) |
+  | a quiet in-game day | 10% of the way back to where you started |
+
+  The bands are trusted (60+), friendly (20+), neutral, and hostile (-30 or less), with a 5-point margin before you drop out of one, so a player near a threshold doesn't flicker. The companion it happened to (and friends who saw it) also remember it personally, and the victim calls it out in chat ("Steve just attacked me!"). An enemy can't open a companion's inventory. `/companion standing <faction> [player] [value]` shows or sets it; `/companion faction info <faction>` lists everyone.
+- **Owner authority** (`ownerAuthority`): `absolute` (the default) means your own companions always obey you and never treat you as an enemy, whatever you do. `standing` means you're judged like anyone else, starting trusted at `ownerStartStanding`: hit them enough and they stop listening.
+- **Warfare** (`warfare`, or per faction with `/companion faction warfare <level> [faction]`):
+  - **off:** never fight players or other factions.
+  - **defend** (the default): fight whoever just hit them, and enemies (hostile players, enemy factions' companions) who are inside their base (48 blocks) or just attacked one of them.
+  - **pvp:** enemies on sight.
+  - **raid:** pvp, and raids on enemy bases. Dynamic factions always raid.
+- **Raids.** Every minute, a raiding faction with a base looks at the nearest enemy base. It raids if two or more of its free-roaming members are armed and healthy, they clearly outmatch the defenders it can count (aggressive leaders settle for less), and it hasn't raided in 15 minutes. Up to four go together. The raiders walk to the enemy base and fight whoever's there. With `griefing: true` they break in (the path finder may go through what the enemy built, except doors, beds and gates) and take the most valuable things from the enemy's chests: diamonds, gold and emeralds first, then iron, gear and tools, then food and fuel. Without griefing it's a two-minute skirmish and nothing is taken. Raiders pull out below 40% health, when their pockets are full, or after two minutes, then go home and put the loot away. `/companion faction raid <faction>` sends one now.
+- **Splitting up** (dynamic mode). Every few minutes each member's unhappiness is worked out from:
+  - disliking the others (fights, grudges, no friends among them);
+  - ambition without loyalty;
+  - frustration;
+  - crowding.
+
+  Unhappy members grumble. When three or more stay unhappy, and they're a quarter of the faction, the most ambitious leaves with them, and with whoever likes it better than the rest, as a new faction ("Bob's Band"). They start as enemies of the old one, found their own base, and the raids begin. At most one split per faction per in-game day, and at most `maxFactions` factions. Empty factions disband. Companions grow fond of each other by chatting and helping each other out.
+- **Diplomacy** is by command for now: `/companion faction relation <a> <b> <allied|neutral|hostile|number>`. Enemies are -30 or less; allies are 60 or more both ways. Hits and raids between factions push them apart. `/companion faction ceasefire` makes everyone neutral at once.
+- **Commands:** `/companion faction` lists factions. The subcommands are:
+  - `mode`, `warfare`, `teams`;
+  - `create <id> [colour]`, `remove <id>`;
+  - `join <companion> <faction>`;
+  - `member <faction> <player> <member|officer|leader|remove>`;
+  - `relation`, `raid`, `ceasefire`;
+  - `info <faction>`.
+
 ### Planning and progression
 
 - **Progression targets** are data, a ladder in `brain/plan/Targets.java`. Free mode first gets the basic wooden and stone tools, then works up the ladder:
@@ -327,7 +431,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
   3. diamond pickaxe and diamond sword;
   4. diamond armour.
 
-  Each step is "have this": met by carrying or wearing it (or something better).
+  Each step is "have this": met by carrying or wearing it (or something better). A shield comes right after the iron sword.
 - **The planner** (`brain/plan/Planner.java`) works out every way to get what the next target needs, recursively:
   - carrying it already, or taking it from the base chests;
   - crafting it (planning its ingredients), or smelting it (planning the input and fuel);
@@ -340,6 +444,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
 
   The cheapest option becomes a list of ordinary jobs. For example, an iron pickaxe is "take 3 ingots and 2 sticks from the chest, craft" when the chest has them, "smelt the raw iron I carry, craft" when that's cheaper, and "mine iron, smelt it, chop a log for sticks, craft" from scratch. The tasks still check reality as they go: if a chest turns out empty, crafting re-plans.
 - **Learning.** Every finished job records how it went for its method ("mine iron", "hunt cow", "gather logs", "craft", "smelt"...): attempts, successes, items gained, time and deaths. They're saved in the companion's memory. A method that keeps failing or killing a companion gets expensive, and another way wins.
+  - **Thompson sampling:** the success rate the planner uses is drawn from what's known, not averaged. A method with little experience varies a lot from one draw to the next, so one that was unlucky early still gets tried now and then; one with lots of experience settles on its true rate. A draw holds for five minutes, so plans and bids don't flicker. Turn it off with `-Dbotcraft.off=thompson`.
 - **Seeing why.** `/companion why <name>` shows the target, the chosen plan and its cost, the alternatives with theirs, and the learned stats.
 
 ### Free mode (autonomy)
@@ -347,13 +452,28 @@ Every task has its own time limit, but a task can keep itself busy without getti
 "Do your own thing" turns on a player-like routine around home:
 
 - **Night:** sleep in a bed: a free one near home, else its own bed from its pockets (put down at home), else one it crafts on the spot from 3 wool of one colour (carried or in the base chests) and planks. Only with none of that does an armed companion guard home and an unarmed one dig in (three blocks down, roofed) until morning. Errands still running at dusk (hunting, chopping, exploring) are dropped so it heads in instead of being caught outside.
-- **Food:** cook raw meat, ask a friend, or hunt, and keep a reserve of about 6 food when animals are known nearby.
+- **Food:** cook raw meat, ask a friend, or hunt, and keep a reserve of about 6 food when animals are known nearby. Tend the base's farm when its crops are ripe or it needs planting (`farming`), and bake bread from wheat when short of food.
 - **Progression:** wooden and stone tools, then a bed of its own at home (hunting sheep for the wool if need be; companions don't share beds, so everyone can sleep), then smelting carried raw iron, an iron pickaxe, an iron sword and iron armour piece by piece.
 - **The base's needs:** requests from the board (see [Working together](#working-together)), taking turns with its own progression.
 - **Whatever suits where it is:** chopping with an axe in a forest; mining coal, iron, then diamonds (with an iron pickaxe) in a nearby cave; turning spare coal into torches.
 - **Otherwise:** it revisits a remembered cave or wanders.
 
-It says what it's doing, and a goal that fails is put aside for a while. Any other order ends free mode (back to following you), so its plans never compete with yours.
+It says what it's doing. Any other order ends free mode (back to following you), so its plans never compete with yours.
+
+**The goal tree.** Each decision, everything that makes sense right now is offered under a root:
+- **survive:** sleep, food, farm, bread, bed;
+- **progress:** tools, the target ladder, smelting, caves, wood, torches;
+- **faction:** storage, light, the request board, founding the base;
+- **curiosity:** exploring;
+- **rest:** heading home.
+
+Each goal has a base priority (its place in the order above). The tree weighs them by how much this companion cares about each root:
+- cautious ones about surviving;
+- ambitious ones about progress, less when tired;
+- loyal and helpful ones about the faction;
+- curious ones about exploring, more when bored.
+
+The goal it's already on gets a bonus (more for diligent companions), so it doesn't flip-flop. A goal that fails is put aside for 10 minutes, then 20, 40, up to an hour if it keeps failing, and is fine again as soon as it works. `/companion goals <name>` shows the tree: the scores, what was chosen and why, what's put aside and for how long. `-Dbotcraft.off=goalUtility` restores the plain fixed order.
 
 Free mode ignores you completely. It never follows you, and never teleports to you. If it dies with no bed or home, it respawns at world spawn, not at your side.
 
@@ -425,7 +545,7 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 ### Tasks
 
 - **Crafting** covers crafting-table and furnace recipes only: no smithing, brewing, enchanting, stonecutting, blast furnaces or smokers.
-- **No farming.** It was removed for now and will come back reworked.
+- **Farming is basic.** Only the base's farm zone is farmed, by daylight, within 64 blocks of the base. There's no water placement (soil away from water grows slowly), no bonemeal, and no sugar cane, melons, pumpkins or nether wart. Seeds come from grass. Turn free-mode farming off with `farming: false`.
 - **Storage is basic.** There's one base, chests aren't sorted beyond "like with like", and nothing is reserved: two companions can head for the same items, and the second gets whatever's left. Companions don't organise chests you fill yourself, and they never use chests away from the base.
 - **Lighting is basic.** Torches go on the floor (never on walls), only around the base and where a companion is underground. They aren't picked back up, and nobody lights paths between places.
 - **Hunting** never takes the last two animals of a species nearby (the last one when starving), so a lone cow is always left alone. There's no breeding yet, so a heavily hunted area runs out of animals. Animals beyond about 96 blocks, or more than 48 blocks up or down, aren't noticed until the companion gets closer. Fish, crops and other food sources aren't used.
@@ -434,18 +554,21 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 
 ### Combat
 
-- **Melee only:** no bows, crossbows or shields.
+- **Melee and shields:** no bows or crossbows yet. Shields block skeleton arrows, player arrows and creeper blasts, but not melee hits (a companion doesn't try to read a player's swing).
+- **PvP is simple:** the same fighting as against mobs, with crits and the shield. No strafing around a player's shield, no axe to disable shields, no potions.
 - **No fighting when weak:** below 4 melee damage a companion flees instead of fighting, even from weak mobs.
 
 ### Free mode
 
-- **Progression stops at diamond gear.** The target ladder ends there: no enchanting, Nether or End yet. There's no base building, trading or exploring for structures.
+- **Progression stops at diamond gear.** The target ladder ends there: no enchanting, Nether or End yet. There's no base building (beyond chests, beds and the farm), trading or exploring for structures.
+- **Factions are new.** Raids take what's in chests but don't plan an approach or hold formation. A split doesn't divide the old base's chests (leavers keep what they carry). There's no diplomacy beyond commands. Bases don't move once founded.
 - **A simple planner.** It plans one target at a time for one companion; work for the whole colony goes through the request board instead. Its time estimates start from rough guesses and improve with experience.
 - **Unarmed nights** mean digging in, not fighting.
 
 ### Understanding chat
 
-- **Pattern-based.** Understanding uses patterns, not a language model, so unusual phrasing gets "Sorry, what was that?". Common phrasings, typos and shorthand are covered, and the dialogue file makes the wording easy to extend.
+- **Pattern-based.** Understanding uses patterns, not a language model, so unusual phrasing gets "Sorry, what was that?". Common phrasings, typos and shorthand are covered, and the dialogue file makes the wording easy to extend. Teaching a word ("when I say X I mean Y") covers your own phrasings.
+- **Follow-ups** only refer to your last order, and only for 90 seconds; "it" and "there" aren't understood yet.
 - **Hidden orders.** Orders hidden inside long sentences or questions ("would it be possible for you to maybe…") may be missed.
 
 ---
@@ -476,6 +599,15 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `sleepWithOwner` | true | Go to bed when the owner sleeps. |
 | `commandPermissionLevel` | 2 | Permission level for `/companion`. |
 | `placeTorches` | true | Put torches down in dark caves and around a dark base. |
+| `farming` | true | Free mode tends the base's farm zone. Asking a companion to farm works either way. |
+| `factionMode` | single | `single` (one colony), `teams` (fixed teams), or `dynamic` (factions split, fight and raid on their own). |
+| `warfare` | defend | `off`, `defend`, `pvp` or `raid` (see [Factions](#factions-standing-and-warfare)). Breaking in and looting also need `griefing`. Dynamic factions always raid. |
+| `ownerAuthority` | absolute | `absolute`: your companions always obey you. `standing`: you're judged by how you treat them, like anyone else. |
+| `ownerStartStanding` | 90 | Standing a faction starts at for its own people (owners of its companions, members). |
+| `playerStartStanding` | 0 | Standing a faction starts at for anyone else. |
+| `orderStanding` / `requestStanding` / `hostileStanding` | 60 / 20 / -30 | Standing needed to give orders, to ask favours, and at or below which a player is an enemy. |
+| `dynamicBases` | true | Factions without a base (teams and dynamic mode) find a spot and found one. |
+| `maxFactions` | 6 | Dynamic mode: splits stop at this many factions. |
 | `easterEggs` | true | Easter eggs. Currently: a companion named "popbob" (see [Easter eggs](#easter-eggs)). |
 | `verboseAiLogging` | false | Log AI decisions at INFO instead of DEBUG, so they show in `latest.log`. |
 
@@ -499,19 +631,26 @@ com.botcraft
 │               digging out, stuck recovery), BreakPolicy, Goal
 ├─ perception/  Perception (threats, owner, time, inventory summary), Surroundings (rolling 8-block
 │               picture), BlockScanner, CaveFinder
-├─ colony/      Colony (the base, its chests and their purposes, stock, wanted levels; colony.json), Kit (what a
-│               companion keeps), Purpose, StockTargets (what the base should keep)
+├─ colony/      Colony (a faction's base, its chests and their purposes, stock, wanted levels; colony.json and
+│               colonies/<id>.json), Kit (what a companion keeps), Purpose, StockTargets (what the base should keep),
+│               BaseMap, Zones, Upkeep, Builds, SiteSurvey (choosing where to settle)
+├─ faction/     Factions (modes, membership, standing, relations, scoreboard teams; factions.json), Faction, Scope
+│               (which faction's colony and board the running code uses), Standing, Authority (who may ask what),
+│               Hostility (who's an enemy), Incidents (what players did), Raids, Fracture (splitting up)
 ├─ brain/plan/  Planner (hierarchical "get N of X" with costs), Targets (progression ladder), MethodStats (learned costs)
-├─ brain/       Brain (utility selection + interrupt stack), Drives, Objective, Personality,
+├─ brain/goal/  GoalTree (free mode's goals under roots, weighted by personality, with backoff)
+├─ brain/       Brain (utility selection + interrupt stack), Drives, Objective, Personality, Mood, Relationship(s),
 │               JobQueue + Jobs (persisted job specs, prerequisites, optional prep), Life (free mode),
 │               Board (request board and bidding), Sharing, Claims (spreading out), Leftovers (own drops),
 │               Watchdog (stalled jobs), Failsafe (free-mode rescue), Lighting, Popbob (easter egg)
 │  └─ task/     Follow, Stay, Idle, GoTo, GatherLogs, Mine, Craft, Smelt, Hunt, Place, Deliver,
-│               Await, Sleep, Shelter, Eat, Fight, Flee/Retreat, Breathe, Collect, Deposit, Withdraw, Dance, ToolPrep,
+│               Await, Sleep, Shelter, Eat, Fight, Flee/Retreat, Breathe, Collect, Deposit, Withdraw, Dance, ToolPrep, Farm,
+│               Found, Raid,
 │               SearchTrips, Pickup, Spots
 ├─ knowledge/   OreKind, ItemNames, CraftPlanner, Smelting, Animals
 ├─ memory/      Memory (places, sightings, stats, people; per-companion JSON)
-├─ chat/        IntentParser (clauses, intents, typos), ChatRouter (intents -> jobs/replies),
+├─ chat/        IntentParser (clauses, intents, typos, amounts), ChatRouter (intents -> jobs/replies), Followups
+│               ("make it 30"), Lexicon (+ LexiconStore: taught words, lexicon.json),
 │               SmallTalk, Templates (+ dialogue.json), Voice, Speech, EventWatcher, Social, CommandTasks
 ├─ command/     /companion
 ├─ ops/         Soak (unattended soak runs), SoakStats (counters for the report)
@@ -544,7 +683,9 @@ Interrupts (breathe, fight, flee, retreat, eat) are pushed on a stack and pause 
 **Events.** Fabric's block-break and entity-death events record a companion's own drops.
 
 **Persistence.**
-- `<world>/botcraft/colony.json`: the base position, its chests and their purposes, and the stock levels you set.
-- `<world>/botcraft/companions.json`: name, UUID, owner, skin (including fetched textures), personality, mode, defend flag, the current job and the queue.
-- `<world>/botcraft/memory/<name>.json`: memory.
+- `<world>/botcraft/colony.json`: the base position, its chests and their purposes, and the stock levels you set. Other factions' bases are in `colonies/<id>.json`.
+- `<world>/botcraft/factions.json`: factions, their player members, what each thinks of players and of each other.
+- `<world>/botcraft/lexicon.json`: words and routines players taught.
+- `<world>/botcraft/companions.json`: name, UUID, owner, skin (including fetched textures), personality (traits, archetype), faction, mode, defend flag, the current job and the queue.
+- `<world>/botcraft/memory/<name>.json`: memory, including how it feels about each person.
 - Vanilla playerdata: everything else.
