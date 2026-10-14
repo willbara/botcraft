@@ -92,6 +92,8 @@ public final class CompanionManager {
 	static void onServerStopped(MinecraftServer server) {
 		com.botcraft.colony.Colony.unload();
 		com.botcraft.faction.Factions.unload();
+		com.botcraft.faction.Raids.clear();
+		com.botcraft.faction.Fracture.clear();
 		com.botcraft.chat.Lexicon.clear();
 		com.botcraft.colony.Builds.save(server);
 		com.botcraft.colony.Builds.unload();
@@ -360,6 +362,12 @@ public final class CompanionManager {
 		}
 		if (tickCount % 200 == 7) {
 			com.botcraft.faction.Factions.syncTeams(); // new companions, players who joined
+		}
+		try {
+			com.botcraft.faction.Raids.tick(this, tickCount);
+			com.botcraft.faction.Fracture.tick(this, tickCount);
+		} catch (RuntimeException e) {
+			Botcraft.LOG.error("Error updating factions", e);
 		}
 		long took = System.nanoTime() - started;
 		aiMs = aiMs * 0.8 + took / 1e6 * 0.2;

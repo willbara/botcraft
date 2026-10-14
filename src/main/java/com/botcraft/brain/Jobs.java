@@ -79,6 +79,15 @@ public final class Jobs {
 				case "tidy" -> {
 					return new com.botcraft.brain.task.TidyTask(c);
 				}
+				case "raid" -> {
+					return w.length > 1 && com.botcraft.faction.Factions.get(w[1]) != null ? new com.botcraft.brain.task.RaidTask(c, w[1]) : null;
+				}
+				case "found" -> {
+					return new com.botcraft.brain.task.FoundTask(c);
+				}
+				case "farm" -> {
+					return new com.botcraft.brain.task.FarmTask(c, num(w, 1, 0));
+				}
 				case "dance" -> {
 					return new com.botcraft.brain.task.DanceTask(c);
 				}
@@ -151,6 +160,12 @@ public final class Jobs {
 			case "dance" -> "dance";
 			case "light" -> "light up the base";
 			case "tidy" -> "tidy up the base";
+			case "farm" -> "tend the farm";
+			case "found" -> "found our base";
+			case "raid" -> {
+				var f = w.length > 1 ? com.botcraft.faction.Factions.get(w[1]) : null;
+				yield "raid " + (f == null ? (w.length > 1 ? w[1] : "the enemy") : f.name);
+			}
 			case "withdraw" -> "get " + label(w.length > 1 ? w[1] : "food") + " from the chests";
 			case "gear" -> "get " + (w.length > 1 ? "a " + w[1].replace('_', ' ') : "gear");
 			case "smelt" -> {

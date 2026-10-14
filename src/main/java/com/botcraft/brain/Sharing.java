@@ -68,7 +68,8 @@ public final class Sharing {
 		List<Board.Bid> bids = new java.util.ArrayList<>();
 		for (Companion o : m.all()) {
 			CompanionPlayer op = o.player();
-			if (o == asker || op == null || !o.isOnline() || op.isDead() || op.isSleeping() || op.getWorld() != ap.getWorld() || Popbob.is(o)) {
+			if (o == asker || op == null || !o.isOnline() || op.isDead() || op.isSleeping() || op.getWorld() != ap.getWorld() || Popbob.is(o)
+				|| !com.botcraft.faction.Factions.sameSide(asker, o)) {
 				continue;
 			}
 			Objective obj = o.brain().currentObjective();
@@ -110,6 +111,8 @@ public final class Sharing {
 		int n = tool ? 1 : Math.min(count, spare(best, what, false));
 		AiLog.log(asker.name(), "asking {} for {} {}", best.name(), n, key);
 		best.jobs().interruptWith(List.of("deliver " + key + " " + n + " to " + asker.name()));
+		asker.relations().note(best.name(), Relationship.Event.HELPED);
+		best.relations().note(asker.name(), Relationship.Event.GAVE);
 		asker.speech().sayIn("share.ask", null, Map.of("friend", best.name(), "item", label, "count", Integer.toString(n)), 0);
 		best.speech().sayIn("share.yes", null, Map.of("friend", asker.name(), "item", label), 100);
 		return best;
