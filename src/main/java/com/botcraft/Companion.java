@@ -192,6 +192,9 @@ public class Companion {
 		if (serverTick % 40 == 0 && Inventories.equipBestArmor(player)) {
 			AiLog.log(name(), "put on better armour");
 		}
+		if (serverTick % 40 == 20 && !player.isUsingItem() && Inventories.equipShield(player)) {
+			AiLog.log(name(), "took my shield in my off hand");
+		}
 		if (serverTick % 100 == 0) {
 			headBackIfLost("idle");
 		}

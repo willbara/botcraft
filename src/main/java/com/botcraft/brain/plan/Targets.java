@@ -25,6 +25,7 @@ public final class Targets {
 	public static final List<Target> LADDER = List.of(
 		new Target("iron tools", "an iron pickaxe", Items.IRON_PICKAXE, p -> Gear.toolTier(p, "pickaxe") >= 3),
 		new Target("iron tools", "an iron sword", Items.IRON_SWORD, p -> Inventories.bestWeaponDamage(p.getInventory()) >= 6.0),
+		new Target("iron tools", "a shield", Items.SHIELD, Inventories::hasShield),
 		new Target("iron armour", "an iron chestplate", Items.IRON_CHESTPLATE, p -> Gear.armour(p, EquipmentSlot.CHEST) >= 6),
 		new Target("iron armour", "iron leggings", Items.IRON_LEGGINGS, p -> Gear.armour(p, EquipmentSlot.LEGS) >= 5),
 		new Target("iron armour", "an iron helmet", Items.IRON_HELMET, p -> Gear.armour(p, EquipmentSlot.HEAD) >= 2),
