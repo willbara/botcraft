@@ -52,7 +52,12 @@ public class Life {
 
 	private final Random random = new Random();
 	private long nextDecision;
-	private final Map<String, Long> backoff = new HashMap<>();
+	/** The goals free mode chooses between, and their history (what failed, what's put aside). */
+	private final com.botcraft.brain.goal.GoalTree tree = new com.botcraft.brain.goal.GoalTree();
+	/** The last decision came out of {@link #tree}'s pick (rather than an early rule like going to bed). */
+	private boolean picked;
+	@Nullable
+	private String previousGoal;
 	@Nullable
 	private String lastGoal;
 	/** The board request our current jobs are for, if any. */
@@ -166,10 +171,10 @@ public class Life {
 				finishBoard(false, now);
 				boardRest = true;
 			} else {
-				backoff.put(lastGoal, now + FAIL_BACKOFF);
+				tree.failed(lastGoal, now, "");
 				if (HUNTING.contains(lastGoal) && com.botcraft.util.Experiments.on("huntBackoff")) {
 					// No animals to be found: that's true whichever reason sent us hunting.
-					HUNTING.forEach(g -> backoff.put(g, now + FAIL_BACKOFF));
+					HUNTING.forEach(g -> tree.rest(g, now + FAIL_BACKOFF));
 				}
 				AiLog.log("life", "backing off goal {}", lastGoal);
 			}
@@ -178,6 +183,9 @@ public class Life {
 	}
 
 	public void succeeded(long now) {
+		if (lastGoal != null) {
+			tree.succeeded(lastGoal);
+		}
 		if ("board".equals(lastGoal)) {
 			finishBoard(true, now);
 			boardRest = true;
@@ -193,14 +201,52 @@ public class Life {
 	}
 
 	private boolean allowed(String key, long now) {
-		Long until = backoff.get(key);
-		return until == null || now >= until;
+		return tree.allowed(key, now);
+	}
+
+	/** The goal tree (for /companion goals). */
+	public com.botcraft.brain.goal.GoalTree tree() {
+		return tree;
+	}
+
+	/**
+	 * How much this companion cares about each kind of goal: cautious ones about staying alive,
+	 * ambitious ones about progress (less when tired), loyal and helpful ones about the base,
+	 * curious ones (more when bored) about exploring.
+	 */
+	private static Map<com.botcraft.brain.goal.GoalTree.Root, Float> weights(Companion c) {
+		Personality p = c.brain().personality();
+		Mood m = c.mood();
+		Map<com.botcraft.brain.goal.GoalTree.Root, Float> w = new java.util.EnumMap<>(com.botcraft.brain.goal.GoalTree.Root.class);
+		w.put(com.botcraft.brain.goal.GoalTree.Root.SURVIVE, 1.0F + 0.1F * p.caution());
+		w.put(com.botcraft.brain.goal.GoalTree.Root.PROGRESS, 0.92F + 0.16F * p.ambition() - 0.1F * m.get(Mood.Kind.FATIGUE));
+		w.put(com.botcraft.brain.goal.GoalTree.Root.FACTION, 0.92F + 0.08F * p.helpfulness() + 0.08F * p.loyalty());
+		w.put(com.botcraft.brain.goal.GoalTree.Root.CURIOSITY, 0.85F + 0.25F * p.curiosity() + 0.15F * m.get(Mood.Kind.BOREDOM));
+		w.put(com.botcraft.brain.goal.GoalTree.Root.REST, 1.0F);
+		return w;
 	}
 
 	// ---- free mode ------------------------------------------------------------------------------
 
+	/** Free mode's choice, recorded in the goal tree (whichever rule made it). */
 	@Nullable
 	private Goal chooseFree(Companion c, long now) {
+		tree.begin(now);
+		picked = false;
+		Goal g = chooseFreeRules(c, now);
+		if (g != null && !picked) {
+			tree.chose(com.botcraft.brain.goal.GoalTree.rootOf(g.key()), g.key(), g.reason(), g.jobs(), now);
+		}
+		if (g != null) {
+			// The same thing over and over gets boring; something new is a relief.
+			c.mood().bump(Mood.Kind.BOREDOM, g.key().equals(previousGoal) ? 0.12F : -0.15F, now);
+			previousGoal = g.key();
+		}
+		return g;
+	}
+
+	@Nullable
+	private Goal chooseFreeRules(Companion c, long now) {
 		CompanionPlayer p = c.player();
 		PlayerInventory inv = p.getInventory();
 		BlockPos home = home(c);
@@ -345,14 +391,23 @@ public class Life {
 		if (coal > 0 && Inventories.count(inv, s -> s.isOf(Items.TORCH)) < 16) {
 			goals.add(new Goal("torches", List.of("craft torch 8"), "torches for the dark"));
 		}
-		for (Goal g : goals) {
-			if (allowed(g.key(), now)) {
-				return g;
+		// Everything that makes sense now goes on offer, in the old order of importance; the tree
+		// weighs them with this companion's character (and sticks with what it's already doing).
+		java.util.Set<String> seen = new java.util.HashSet<>();
+		for (int i = 0; i < goals.size(); i++) {
+			Goal g = goals.get(i);
+			if (seen.add(g.key())) {
+				tree.offer(com.botcraft.brain.goal.GoalTree.rootOf(g.key()), g.key(), g.reason(), g.jobs(), 1.0F - i * 0.04F);
 			}
+		}
+		var best = tree.pick(now, weights(c), c.brain().personality().commitment(), !com.botcraft.util.Experiments.on("goalUtility"));
+		if (best != null) {
+			picked = true;
+			return new Goal(best.key, best.jobs, best.reason);
 		}
 		// 6. Nothing pressing: go have a look at a cave we know, or wander (curious ones more).
 		if (allowed("explore", now) && random.nextFloat() < 0.3F + c.data.curiosity * 0.5F) {
-			backoff.put("explore", now + 20 * 60); // don't wander off every few seconds
+			tree.rest("explore", now + 20 * 60); // don't wander off every few seconds
 			var caves = c.memory().sightings("cave", home, c.dimension(), 64);
 			if (!caves.isEmpty() && stonePick && random.nextBoolean()) {
 				var cave = caves.get(random.nextInt(caves.size())).pos();
@@ -587,7 +642,7 @@ public class Life {
 		String key = "target_" + com.botcraft.knowledge.ItemNames.id(target.item());
 		if (!decision.chosen().possible() || decision.chosen().steps().isEmpty()) {
 			AiLog.log(c.name(), "life: can't plan {} ({})", target.name(), decision.chosen().note());
-			backoff.put(key, now + FAIL_BACKOFF);
+			tree.failed(key, now, decision.chosen().note());
 			return null;
 		}
 		AiLog.log(c.name(), "plan for {}: {} ({}s) {} | also {}", target.name(), decision.chosen().method(),

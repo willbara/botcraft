@@ -104,6 +104,10 @@ public final class CompanionCommand {
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
 					.executes(CompanionCommand::why)))
+			.then(CommandManager.literal("goals")
+				.then(CommandManager.argument("name", StringArgumentType.word())
+					.suggests(COMPANION_NAMES)
+					.executes(CompanionCommand::goals)))
 			.then(FactionCommand.faction())
 			.then(FactionCommand.standing())
 			.then(FactionCommand.archetype())
@@ -509,6 +513,27 @@ public final class CompanionCommand {
 			ctx.getSource().sendFeedback(() -> line, false);
 		}
 		return m.all().size();
+	}
+
+	/** /companion goals: the goal tree free mode chooses from, with scores, what's put aside and why. */
+	private static int goals(CommandContext<ServerCommandSource> ctx) {
+		String name = StringArgumentType.getString(ctx, "name");
+		Companion c = manager(ctx).byName(name);
+		if (c == null) {
+			ctx.getSource().sendError(Text.literal("No companion named " + name));
+			return 0;
+		}
+		ctx.getSource().sendFeedback(() -> Text.literal(c.name() + "'s goals (" + c.data.mode + " mode" + ("free".equals(c.data.mode) ? "" : "; the tree is used in free mode")
+			+ "):").formatted(Formatting.AQUA), false);
+		List<String> lines = c.life().tree().render(c.now());
+		if (lines.isEmpty()) {
+			ctx.getSource().sendFeedback(() -> Text.literal("  nothing decided yet").formatted(Formatting.GRAY), false);
+		}
+		for (String l : lines) {
+			Formatting f = l.contains("> ") ? Formatting.WHITE : l.endsWith(":") ? Formatting.YELLOW : l.contains("put aside") ? Formatting.DARK_GRAY : Formatting.GRAY;
+			ctx.getSource().sendFeedback(() -> Text.literal(l).formatted(f), false);
+		}
+		return lines.size();
 	}
 
 	/** Debug view: personality, orders, plan, memory highlights. */
