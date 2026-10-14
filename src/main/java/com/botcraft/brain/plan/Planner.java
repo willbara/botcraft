@@ -309,7 +309,7 @@ public final class Planner {
 		if (outdoors && c.perception().isNight()) {
 			r *= 2.0;
 		}
-		return r;
+		return r * c.brain().personality().riskWeight();
 	}
 
 	private double travelToBase() {

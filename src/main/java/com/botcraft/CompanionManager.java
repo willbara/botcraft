@@ -59,10 +59,13 @@ public final class CompanionManager {
 
 	static void onServerStarted(MinecraftServer server) {
 		LegacyNames.migrateWorld(server);
+		com.botcraft.faction.Factions.load(server);
+		com.botcraft.chat.LexiconStore.load(server);
 		com.botcraft.colony.Colony.load(server);
 		com.botcraft.colony.Builds.load(server);
 		instance = new CompanionManager(server);
 		instance.loadAndSpawnAll();
+		com.botcraft.faction.Factions.syncTeams();
 		com.botcraft.ops.Soak.maybeStart(server);
 		com.botcraft.ops.Bench.maybeStart(server);
 		com.botcraft.ops.NavBench.maybeStart(server);
@@ -88,6 +91,8 @@ public final class CompanionManager {
 
 	static void onServerStopped(MinecraftServer server) {
 		com.botcraft.colony.Colony.unload();
+		com.botcraft.faction.Factions.unload();
+		com.botcraft.chat.Lexicon.clear();
 		com.botcraft.colony.Builds.save(server);
 		com.botcraft.colony.Builds.unload();
 		com.botcraft.perception.Sight.clear();
@@ -120,10 +125,10 @@ public final class CompanionManager {
 	}
 
 	public void save() {
-		com.botcraft.colony.Colony colony = com.botcraft.colony.Colony.get();
-		if (colony != null) {
+		for (com.botcraft.colony.Colony colony : com.botcraft.colony.Colony.all()) {
 			colony.save();
 		}
+		com.botcraft.faction.Factions.save();
 		com.botcraft.colony.Builds.save(server);
 		List<CompanionData> list = new ArrayList<>();
 		for (Companion c : companions.values()) {
@@ -332,18 +337,29 @@ public final class CompanionManager {
 		}
 		long started = System.nanoTime();
 		for (Companion c : order) {
+			// Everything a companion does is for its own faction (its colony, its board).
+			String prev = com.botcraft.faction.Scope.enter(com.botcraft.faction.Factions.idOf(c));
 			try {
 				tickCompanion(c);
 			} catch (RuntimeException e) {
 				Botcraft.LOG.error("Error ticking companion {}", c.name(), e);
+			} finally {
+				com.botcraft.faction.Scope.exit(prev);
 			}
 		}
-		var colony = com.botcraft.colony.Colony.get();
-		if (colony != null) {
-			com.botcraft.colony.BaseMap.tick(colony);
-			if (tickCount % 100 == 50) {
-				com.botcraft.colony.Zones.plan(colony, com.botcraft.colony.BaseMap.get());
+		for (var colony : com.botcraft.colony.Colony.all()) {
+			String prev = com.botcraft.faction.Scope.enter(colony.id());
+			try {
+				com.botcraft.colony.BaseMap.tick(colony);
+				if (tickCount % 100 == 50) {
+					com.botcraft.colony.Zones.plan(colony, com.botcraft.colony.BaseMap.of(colony.id()));
+				}
+			} finally {
+				com.botcraft.faction.Scope.exit(prev);
 			}
+		}
+		if (tickCount % 200 == 7) {
+			com.botcraft.faction.Factions.syncTeams(); // new companions, players who joined
 		}
 		long took = System.nanoTime() - started;
 		aiMs = aiMs * 0.8 + took / 1e6 * 0.2;

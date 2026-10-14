@@ -94,6 +94,36 @@ public class CompanionConfig {
 	public boolean easterEggs = true;
 	/** Log AI decisions at INFO (instead of DEBUG) so they show up in latest.log without log config. */
 	public boolean verboseAiLogging = false;
+	/**
+	 * How companions group up: "single" (one colony, as before), "teams" (fixed teams such as red
+	 * and blue, set with /companion faction teams), or "dynamic" (factions form and fight on their own).
+	 */
+	public String factionMode = "single";
+	/**
+	 * How companions treat hostile players and enemy factions: "off" (never fight them), "defend"
+	 * (only when attacked or inside our base), "pvp" (on sight), "raid" (pvp, and raids on enemy
+	 * bases; breaking blocks or taking from chests also needs griefing). Dynamic factions always raid.
+	 */
+	public String warfare = "defend";
+	/**
+	 * "absolute": a companion always obeys the player who spawned it. "standing": the owner is
+	 * judged by how they treat it, like everyone else (starting at ownerStartStanding).
+	 */
+	public String ownerAuthority = "absolute";
+	/** Standing the owner starts with in "standing" mode (-100..100). */
+	public int ownerStartStanding = 90;
+	/** Standing a player starts with when a faction first meets them (-100..100). */
+	public int playerStartStanding = 0;
+	/** Standing a player (other than the owner) needs to give orders. */
+	public int orderStanding = 60;
+	/** Standing a player needs for requests (hand me something, come here). */
+	public int requestStanding = 20;
+	/** At or below this standing a player is an enemy. */
+	public int hostileStanding = -30;
+	/** Raids may break blocks a player built (only players who are members of an enemy faction). */
+	public boolean raidPlayerBuilds = false;
+	/** Most blocks one raid may break. */
+	public int maxBlocksPerRaid = 32;
 	/** Which defaults this file was written with (missing = before 0.11.0), so old defaults can be upgraded. */
 	public int configVersion = 0;
 	private static final int CONFIG_VERSION = 2;
@@ -167,5 +197,20 @@ public class CompanionConfig {
 		if (!"quiet".equals(chatVerbosity)) {
 			chatVerbosity = "all";
 		}
+		if (!java.util.List.of("single", "teams", "dynamic").contains(factionMode)) {
+			factionMode = "single";
+		}
+		if (!java.util.List.of("off", "defend", "pvp", "raid").contains(warfare)) {
+			warfare = "defend";
+		}
+		if (!"standing".equals(ownerAuthority)) {
+			ownerAuthority = "absolute";
+		}
+		ownerStartStanding = Math.max(-100, Math.min(100, ownerStartStanding));
+		playerStartStanding = Math.max(-100, Math.min(100, playerStartStanding));
+		orderStanding = Math.max(-100, Math.min(100, orderStanding));
+		requestStanding = Math.max(-100, Math.min(orderStanding, requestStanding));
+		hostileStanding = Math.max(-100, Math.min(requestStanding - 1, hostileStanding));
+		maxBlocksPerRaid = Math.max(0, maxBlocksPerRaid);
 	}
 }

@@ -77,6 +77,8 @@ public class Companion {
 	public long baseUnreachableUntil;
 	private final EventWatcher events = new EventWatcher();
 	private final Random random = new Random();
+	private final com.botcraft.brain.Mood mood = new com.botcraft.brain.Mood();
+	private final com.botcraft.brain.Relations relations = new com.botcraft.brain.Relations(this);
 
 	private record Heard(UUID sender, List<Intent> intents, boolean append, long due) {
 	}
@@ -144,6 +146,17 @@ public class Companion {
 		return life;
 	}
 
+	/** How it feels about the people it knows. */
+	public com.botcraft.brain.Relations relations() {
+		return relations;
+	}
+
+	/** How it feels right now (fear, joy, frustration...). */
+	public com.botcraft.brain.Mood mood() {
+		mood.update(now);
+		return mood;
+	}
+
 	/** What our own work dropped and we still have to pick up. */
 	public com.botcraft.brain.Leftovers leftovers() {
 		return leftovers;
@@ -191,6 +204,9 @@ public class Companion {
 		if (serverTick % 5 == 0) {
 			com.botcraft.brain.Blackboard.publish(this);
 		}
+		if (serverTick % 20 == 3) {
+			feel();
+		}
 		if (serverTick % 20 == 0) {
 			Memory.Place home = memory.place("home");
 			String why = failsafe.check(this, serverTick, home != null && dimension().equals(home.dim) ? home.pos() : null);
@@ -209,6 +225,34 @@ public class Companion {
 		actions.tick();
 		events.tick(this, serverTick);
 		speech.tick(serverTick);
+	}
+
+	/** Once a second: tiredness from working, rest from sleeping, fear from what's around. */
+	private void feel() {
+		mood.update(now);
+		if (player.isSleeping()) {
+			mood.reset(com.botcraft.brain.Mood.Kind.FATIGUE);
+			return;
+		}
+		if (brain.hasJob()) {
+			mood.bump(com.botcraft.brain.Mood.Kind.FATIGUE, 0.0004F, now);
+		}
+		int threats = perception.threats().size();
+		if (threats >= 3) {
+			mood.bump(com.botcraft.brain.Mood.Kind.FEAR, 0.03F * (1.0F - brain.personality().bravery()), now);
+		}
+	}
+
+	/** Took damage: fear, and anger at whoever did it (see faction.Standing for what players get). */
+	public void onDamaged(float amount, @Nullable net.minecraft.entity.Entity attacker) {
+		if (player == null) {
+			return;
+		}
+		float share = amount / Math.max(1.0F, player.getMaxHealth());
+		mood.bump(com.botcraft.brain.Mood.Kind.FEAR, share * (1.5F - brain.personality().bravery()), now);
+		if (attacker instanceof ServerPlayerEntity) {
+			mood.bump(com.botcraft.brain.Mood.Kind.ANGER, 0.2F + share, now);
+		}
 	}
 
 	private long nextHeadBack;
@@ -407,6 +451,7 @@ public class Companion {
 		brain.setJob(null);
 		jobs.abandonRest();
 		life.failed(now);
+		mood.bump(com.botcraft.brain.Mood.Kind.FRUSTRATION, 0.25F, now);
 		speech.event("event.task_failed", Map.of("reason", reason, "job", what), 0, 1.0F);
 	}
 
@@ -414,6 +459,9 @@ public class Companion {
 		AiLog.log(name(), "died");
 		nav.stop();
 		memory.count("deaths", 1);
+		mood.bump(com.botcraft.brain.Mood.Kind.FRUSTRATION, 0.3F, now);
+		mood.reset(com.botcraft.brain.Mood.Kind.FEAR);
+		com.botcraft.brain.Personality.drift(data, "bravery", -0.02F); // once bitten, twice shy
 		// A goal that got us killed is put aside for a while, like one that failed; and the way we
 		// were going about it is remembered as dangerous.
 		life.failed(now);
@@ -422,6 +470,7 @@ public class Companion {
 		}
 		var source = player == null ? null : player.getRecentDamageSource();
 		String cause = source == null ? "unknown" : source.getName();
+		com.botcraft.faction.Incidents.companionKilled(this, source);
 		lastDeathUnrecoverable = source != null && (source.isIn(net.minecraft.registry.tag.DamageTypeTags.IS_FIRE)
 			|| source.isOf(net.minecraft.entity.damage.DamageTypes.LAVA) || source.isOf(net.minecraft.entity.damage.DamageTypes.DROWN)
 			|| source.isOf(net.minecraft.entity.damage.DamageTypes.OUT_OF_WORLD));
@@ -459,6 +508,9 @@ public class Companion {
 	public void onKill(LivingEntity victim) {
 		AiLog.log(name(), "killed {}", victim.getType().getUntranslatedName());
 		memory.count("killed_" + victim.getType().getUntranslatedName(), 1);
+		mood.bump(com.botcraft.brain.Mood.Kind.JOY, 0.12F, now);
+		mood.bump(com.botcraft.brain.Mood.Kind.FEAR, -0.2F, now);
+		com.botcraft.brain.Personality.drift(data, "aggression", 0.004F);
 		CompanionManager m = CompanionManager.get();
 		if (m != null) {
 			com.botcraft.chat.Social.onKill(this, victim, m.all());
@@ -505,6 +557,9 @@ public class Companion {
 
 	/** Brain callback when a task ends. */
 	public void onTaskFinished(Task task, Status status, boolean interrupt) {
+		if (task instanceof SleepTask && status == Status.SUCCESS) {
+			mood.reset(com.botcraft.brain.Mood.Kind.FATIGUE);
+		}
 		if (task instanceof SleepTask && task.spec() == null) {
 			if (status == Status.FAILED) {
 				sleepRetryAfter = now + 20 * 60;
@@ -537,6 +592,7 @@ public class Companion {
 		}
 		if (status == Status.FAILED) {
 			life.failed(now);
+			mood.bump(com.botcraft.brain.Mood.Kind.FRUSTRATION, 0.25F, now);
 			int dropped = jobs.abandonRest();
 			speech.event(dropped > 0 ? "event.plan_failed" : "event.task_failed",
 				Map.of("reason", task.failReason(), "job", Jobs.describe(task.spec())), 0, 1.0F);
@@ -550,6 +606,8 @@ public class Companion {
 		if (jobs.pending().isEmpty()) {
 			life.succeeded(now);
 		}
+		mood.bump(com.botcraft.brain.Mood.Kind.JOY, 0.08F, now);
+		mood.bump(com.botcraft.brain.Mood.Kind.FRUSTRATION, -0.1F, now);
 		String result = resultPhrase(task);
 		if (!jobs.pending().isEmpty()) {
 			speech.event("event.step_done", Map.of("result", result, "next", Jobs.describe(jobs.pending().get(0))), 0, 0.6F);

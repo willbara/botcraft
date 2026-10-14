@@ -85,6 +85,8 @@ public final class Board {
 		public List<Bid> bids = List.of();
 		/** Why the winner won, or how it ended. */
 		public String note = "";
+		/** The faction whose board this is on (see faction.Scope). */
+		public final String faction = com.botcraft.faction.Scope.current();
 
 		Request(int id, Kind kind, String key, String label, int count, @Nullable String forWhom, long now, double priority) {
 			this.id = id;
@@ -140,8 +142,30 @@ public final class Board {
 
 	// ---- posting and housekeeping ------------------------------------------------------------------
 
-	/** Every few seconds: post requests for what the base is short of, and tidy up. */
+	/** Requests on the board of the faction in scope. */
+	private static List<Request> mine() {
+		String faction = com.botcraft.faction.Scope.current();
+		List<Request> out = new ArrayList<>();
+		for (Request r : REQUESTS) {
+			if (r.faction.equals(faction)) {
+				out.add(r);
+			}
+		}
+		return out;
+	}
+
+	/** Every few seconds, for every faction: post requests for what its base is short of, and tidy up. */
 	public static void refresh(CompanionManager m, long now) {
+		List<String> factions = com.botcraft.faction.Factions.enabled() ? com.botcraft.faction.Factions.ids()
+			: List.of(com.botcraft.faction.Factions.DEFAULT);
+		for (String id : factions) {
+			com.botcraft.faction.Scope.run(id, () -> refreshOne(m, now));
+		}
+		REQUESTS.removeIf(r -> (r.state == State.DONE || r.state == State.FAILED) && now - r.closedAt > KEEP_CLOSED);
+		PLANS.entrySet().removeIf(e -> now - e.getValue().at() > BID_TTL);
+	}
+
+	private static void refreshOne(CompanionManager m, long now) {
 		Colony colony = Colony.get();
 		boolean base = colony != null && colony.hasBase();
 		if (base) {
@@ -172,7 +196,7 @@ public final class Board {
 		if (base) {
 			upkeep(colony, now);
 		}
-		for (Request r : new ArrayList<>(REQUESTS)) {
+		for (Request r : mine()) {
 			if (r.kind != Kind.DELIVER && r.state == State.OPEN && !base) {
 				close(r, State.DONE, "no base", now);
 			}
@@ -180,8 +204,6 @@ public final class Board {
 				release(m, r, now);
 			}
 		}
-		REQUESTS.removeIf(r -> (r.state == State.DONE || r.state == State.FAILED) && now - r.closedAt > KEEP_CLOSED);
-		PLANS.entrySet().removeIf(e -> now - e.getValue().at() > BID_TTL);
 	}
 
 	/** Under the stock requests in importance: a tidy base matters, but less than food or tools. */
@@ -251,7 +273,7 @@ public final class Board {
 			|| !colony.near(c.player().getServerWorld(), c.player().getBlockPos(), 256) || holding(c.name()) != null) {
 			return null;
 		}
-		List<Request> open = REQUESTS.stream().filter(r -> r.kind != Kind.DELIVER && r.state == State.OPEN)
+		List<Request> open = mine().stream().filter(r -> r.kind != Kind.DELIVER && r.state == State.OPEN)
 			.sorted(Comparator.comparingDouble((Request r) -> -r.priority)).toList();
 		if (open.isEmpty()) {
 			return null;
@@ -304,6 +326,7 @@ public final class Board {
 		}
 		for (Companion o : m.all()) {
 			if (o == asker || !o.isOnline() || o.player() == null || o.player().isDead() || !"free".equals(o.data.mode) || Popbob.is(o)
+				|| !com.botcraft.faction.Factions.idOf(o).equals(com.botcraft.faction.Factions.idOf(asker))
 				|| o.player().getServerWorld() != colony.world() || holding(o.name()) != null
 				|| !colony.near(o.player().getServerWorld(), o.player().getBlockPos(), 256)) {
 				continue;
@@ -501,7 +524,7 @@ public final class Board {
 
 	/** Everything on the board, newest first. */
 	public static List<Request> requests() {
-		List<Request> out = new ArrayList<>(REQUESTS);
+		List<Request> out = mine();
 		out.sort(Comparator.comparingInt((Request r) -> -r.id));
 		return out;
 	}
@@ -529,7 +552,7 @@ public final class Board {
 
 	@Nullable
 	private static Request live(Kind kind, String key) {
-		for (Request r : REQUESTS) {
+		for (Request r : mine()) {
 			if (r.kind == kind && r.key.equals(key) && (r.state == State.OPEN || r.state == State.TAKEN)) {
 				return r;
 			}

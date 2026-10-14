@@ -104,6 +104,10 @@ public final class CompanionCommand {
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
 					.executes(CompanionCommand::why)))
+			.then(FactionCommand.faction())
+			.then(FactionCommand.standing())
+			.then(FactionCommand.archetype())
+			.then(FactionCommand.trait())
 			.then(CommandManager.literal("stop")
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
@@ -518,7 +522,18 @@ public final class CompanionCommand {
 		var d = c.data;
 		List<String> lines = new ArrayList<>();
 		lines.add(name + " (skin " + d.skin + ", owner " + (d.ownerName == null ? "nobody" : d.ownerName) + ")");
-		lines.add(String.format("personality: chatty %.2f, brave %.2f, curious %.2f, helpful %.2f", d.chattiness, d.bravery, d.curiosity, d.helpfulness));
+		lines.add("personality" + (d.archetype == null ? "" : " (" + d.archetype + ")") + ": " + c.brain().personality().summary());
+		lines.add("mood: " + c.mood().summary());
+		lines.add("faction: " + com.botcraft.faction.Factions.of(c).name + (com.botcraft.faction.Factions.enabled() ? "" : " (single mode)"));
+		List<String> people = new ArrayList<>();
+		for (var person : c.memory().people.values()) {
+			if (person.rel != null) {
+				people.add(person.name + " " + person.rel.summary());
+			}
+		}
+		if (!people.isEmpty()) {
+			lines.add("feelings: " + String.join("; ", people));
+		}
 		lines.add("mode: " + d.mode + (d.defendOwner ? " + defend" : "") + "; doing: " + c.describeActivity());
 		lines.add("queued: " + (c.jobs().pending().isEmpty() ? "nothing" : String.join(" | ", c.jobs().pending())));
 		lines.add("drives: " + c.brain().lastScores());
