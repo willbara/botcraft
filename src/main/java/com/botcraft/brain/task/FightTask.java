@@ -31,6 +31,8 @@ public class FightTask extends Task {
 	private int backOff;
 	private int strafeDir = 1;
 	private int kills;
+	/** Fighting a player because they're an enemy (stop when they aren't any more). */
+	private boolean pvp;
 
 	public FightTask(Companion c, LivingEntity target) {
 		super(c);
@@ -58,6 +60,7 @@ public class FightTask extends Task {
 
 	@Override
 	protected void onStart(boolean resumed) {
+		pvp = target instanceof net.minecraft.server.network.ServerPlayerEntity sp && com.botcraft.faction.Hostility.isEnemy(c, sp);
 		double dmg = Inventories.equipBestWeapon(c.player());
 		AiLog.log(c.name(), "fight {} with {} (damage {})", target.getType().getUntranslatedName(),
 			c.player().getMainHandStack().getName().getString(), dmg);
@@ -75,10 +78,20 @@ public class FightTask extends Task {
 			if (next.isEmpty() && c.data.defendOwner) {
 				next = c.perception().ownerThreats();
 			}
-			if (next.isEmpty()) {
+			LivingEntity nextTarget = next.isEmpty() ? null : next.get(0);
+			if (nextTarget == null && !c.perception().enemyPlayers().isEmpty()) {
+				nextTarget = c.perception().enemyPlayers().get(0);
+			}
+			if (nextTarget == null) {
 				return Status.SUCCESS;
 			}
-			target = next.get(0);
+			target = nextTarget;
+			pvp = target instanceof net.minecraft.server.network.ServerPlayerEntity sp && com.botcraft.faction.Hostility.isEnemy(c, sp);
+		}
+		// A player we were fighting isn't an enemy any more (made up, or left our base in defend mode).
+		if (pvp && ticks() % 20 == 0 && target instanceof net.minecraft.server.network.ServerPlayerEntity sp
+			&& !com.botcraft.faction.Hostility.isEnemy(c, sp)) {
+			return Status.SUCCESS;
 		}
 		double d = p.distanceTo(target);
 		if (d > GIVE_UP_DISTANCE || target.getWorld() != p.getWorld()) {

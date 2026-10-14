@@ -38,6 +38,8 @@ public class Perception {
 	private long now;
 	private long threatsAt = -1000;
 	private List<MobEntity> threats = List.of();
+	private long enemiesAt = -1000;
+	private List<ServerPlayerEntity> enemies = List.of();
 	private long inventoryAt = -1000;
 	private InventorySummary inventory = InventorySummary.EMPTY;
 
@@ -136,6 +138,33 @@ public class Perception {
 	}
 
 	// ---- threats ------------------------------------------------------------------------------
+
+	/**
+	 * Players within 16 blocks we should fight (enemy factions' companions, players on bad terms
+	 * with our faction, whoever just hit us), nearest first. See faction.Hostility.
+	 */
+	public List<ServerPlayerEntity> enemyPlayers() {
+		if (now - enemiesAt >= THREAT_TTL) {
+			enemiesAt = now;
+			enemies = computeEnemies();
+		}
+		return enemies;
+	}
+
+	private List<ServerPlayerEntity> computeEnemies() {
+		CompanionPlayer p = companion.player();
+		if (p == null) {
+			return List.of();
+		}
+		List<ServerPlayerEntity> list = new ArrayList<>();
+		for (ServerPlayerEntity o : p.getServerWorld().getPlayers()) {
+			if (o != p && o.squaredDistanceTo(p) < THREAT_RADIUS * THREAT_RADIUS && com.botcraft.faction.Hostility.isEnemy(companion, o)) {
+				list.add(o);
+			}
+		}
+		list.sort(Comparator.comparingDouble(o -> o.squaredDistanceTo(p)));
+		return list;
+	}
 
 	/** Hostile mobs within 16 blocks that are (or would be) hostile to us or our owner, nearest first. */
 	public List<MobEntity> threats() {

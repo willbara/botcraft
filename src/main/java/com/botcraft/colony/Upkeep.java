@@ -43,30 +43,32 @@ public final class Upkeep {
 	/** Most jobs in one go. */
 	private static final int MAX_WORK = 64;
 
-	private static List<Work> latest = List.of();
-	private static long latestAt = Long.MIN_VALUE;
+	/** Per faction (see faction.Scope): what was found last, and when. */
+	private static final java.util.Map<String, List<Work>> LATEST = new java.util.HashMap<>();
+	private static final java.util.Map<String, Long> LATEST_AT = new java.util.HashMap<>();
 
 	private Upkeep() {
 	}
 
 	/** What needs doing at home, as last found. */
 	public static List<Work> latest() {
-		return latest;
+		return LATEST.getOrDefault(com.botcraft.faction.Scope.current(), List.of());
 	}
 
 	/** What needs doing at home now (found again if the last look is older than {@code maxAge} ticks). */
 	public static List<Work> current(Colony colony, long now, long maxAge) {
+		long latestAt = LATEST_AT.getOrDefault(colony.id(), Long.MIN_VALUE);
 		if (latestAt == Long.MIN_VALUE || now - latestAt > maxAge || now < latestAt) {
-			latest = find(colony);
-			latestAt = now;
+			LATEST.put(colony.id(), find(colony));
+			LATEST_AT.put(colony.id(), now);
 		}
-		return latest;
+		return LATEST.getOrDefault(colony.id(), List.of());
 	}
 
 	/** Look around home for work. */
 	public static List<Work> find(Colony colony) {
 		ServerWorld w = colony.world();
-		BaseMap map = BaseMap.get();
+		BaseMap map = BaseMap.of(colony.id());
 		Zone home = colony.zone(Zones.HOME);
 		if (w == null || home == null || map == null || !map.complete() || !Experiments.on("upkeep")) {
 			return List.of();
@@ -190,7 +192,7 @@ public final class Upkeep {
 			|| BreakPolicy.placedByCompanion(w, pos, state) || Builds.recorded(w, pos)) {
 			return;
 		}
-		int level = Zones.groundLevel(colony, BaseMap.get(), pos.getX(), pos.getZ());
+		int level = Zones.groundLevel(colony, BaseMap.of(colony.id()), pos.getX(), pos.getZ());
 		BlockPos base = colony.base();
 		if (level == Integer.MIN_VALUE && base != null) {
 			level = base.getY() - 1;
@@ -203,6 +205,7 @@ public final class Upkeep {
 	/** In words, for /companion colony. */
 	@Nullable
 	public static String summary() {
+		List<Work> latest = latest();
 		if (latest.isEmpty()) {
 			return null;
 		}
@@ -221,7 +224,7 @@ public final class Upkeep {
 
 	/** For tests. */
 	public static void clear() {
-		latest = List.of();
-		latestAt = Long.MIN_VALUE;
+		LATEST.clear();
+		LATEST_AT.clear();
 	}
 }

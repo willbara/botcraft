@@ -21,7 +21,10 @@ public record Intent(Type type, String item, int count, String target) {
 		HOME_SET, HOME_GO, SLEEP, CHEST_SET, DEPOSIT, STOCK, DANCE, LIGHT, COLONY_WANT,
 		WHERE, INVENTORY, STATS, FOUND, HELP, STATUS,
 		JOKE, COMPLIMENT, INSULT, WHO, LOVE, BYE, TIME, FAVORITE, OPINION, FEELING, SORRY,
-		GREETING, THANKS, UNKNOWN;
+		GREETING, THANKS,
+		/** "Do you trust me?", "are we cool?", "do you like alex?" (target: who, "" for the speaker). */
+		TRUST,
+		UNKNOWN;
 
 		/** Chit-chat handled by SmallTalk. */
 		public boolean isSmallTalk() {
