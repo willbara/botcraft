@@ -277,6 +277,10 @@ public final class FactionCommand {
 			ctx.getSource().sendError(Text.literal(c == null ? "No companion named " + name : "No such faction"));
 			return 0;
 		}
+		if (com.botcraft.brain.EasterEggs.factionless(c)) {
+			ctx.getSource().sendError(Text.literal(c.name() + " belongs to no faction"));
+			return 0;
+		}
 		Factions.join(c, f.id);
 		Factions.markDirty();
 		say(ctx, c.name() + " is now in " + f.name + (Factions.enabled() ? "" : " (takes effect outside single mode)"), Formatting.WHITE);
@@ -329,6 +333,10 @@ public final class FactionCommand {
 
 	/** A companion given a rank: it joins the faction (a leader founds and speaks for it). */
 	private static int companionMember(CommandContext<ServerCommandSource> ctx, Faction f, Companion c, String rank) {
+		if (com.botcraft.brain.EasterEggs.factionless(c)) {
+			ctx.getSource().sendError(Text.literal(c.name() + " belongs to no faction"));
+			return 0;
+		}
 		String uuid = c.data.uuid.toString();
 		if (rank.equals("remove")) {
 			f.members.remove(uuid);

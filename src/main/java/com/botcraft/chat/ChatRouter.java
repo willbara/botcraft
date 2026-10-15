@@ -390,6 +390,9 @@ public final class ChatRouter {
 	@Nullable
 	private static String respondInScope(Companion c, @Nullable ServerPlayerEntity sender, List<Intent> intents, boolean append) {
 		Speech speech = c.speech();
+		if (com.botcraft.brain.EasterEggs.silent(c)) {
+			return null; // Herobrine and Hausemaster: no answer at all
+		}
 		if (com.botcraft.brain.Popbob.is(c)) {
 			// The easter egg doesn't take orders, or answer questions nicely.
 			speech.reply("popbob.ignore", sender, new java.util.HashMap<>(Map.of("player", sender == null ? "you" : sender.getGameProfile().getName())));

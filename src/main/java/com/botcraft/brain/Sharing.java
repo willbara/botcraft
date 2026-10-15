@@ -68,7 +68,7 @@ public final class Sharing {
 		List<Board.Bid> bids = new java.util.ArrayList<>();
 		for (Companion o : m.all()) {
 			CompanionPlayer op = o.player();
-			if (o == asker || op == null || !o.isOnline() || op.isDead() || op.isSleeping() || op.getWorld() != ap.getWorld() || Popbob.is(o)
+			if (o == asker || op == null || !o.isOnline() || op.isDead() || op.isSleeping() || op.getWorld() != ap.getWorld() || Popbob.is(o) || EasterEggs.factionless(o)
 				|| !com.botcraft.faction.Factions.sameSide(asker, o)) {
 				continue;
 			}

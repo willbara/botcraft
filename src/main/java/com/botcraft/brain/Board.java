@@ -351,7 +351,7 @@ public final class Board {
 			return out;
 		}
 		for (Companion o : m.all()) {
-			if (o == asker || !o.isOnline() || o.player() == null || o.player().isDead() || !"free".equals(o.data.mode) || Popbob.is(o)
+			if (o == asker || !o.isOnline() || o.player() == null || o.player().isDead() || !"free".equals(o.data.mode) || Popbob.is(o) || EasterEggs.factionless(o)
 				|| !com.botcraft.faction.Factions.idOf(o).equals(com.botcraft.faction.Factions.idOf(asker))
 				|| o.player().getServerWorld() != colony.world() || holding(o.name()) != null
 				|| !colony.near(o.player().getServerWorld(), o.player().getBlockPos(), 256)) {
