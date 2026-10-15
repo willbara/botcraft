@@ -204,5 +204,6 @@
   "faction.order_done": ["Done, {leader}: {task}.", "{leader}, that's {task} sorted.", "All done with {task}, {leader}.", "Finished {task}."],
   "faction.order_failed": ["Sorry {leader}, I couldn't manage {task}.", "{leader}, {task} didn't work out.", "Couldn't do {task}, {leader}. Someone else might."],
   "faction.order_thanks": ["Good work, {name}.", "Thanks, {name}.", "Nice one, {name}.", "Well done, {name}."],
-  "faction.order_shrug": ["Never mind, {name}. Someone else will.", "Alright, {name}. Leave it.", "Fine, {name}, we'll manage."]
+  "faction.order_shrug": ["Never mind, {name}. Someone else will.", "Alright, {name}. Leave it.", "Fine, {name}, we'll manage."],
+  "event.tamed": ["Got myself a {mob}! Good dog.", "Look, {player}, the {mob} likes me!", "A new friend. Come on, boy.", "Heh, the {mob}'s mine now."]
 }
