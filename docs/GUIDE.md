@@ -258,6 +258,12 @@ While mining:
 
   One companion tends a base's farm at a time, and a farmer rests from farming for 3 minutes after a run. The farm is looked at every 20 seconds, shared by everyone at the base.
 
+### Taming wolves
+
+- **When** (`taming`, free mode, by day): a wild wolf (not tamed, not angry) is in sight within 24 blocks, and the companion has bones, or the base's chests do and the base is close enough to fetch them (it takes up to 8 first). Not with two wolves of its own about already, and not again for 5 minutes after taming one.
+- **Low priority.** It's offered last among free mode's goals, so it's picked only when nothing more pressing is on, and like every free-mode goal it's only chosen between jobs: it never interrupts one, or a leader's order.
+- **How:** walks up to the nearest wild wolf and feeds it bones, as a player does (a one-in-three chance each), up to 10, until it's tamed. Then the wolf gets up and follows its new owner, and fights what it fights. Gives up if the bones run out, the wolf gets away, or it can't get near within 30 seconds.
+
 ### Fishing
 
 - **Finding water.** While about, a companion notices open water (a lake, a river, the sea: enough of the surface round it) and remembers it.
@@ -707,6 +713,7 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `farming` | true | Free mode tends the base's farm zone. Asking a companion to farm works either way. |
 | `clearTrees` | true | Upkeep fells the trees standing in the home zone. |
 | `expandFarms` | true | Farmers add plots next to the farm as the base grows, and water each plot from a hole in its middle. |
+| `taming` | true | Free companions with bones (theirs or the base's) try to tame a wolf they see, when nothing more pressing is on. |
 | `fenceHome` | true | Upkeep puts a fence round the home zone (gates on the paths) once the base has wood to spare. |
 | `fishing` | true | Curious or hungry companions who know of water make a rod and fish. |
 | `factionMode` | single | `single` (one colony), `teams` (fixed teams), or `dynamic` (factions split, fight and raid on their own). |

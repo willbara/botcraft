@@ -357,5 +357,10 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] Teams mode: only leaders talk ("X, see to ..."), the member answers ("On it"), the leader checks in every ~2 minutes, the member reports back and is thanked. Other members are silent unless you talk to them. `/companion chat factions all` brings the old chatter back.
 - [ ] Move a companion from Blue to Red (`/companion faction join SomeBot red`) after it slept in a bed at Blue's base, then kill it: it comes back at Red's base, not Blue's (log: "won't respawn at its bed").
 
+### 43. Taming wolves (0.15.2)
+- [ ] `/give` a free companion 10 bones near a wolf (or put bones in its faction's chest, near the base): when it's between jobs it walks to the wolf and feeds it bones until it's tamed ("Got myself a wolf!"); the wolf then follows it. Log: "tame: tamed a wolf after N bone(s)".
+- [ ] Busy on a job (or a leader's order) with a wolf in sight: it carries on with the job; it only goes for the wolf once that's done.
+- [ ] With two wolves of its own already, it leaves wild wolves be.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

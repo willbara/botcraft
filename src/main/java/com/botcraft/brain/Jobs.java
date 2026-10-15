@@ -99,6 +99,9 @@ public final class Jobs {
 				case "fish" -> {
 					return new com.botcraft.brain.task.FishTask(c, num(w, 1, 5));
 				}
+				case "tame" -> {
+					return new com.botcraft.brain.task.TameTask(c);
+				}
 				case "dance" -> {
 					return new com.botcraft.brain.task.DanceTask(c);
 				}
@@ -173,6 +176,7 @@ public final class Jobs {
 			case "tidy" -> "tidy up the base";
 			case "farm" -> "tend the farm";
 			case "fish" -> "go fishing";
+			case "tame" -> "tame a wolf";
 			case "found" -> "found our base";
 			case "steal" -> "make trouble at a base";
 			case "raid" -> {
