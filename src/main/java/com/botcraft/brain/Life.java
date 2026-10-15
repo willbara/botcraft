@@ -229,6 +229,9 @@ public class Life {
 		if ("farm".equals(lastGoal)) {
 			tree.rest("farm", now + 20 * 60 * 3); // the crops need time to grow back
 		}
+		if ("tame".equals(lastGoal)) {
+			tree.rest("tame", now + 20 * 60 * 5); // one new wolf at a time
+		}
 		if ("clear_home".equals(lastGoal)) {
 			tree.rest("clear_home", now + 20 * 30); // a breather (and the next look at home) between clearing trips
 		}
@@ -515,6 +518,11 @@ public class Life {
 		if (fish != null) {
 			goals.add(fish);
 		}
+		// Last and least: a wolf in sight and bones to hand (or in the chests) -> try taming it.
+		Goal tame = tameGoal(c, inv, now);
+		if (tame != null) {
+			goals.add(tame);
+		}
 		// Everything that makes sense now goes on offer, in the old order of importance; the tree
 		// weighs them with this companion's character (and sticks with what it's already doing).
 		java.util.Set<String> seen = new java.util.HashSet<>();
@@ -770,6 +778,32 @@ public class Life {
 		}
 		int n = food < 6 ? 6 : 3 + Math.round(c.data.curiosity * 4);
 		return new Goal("fish", List.of("fish " + n), food < 6 ? "there's fish in that water, and we're short of food" : "I know a good spot for fishing");
+	}
+
+	/** Wolves a companion keeps at most (any more and it'd be leading a pack about). */
+	private static final int MAX_WOLVES = 2;
+
+	/**
+	 * Tame a wolf: one's in sight (untamed, not angry, within 24 blocks), and we've bones, or the
+	 * chests have some and the base is close enough to fetch them. Low priority: offered last, it
+	 * only gets picked when nothing much else is pressing, and never cuts into a job (life goals
+	 * are only chosen between jobs). Not with two wolves of our own already.
+	 */
+	@Nullable
+	private Goal tameGoal(Companion c, PlayerInventory inv, long now) {
+		var p = c.player();
+		if (!CompanionConfig.get().taming || !com.botcraft.util.Experiments.on("taming") || !allowed("tame", now) || p.getServerWorld().isNight()) {
+			return null;
+		}
+		var wolf = com.botcraft.brain.task.TameTask.nearestWild(p, 24);
+		if (wolf == null || !p.canSee(wolf) || com.botcraft.brain.task.TameTask.owned(p) >= MAX_WOLVES) {
+			return null;
+		}
+		if (Inventories.count(inv, com.botcraft.brain.task.TameTask.BONE) > 0) {
+			return new Goal("tame", List.of("tame"), "there's a wolf, and I've bones for it");
+		}
+		String fetch = Jobs.withdrawSpec(c, "bone", com.botcraft.brain.task.TameTask.BONE, 8);
+		return fetch == null ? null : new Goal("tame", List.of(fetch, "tame"), "there's a wolf about, and bones in the chests");
 	}
 
 	/** Per base: when the farm was last looked at, and ripe/empty/tillable/grass counts. */

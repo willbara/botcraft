@@ -651,6 +651,28 @@ public class ActionController {
 		return r.isAccepted();
 	}
 
+	/**
+	 * Right-click a mob with an item from the inventory (a bone for a wolf), like a player:
+	 * holds it, looks at the mob and uses it on it. False if it's out of reach or we have none.
+	 */
+	public boolean useItemOnEntity(Entity target, Predicate<ItemStack> which) {
+		CompanionPlayer p = player();
+		if (p.squaredDistanceTo(target) > ATTACK_REACH * ATTACK_REACH) {
+			return false;
+		}
+		int slot = Inventories.find(p.getInventory(), which);
+		if (slot < 0) {
+			return false;
+		}
+		Inventories.select(p, slot);
+		lookAt(target);
+		ActionResult r = p.interact(target, Hand.MAIN_HAND);
+		if (r.isAccepted()) {
+			p.swingHand(Hand.MAIN_HAND);
+		}
+		return r.isAccepted();
+	}
+
 	public boolean isUsingItem() {
 		CompanionPlayer p = player();
 		return p != null && p.isUsingItem();
