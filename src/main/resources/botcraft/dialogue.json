@@ -182,5 +182,10 @@
   "faction.officer_named": ["{name}, I want you as my officer.", "{name}, you're an officer of {faction} now. I trust you.", "{name} is my second from now on."],
   "standing.owner_hit": ["Ow! {player}, what was that for?", "Hey! I thought we were on the same side, {player}.", "{player}, that hurt. Please don't."],
   "standing.owner_hostile": ["I'll still do what you say, {player}. But I don't trust you any more.", "You're the boss, {player}. Doesn't mean I have to like it.", "{player}... I'll keep working. Just stay away from me."],
-  "standing.owner_murder": ["{player} just killed {friend}! Why?!", "{friend}! {player}, what did they ever do to you?", "{player} killed {friend}. I won't forget that."]
+  "standing.owner_murder": ["{player} just killed {friend}! Why?!", "{friend}! {player}, what did they ever do to you?", "{player} killed {friend}. I won't forget that."],
+  "faction.spat": ["Watch where you're going, {name}!", "{name}, keep your lot off our patch.", "What are you looking at, {name}?", "{name}, you want trouble? Keep walking."],
+  "faction.order": ["{name}, see to {task}.", "{name}: {task}. Off you go.", "{name}, we need {task}. Get on it.", "I need you on {task}, {name}."],
+  "faction.rally": ["Come on, {faction}, we're falling behind. Food, wood, iron: let's move!", "{faction}, the chests are empty. Everyone pitch in!", "We're struggling, {faction}. Less standing around, more work."],
+  "faction.praise": ["Good work, {faction}. The chests are full.", "{faction}, look at us. Well done, everyone.", "Proud of you lot. {faction} is thriving."],
+  "faction.recruit": ["Welcome to {faction}, {name}.", "{name}, you're with us now. Welcome to {faction}!", "Another pair of hands. Glad to have you, {name}."]
 }

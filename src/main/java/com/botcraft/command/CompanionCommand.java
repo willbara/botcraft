@@ -75,6 +75,11 @@ public final class CompanionCommand {
 				.then(CommandManager.argument("level", StringArgumentType.word())
 					.suggests((ctx, b) -> CommandSource.suggestMatching(List.of("all", "quiet", "off"), b))
 					.executes(CompanionCommand::chatSet)))
+			.then(CommandManager.literal("freemode")
+				.executes(ctx -> freeMode(ctx, null))
+				.then(CommandManager.argument("state", StringArgumentType.word())
+					.suggests((ctx, b) -> CommandSource.suggestMatching(List.of("on", "off"), b))
+					.executes(ctx -> freeMode(ctx, StringArgumentType.getString(ctx, "state")))))
 			.then(CommandManager.literal("removeall")
 				.executes(CompanionCommand::removeAll))
 			.then(CommandManager.literal("info")
@@ -270,6 +275,47 @@ public final class CompanionCommand {
 	 * /companion chat all|quiet|off: everything; only answers, what they start and what failed;
 	 * or nothing. Saved in the config.
 	 */
+	/**
+	 * /companion freemode [on|off]: whether companions live on their own. On: every companion that
+	 * isn't told to stay goes free now, and new ones start free. Off: new ones follow whoever
+	 * spawned them (existing ones keep what they're doing; "follow me" calls them).
+	 */
+	private static int freeMode(CommandContext<ServerCommandSource> ctx, @org.jetbrains.annotations.Nullable String state) {
+		CompanionConfig cfg = CompanionConfig.get();
+		if (state == null) {
+			ctx.getSource().sendFeedback(() -> Text.literal("Free mode for new companions: " + (cfg.startFree ? "on" : "off")
+				+ " (/companion freemode on|off)").formatted(Formatting.AQUA), false);
+			return 1;
+		}
+		if (!state.equals("on") && !state.equals("off")) {
+			ctx.getSource().sendError(Text.literal("freemode on or off"));
+			return 0;
+		}
+		cfg.startFree = state.equals("on");
+		CompanionConfig.save();
+		int n = 0;
+		CompanionManager m = CompanionManager.get();
+		if (cfg.startFree && m != null) {
+			for (Companion c : m.all()) {
+				if (c.player() == null || "free".equals(c.data.mode) || "stay".equals(c.data.mode)) {
+					continue;
+				}
+				c.data.mode = "free";
+				if (c.memory().place("home") == null) {
+					c.memory().setPlace("home", c.player().getBlockPos(), c.dimension(), c.player().getWorld().getTime());
+				}
+				c.jobs().clear();
+				c.brain().reconsider();
+				n++;
+			}
+		}
+		int count = n;
+		ctx.getSource().sendFeedback(() -> Text.literal(cfg.startFree
+			? "Free mode on: " + count + " companion(s) set loose, and new ones start on their own. (\"follow me\" still calls one.)"
+			: "Free mode off: new companions follow whoever spawned them. (Free ones carry on; \"follow me\" calls them.)").formatted(Formatting.WHITE), false);
+		return 1;
+	}
+
 	private static int chatSet(CommandContext<ServerCommandSource> ctx) {
 		String level = StringArgumentType.getString(ctx, "level");
 		CompanionConfig cfg = CompanionConfig.get();

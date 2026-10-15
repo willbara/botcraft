@@ -268,6 +268,25 @@ public final class Board {
 	 */
 	@Nullable
 	public static Assignment take(Companion c, long now) {
+		return takeFor(c, now, false);
+	}
+
+	/**
+	 * The leader's say-so: the most important open request {@code c} can do at all (not only one
+	 * it's the best bidder for), taken in its name. Null if there's nothing it can do.
+	 */
+	@Nullable
+	public static Assignment direct(Companion c, long now) {
+		return takeFor(c, now, true);
+	}
+
+	/** Open requests waiting for someone (for leaders judging how the faction is doing). */
+	public static int openCount() {
+		return (int) mine().stream().filter(r -> r.kind != Kind.DELIVER && r.state == State.OPEN).count();
+	}
+
+	@Nullable
+	private static Assignment takeFor(Companion c, long now, boolean ordered) {
 		Colony colony = Colony.get();
 		if (colony == null || !colony.hasBase() || colony.world() != c.player().getServerWorld()
 			|| !colony.near(c.player().getServerWorld(), c.player().getBlockPos(), 256) || holding(c.name()) != null) {
@@ -297,11 +316,12 @@ public final class Board {
 				}
 			}
 			bids.sort(Comparator.comparingDouble((Bid b) -> -b.score()));
-			if (bids.isEmpty() || !bids.get(0).who().equals(c.name())) {
+			Bid win = ordered ? bids.stream().filter(b -> b.who().equals(c.name())).findFirst().orElse(null)
+				: bids.isEmpty() || !bids.get(0).who().equals(c.name()) ? null : bids.get(0);
+			if (win == null) {
 				continue;
 			}
-			Bid win = bids.get(0);
-			String reason = reason(win, bids.size() > 1 ? bids.get(1) : null);
+			String reason = ordered ? "the leader asked me to" : reason(win, bids.size() > 1 ? bids.get(1) : null);
 			r.state = State.TAKEN;
 			r.takenBy = c.name();
 			r.takenAt = now;

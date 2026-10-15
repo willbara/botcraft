@@ -99,6 +99,7 @@ public final class CompanionManager {
 		com.botcraft.colony.Zones.clear();
 		com.botcraft.faction.Diplomacy.clear();
 		com.botcraft.faction.Territory.clear();
+		com.botcraft.faction.Leadership.clear();
 		com.botcraft.chat.Lexicon.clear();
 		com.botcraft.colony.Builds.save(server);
 		com.botcraft.colony.Builds.unload();
@@ -216,6 +217,11 @@ public final class CompanionManager {
 			return "Failed to spawn " + name + " (see log)";
 		}
 		c.respawnAtTick = -1;
+		if (existing == null && CompanionConfig.get().startFree) {
+			// Off on its own straight away (startFree), as if told "go have fun", with home where it arrived.
+			c.data.mode = "free";
+			c.memory().setPlace("home", BlockPos.ofFloored(pos), world.getRegistryKey().getValue().toString(), world.getTime());
+		}
 		companions.put(key(name), c);
 		save();
 		c.onSpawned(existing == null ? "new" : "summoned");

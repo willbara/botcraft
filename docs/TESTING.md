@@ -314,5 +314,12 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] **Reaction speed.** Walk a zombie up to a group, or hit one companion: it and nearby faction-mates turn and fight (or back off) within a fraction of a second, not a second or two later.
 - [ ] **Budget.** With 20 companions, `/debug start`, wait, `/debug stop`: the server keeps up; nobody stands frozen waiting for a path while one companion runs a long search.
 
+### 35. Grace, getting on, leaders' orders, free mode, recruiting (0.14.1)
+- [ ] `/companion batch 10`, `/companion freemode on`: everyone sets off on their own at once; new spawns start free too. `/companion freemode off`: new ones follow again.
+- [ ] `/companion faction teams red blue`: chat says the teams start as strangers; `faction info` shows them at 0, not enemies; no fighting in the first 15 minutes even when they bump into each other.
+- [ ] After the grace period, a hothead near the other team quarrels now and then ("Watch where you're going, X!"); `faction info` shows the relation dropping by 8 each time, and after four or so they're enemies and fight. Calm, sociable teams instead drift friendlier.
+- [ ] With a base and open board requests, the leader orders idle members ("Bob, see to 16 logs for the base.") and they go straight to it. A poorly stocked faction hears a rallying call; a well stocked one, praise.
+- [ ] In dynamic mode, spawn one more companion with no faction: within half a minute a faction takes it in ("Welcome to Red, X."). In teams mode it goes to the smaller team.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

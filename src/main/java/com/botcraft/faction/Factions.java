@@ -213,6 +213,7 @@ public final class Factions {
 			return null;
 		}
 		Faction f = new Faction(key, name, COLORS.contains(color) ? color : COLORS.get(FACTIONS.size() % COLORS.size()), now);
+		f.graceUntil = now + graceTicks();
 		FACTIONS.put(key, f);
 		dirty = true;
 		return f;
@@ -330,15 +331,32 @@ public final class Factions {
 		}
 	}
 
-	/** One faction's member hurt another's: both sides think less of each other. */
+	/**
+	 * One faction's member hurt another's: both sides think less of each other. In either one's
+	 * grace period it can sour to cool, never to war.
+	 */
 	public static void clash(String a, String b, int by) {
 		Faction fa = FACTIONS.get(a);
 		Faction fb = FACTIONS.get(b);
 		if (fa != null && fb != null && !a.equals(b)) {
-			fa.setRelation(b, fa.relation(b) - by);
-			fb.setRelation(a, fb.relation(a) - by);
+			int floor = inGrace(a, b) ? CompanionConfig.get().hostileStanding + 1 : -100;
+			fa.setRelation(b, Math.max(Math.min(fa.relation(b), floor), fa.relation(b) - by));
+			fb.setRelation(a, Math.max(Math.min(fb.relation(a), floor), fb.relation(a) - by));
 			dirty = true;
 		}
+	}
+
+	/** How long a new faction's grace lasts (ticks). */
+	public static long graceTicks() {
+		return 20L * 60 * Math.max(0, CompanionConfig.get().factionGraceMinutes);
+	}
+
+	/** Either faction is still settling in (see {@link Faction#graceUntil}). */
+	public static boolean inGrace(String a, String b) {
+		long now = server == null ? 0 : server.getOverworld().getTime();
+		Faction fa = FACTIONS.get(a);
+		Faction fb = FACTIONS.get(b);
+		return fa != null && fb != null && (now < fa.graceUntil || now < fb.graceUntil);
 	}
 
 	// ---- players --------------------------------------------------------------------------------
@@ -475,9 +493,17 @@ public final class Factions {
 				ids.add(f.id);
 			}
 		}
+		// Fresh teams start out as strangers: neutral, and a while of grace before anything can
+		// sour into war. What they make of each other after that is up to them (see Diplomacy).
+		for (String id : ids) {
+			Faction f = FACTIONS.get(id);
+			if (f != null) {
+				f.graceUntil = now + graceTicks();
+			}
+		}
 		for (int i = 0; i < ids.size(); i++) {
 			for (int j = i + 1; j < ids.size(); j++) {
-				setRelation(ids.get(i), ids.get(j), -50);
+				setRelation(ids.get(i), ids.get(j), 0);
 			}
 		}
 		CompanionManager m = CompanionManager.get();
