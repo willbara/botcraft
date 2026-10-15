@@ -61,7 +61,8 @@ All commands need permission level 2 by default (`commandPermissionLevel`).
 | `/companion archetype <name> <type>` | Give it a preset character: miner, farmer, guard, scout, builder, trader, leader, hothead, coward or joker. |
 | `/companion trait <name> <trait> <0..1>` | Set one personality trait. |
 | `/companion faction` | Factions: `mode single\|teams\|dynamic`, `teams red blue [owner]`, `warfare off\|defend\|pvp\|raid [faction]`, `create`, `remove`, `join <companion> <faction>`, `member <faction> <player> <rank>`, `relation <a> <b> <allied\|neutral\|hostile>`, `raid <faction>`, `ceasefire`, `authority absolute\|standing` (whether owners must earn obedience too), `info <faction>`. |
-| `/companion standing <faction> [player] [value]` | What a faction thinks of players (-100..100), or set it. |
+| `/companion standing <player>` | What every faction thinks of that player (-100..100), with any ranks they hold. |
+| `/companion standing <faction> [player] [value]` | What one faction thinks of players, or set it. |
 | `/companion stop <name>` | Stays put and drops any job. |
 | `/companion task <name> <text>` | Anything you could say in chat, for example `get 10 logs then craft a stone pickaxe`. |
 
