@@ -26,8 +26,12 @@ import java.util.function.Predicate;
  * their sight, at night standing still and staring; come close and it's gone, far away. By day
  * it makes signs and leaves them about, blank, where they'll be found, and strips the leaves
  * off trees now and then.
+ *
+ * <p>Underneath it's an ordinary companion (see {@link Persona}): it eats, fights off what attacks
+ * it and makes its signs with the ordinary craft job, but it doesn't follow free mode's plans:
+ * it has its own.
  */
-public final class Herobrine {
+public final class Herobrine implements Persona {
 	/** Watching distance at night: far enough to be a shape at the edge of sight. */
 	private static final double WATCH_NEAR = 24;
 	private static final double WATCH_FAR = 40;
@@ -47,33 +51,41 @@ public final class Herobrine {
 	private int leafTicks;
 	private BlockPos going = BlockPos.ORIGIN;
 
-	public void tick(Companion c, long now) {
+	/** Its own plans, always: no farming or tidying for Herobrine. (Jobs and drives still run.) */
+	@Override
+	public boolean ownPlans(Companion c, long now) {
+		return true;
+	}
+
+	/** Who it's watching, and the vanishing act (whatever else is going on). */
+	@Override
+	public void always(Companion c, long now) {
 		CompanionPlayer p = c.player();
 		if (p == null || !p.isAlive()) {
-			return;
-		}
-		// Crafting or fetching wood for signs: let the ordinary job machinery do it.
-		if (!c.jobs().isIdle()) {
-			c.tickJobs(now);
 			return;
 		}
 		if (target == null || !target.isAlive() || target.isSpectator() || target.getWorld() != p.getWorld() || now % 400 == 0) {
 			target = EasterEggs.nearestOther(c, 96, EasterEggs.Kind.HEROBRINE);
 		}
+		// Approached: gone.
+		if (target != null && target.distanceTo(p) < TOO_CLOSE && now >= nextVanish) {
+			nextVanish = now + 20 * 10;
+			if (EasterEggs.vanish(c, target.getPos(), 60, 110)) {
+				c.brain().clearAll(); // whatever it was in the middle of, it isn't now
+			}
+		}
+	}
+
+	@Override
+	public void act(Companion c, long now) {
+		CompanionPlayer p = c.player();
+		if (p == null || !p.isAlive()) {
+			return;
+		}
 		boolean night = c.perception().isNight();
-		if (target != null) {
-			double d = target.distanceTo(p);
-			// Approached: gone.
-			if (d < TOO_CLOSE && now >= nextVanish) {
-				nextVanish = now + 20 * 10;
-				if (EasterEggs.vanish(c, target.getPos(), 60, 110)) {
-					return;
-				}
-			}
-			if (night) {
-				stalk(c, p, target, d, WATCH_NEAR, WATCH_FAR, true);
-				return;
-			}
+		if (target != null && night) {
+			stalk(c, p, target, target.distanceTo(p), WATCH_NEAR, WATCH_FAR, true);
+			return;
 		}
 		// By day: signs, leaves, and following at a distance.
 		if (signs(c, p, now)) {

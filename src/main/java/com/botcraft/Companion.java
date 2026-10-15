@@ -69,8 +69,21 @@ public class Companion {
 	private final com.botcraft.brain.Watchdog watchdog = new com.botcraft.brain.Watchdog();
 	private final com.botcraft.brain.Failsafe failsafe = new com.botcraft.brain.Failsafe();
 	private final com.botcraft.brain.Lighting lighting = new com.botcraft.brain.Lighting();
-	private final com.botcraft.brain.Popbob popbob = new com.botcraft.brain.Popbob();
-	private final com.botcraft.brain.Herobrine herobrine = new com.botcraft.brain.Herobrine();
+	/** An easter egg's own touches, and which egg it's for (rebuilt if that changes). */
+	@Nullable
+	private com.botcraft.brain.Persona persona;
+	@Nullable
+	private com.botcraft.brain.EasterEggs.Kind personaKind;
+
+	@Nullable
+	public com.botcraft.brain.Persona persona() {
+		var kind = com.botcraft.brain.EasterEggs.of(this);
+		if (kind != personaKind) {
+			personaKind = kind;
+			persona = com.botcraft.brain.EasterEggs.newPersona(kind);
+		}
+		return persona;
+	}
 	/** Recent deaths (where, when): don't keep walking back into the same danger. */
 	private final java.util.ArrayDeque<long[]> recentDeaths = new java.util.ArrayDeque<>();
 	private boolean lastDeathUnrecoverable;
@@ -245,19 +258,18 @@ public class Companion {
 				rescueHome(why);
 			}
 		}
-		var egg = com.botcraft.brain.EasterEggs.of(this);
-		if (egg == com.botcraft.brain.EasterEggs.Kind.POPBOB) {
-			popbob.tick(this, serverTick); // the easter egg: gears up, then raids, steals and pesters
-		} else if (egg == com.botcraft.brain.EasterEggs.Kind.HEROBRINE) {
-			herobrine.tick(this, serverTick);
+		// Easter eggs are the ordinary companion plus a persona's own touches (see brain.Persona).
+		com.botcraft.brain.Persona persona = persona();
+		if (persona != null) {
+			persona.always(this, serverTick);
+		}
+		if (persona != null && persona.ownPlans(this, serverTick)) {
+			tickJobs(serverTick);
 		} else {
-			if (egg == com.botcraft.brain.EasterEggs.Kind.HAUSEMASTER && serverTick % 10 == 0) {
-				var pop = com.botcraft.brain.Popbob.near(this, 6);
-				if (pop != null) {
-					com.botcraft.brain.EasterEggs.vanish(this, pop.getPos(), 48, 96); // wants nothing to do with popbob
-				}
-			}
 			tickNormal(serverTick);
+		}
+		if (persona != null && com.botcraft.brain.EasterEggs.free(this)) {
+			persona.act(this, serverTick);
 		}
 		nav.tick();
 		actions.tick();

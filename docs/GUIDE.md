@@ -556,6 +556,8 @@ It goes to bed when you do (and on its own at night in free mode), so the night 
 
 Some names (any capitalisation) make a companion someone else. `easterEggs: false` makes them ordinary companions.
 
+Underneath, each is an ordinary companion with its own touches on top: it still eats, fights (crits, shields and all), flees, finds its way and does its jobs like any other, so everything companions learn, the easter eggs learn too. (For developers: `brain/Persona.java` says how to add to one.)
+
 **popbob**, a patient menace:
 - Belongs to no faction (`/companion faction join` refuses it) and ignores every order and question.
 - **Gears up first,** like anyone would: tools, then an iron sword (or a stone one and some armour). Until then it gets on with it and leaves people alone.
@@ -563,7 +565,7 @@ Some names (any capitalisation) make a companion someone else. `easterEggs: fals
   - **raids** the nearest faction base it hasn't robbed in 10 minutes (up to 320 blocks away), taking the most valuable things from its chests ("Thanks for the 12 things, Red!");
   - **bothers** someone within 48 blocks for half a minute or so: tags along, takes a swipe every few seconds, taunts them;
   - and in between **wrecks** build blocks in reach (planks, wool, glass, stairs, fences, doors, torches, cobblestone, bricks...). Never containers or block entities, dirt or stone, or anything unbreakable.
-- Hit it and, geared and healthy, it fights back properly; otherwise it backs off. Companions only gang up on it once it's armed: armed ones from 12 blocks, unarmed ones within 4. Its kills put a bounty on it like anyone's.
+- Hit it and, once armed, it fights back like any companion would (whoever just hit it is its enemy); before that it backs off. Companions only gang up on it once it's armed: armed ones from 12 blocks, unarmed ones within 4. Its kills put a bounty on it like anyone's.
 - It can only hurt players and companions when PvP is on (`pvp=true` in `server.properties`; singleplayer has it on).
 
 **Herobrine**:
