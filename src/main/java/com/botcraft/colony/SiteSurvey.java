@@ -25,8 +25,12 @@ public final class SiteSurvey {
 	/** Half-size of the area looked at around a candidate. */
 	private static final int RADIUS = 20;
 	private static final int STEP = 4;
-	/** Never settle closer than this to another faction's base. */
-	public static final double MIN_DISTANCE = 64;
+	/** Never settle closer than this to another faction's base (factions want room to grow). */
+	public static final double MIN_DISTANCE = 160;
+	/** Room from other bases counts for more, up to this far. */
+	private static final double ROOM = 320;
+	/** Never settle within this many chunks of another faction's land. */
+	private static final int LAND_GAP = 3;
 
 	public record Site(BlockPos pos, double score, String why) {
 	}
@@ -127,15 +131,56 @@ public final class SiteSurvey {
 				nearest = Math.min(nearest, Math.sqrt(other.base().getSquaredDistance(center)));
 			}
 		}
-		if (nearest < MIN_DISTANCE) {
+		if (nearest < MIN_DISTANCE || nearLand(w, center, faction)) {
 			return null;
 		}
 		if (nearest < Double.MAX_VALUE) {
-			score += 0.1 * Math.min(1.0, nearest / 256.0);
+			score += 0.2 * Math.min(1.0, nearest / ROOM);
 		}
 		BlockPos at = new BlockPos(center.getX(), median + 1, center.getZ());
 		String why = String.format(java.util.Locale.ROOT, "flat %.0f%%, water %d, trees %d, built %d%s", flatness * 100, water, trees, built,
 			nearest < Double.MAX_VALUE ? String.format(java.util.Locale.ROOT, ", %.0f from the nearest base", nearest) : "");
 		return new Site(at, score, why);
+	}
+
+	/** Another faction holds land within {@link #LAND_GAP} chunks of here. */
+	private static boolean nearLand(ServerWorld w, BlockPos center, String faction) {
+		for (int dx = -LAND_GAP; dx <= LAND_GAP; dx++) {
+			for (int dz = -LAND_GAP; dz <= LAND_GAP; dz++) {
+				String owner = com.botcraft.faction.Territory.owner(w, center.add(dx * 16, 0, dz * 16));
+				if (owner != null && !owner.equals(faction)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Nowhere here will do (too close to others, or no good ground): a spot to walk to and look
+	 * again, {@code step} blocks on, away from the nearest other base (or any way, if there is none).
+	 */
+	public static BlockPos scoutFrom(ServerWorld w, BlockPos from, String faction, int step, java.util.Random random) {
+		BlockPos nearest = null;
+		double bestD = Double.MAX_VALUE;
+		for (Colony other : Colony.all()) {
+			if (!other.id().equals(faction) && other.hasBase() && other.world() == w) {
+				double d = other.base().getSquaredDistance(from);
+				if (d < bestD) {
+					bestD = d;
+					nearest = other.base();
+				}
+			}
+		}
+		double angle;
+		if (nearest == null || nearest.equals(from)) {
+			angle = random.nextDouble() * Math.PI * 2;
+		} else {
+			angle = Math.atan2(from.getZ() - nearest.getZ(), from.getX() - nearest.getX()) + (random.nextDouble() - 0.5) * Math.PI / 2;
+		}
+		int x = from.getX() + (int) (Math.cos(angle) * step);
+		int z = from.getZ() + (int) (Math.sin(angle) * step);
+		int y = w.isChunkLoaded(x >> 4, z >> 4) ? w.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z) : from.getY();
+		return new BlockPos(x, y, z);
 	}
 }

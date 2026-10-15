@@ -22,6 +22,8 @@ import net.minecraft.item.Items;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import net.minecraft.registry.tag.FluidTags;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.Heightmap;
 import org.jetbrains.annotations.Nullable;
 
@@ -32,9 +34,12 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 /**
- * Look after the base's farm (its farm zone, see {@link Zones}): harvest ripe crops, plant
+ * Look after the base's farm (its farm plots, see {@link Zones}): harvest ripe crops, plant
  * seeds, carrots or potatoes on empty farmland, till the zone's grass and dirt when there are
  * seeds to plant, and pull up grass in and around the farm for seeds when there are none.
+ * A plot whose soil isn't all within reach of water gets a water hole in its middle: fill a
+ * bucket at the nearest water (making a bucket first if the base has the iron), dig out the
+ * middle and pour it in. One block of water wets the whole 9x9 plot.
  * Drops are picked up like any other (the job queue collects leftovers). Done when there's
  * nothing left to do, or after {@code harvestGoal} crops if one was given.
  */
@@ -69,8 +74,12 @@ public class FarmTask extends Task {
 		}
 	}
 
-	/** What the farm needs (for deciding whether to go farming at all). */
-	public record Needs(int ripe, int empty, int tillable, int grass) {
+	/** What the farm needs (for deciding whether to go farming at all). {@code dry}: plots that want water. */
+	public record Needs(int ripe, int empty, int tillable, int grass, int dry) {
+		public Needs(int ripe, int empty, int tillable, int grass) {
+			this(ripe, empty, tillable, grass, 0);
+		}
+
 		/**
 		 * Worth a trip: a few ripe crops (any, when hungry), a few tiles to plant or till, or grass in
 		 * the way. One ripe stalk isn't worth walking over for.
@@ -90,6 +99,18 @@ public class FarmTask extends Task {
 	private int planted;
 	private int tilled;
 	private boolean askedForHoe;
+	/** The water hole being made, and the water we fill the bucket at. */
+	@Nullable
+	private BlockPos waterHole;
+	@Nullable
+	private BlockPos waterSource;
+	private boolean noWater;
+	private boolean askedForBucket;
+	private int waterTicks;
+	private static final Predicate<ItemStack> WATER_BUCKET = s -> s.isOf(Items.WATER_BUCKET);
+	private static final Predicate<ItemStack> BUCKET = s -> s.isOf(Items.BUCKET);
+	/** How far from the plot to look for water to fill a bucket at. */
+	private static final int WATER_SEARCH = 40;
 
 	public FarmTask(Companion c, int harvestGoal) {
 		super(c);
@@ -119,8 +140,8 @@ public class FarmTask extends Task {
 	protected Status onTick() {
 		CompanionPlayer p = c.player();
 		Colony colony = Colony.get();
-		Colony.Zone farm = colony == null ? null : colony.zone(Zones.FARM);
-		if (farm == null || colony.world() != p.getServerWorld()) {
+		List<Colony.Zone> farms = colony == null ? List.of() : Zones.farms(colony);
+		if (farms.isEmpty() || colony.world() != p.getServerWorld()) {
 			return fail("we don't have a farm yet");
 		}
 		if (harvestGoal > 0 && harvested >= harvestGoal) {
@@ -129,12 +150,18 @@ public class FarmTask extends Task {
 		ServerWorld world = p.getServerWorld();
 		FARMER.put(colony.id(), c.name());
 		FARMER_UNTIL.put(colony.id(), c.now() + 20 * 15);
+		if (job == null && !noWater) {
+			Status s = water(colony, world, p);
+			if (s != null) {
+				return s;
+			}
+		}
 		if (job == null || !stillToDo(world, job)) {
-			job = next(world, farm, p);
+			job = next(world, colony, farms, p);
 			jobTicks = 0;
 			if (job == null) {
 				// Nothing to plant with and soil to till: a hoe first (once), then back to this.
-				if (!askedForHoe && !hasHoe(p) && count(p, SEED) > 0 && needs(world, farm).tillable() > 0) {
+				if (!askedForHoe && !hasHoe(p) && count(p, SEED) > 0 && needs(world, colony).tillable() > 0) {
 					askedForHoe = true;
 					return deferTo(List.of("craft wooden_hoe 1"));
 				}
@@ -214,26 +241,155 @@ public class FarmTask extends Task {
 		};
 	}
 
+	// ---- water ------------------------------------------------------------------------------------
+
+	/**
+	 * Give a dry plot its water hole: get a water bucket, dig out the plot's middle, pour. Null when
+	 * there's nothing to do about water (none needed, or no way to get any): get on with farming.
+	 */
+	@Nullable
+	private Status water(Colony colony, ServerWorld w, CompanionPlayer p) {
+		if (waterHole == null) {
+			Colony.Zone dry = Zones.dryFarm(colony, w);
+			if (dry == null) {
+				noWater = true;
+				return null;
+			}
+			waterHole = Zones.waterSpot(dry);
+			waterTicks = 0;
+		}
+		if (++waterTicks > 20 * 120) {
+			return giveUpWater("took too long");
+		}
+		BlockPos hole = waterHole;
+		if (w.getFluidState(hole).isIn(FluidTags.WATER) && w.getFluidState(hole).isStill()) {
+			AiLog.log(c.name(), "farm: watered the plot at {}", hole.toShortString());
+			c.memory().count("farms_watered", 1);
+			waterHole = null;
+			return Status.RUNNING;
+		}
+		if (count(p, WATER_BUCKET) > 0) {
+			// The crop (or grass) on top first, then the soil, then pour.
+			for (BlockPos b : List.of(hole.up(), hole)) {
+				BlockState s = w.getBlockState(b);
+				if (!s.isAir() && !s.isReplaceable() || b.equals(hole.up()) && !s.isAir()) {
+					if (!c.actions().canReachBlock(b)) {
+						walkNear(w, b);
+						return Status.RUNNING;
+					}
+					c.nav().stop();
+					if (c.actions().mineBlock(b) == ActionController.MineResult.FAILED) {
+						return giveUpWater("couldn't dig the hole");
+					}
+					return Status.RUNNING;
+				}
+			}
+			if (!c.actions().canReachBlock(hole)) {
+				walkNear(w, hole);
+				return Status.RUNNING;
+			}
+			c.nav().stop();
+			// Aim at the floor of the hole: the water goes in on top of it.
+			c.actions().useItemToward(new Vec3d(hole.getX() + 0.5, hole.getY() + 0.02, hole.getZ() + 0.5), WATER_BUCKET);
+			return Status.RUNNING;
+		}
+		if (count(p, BUCKET) > 0) {
+			if (waterSource == null || !isSource(w, waterSource)) {
+				waterSource = findWater(colony, w, hole);
+				if (waterSource == null) {
+					return giveUpWater("there's no water near the farm");
+				}
+			}
+			if (!c.actions().canReachBlock(waterSource)) {
+				walkNear(w, waterSource);
+				return Status.RUNNING;
+			}
+			c.nav().stop();
+			c.actions().useItemToward(new Vec3d(waterSource.getX() + 0.5, waterSource.getY() + 0.85, waterSource.getZ() + 0.5), BUCKET);
+			return Status.RUNNING;
+		}
+		if (!askedForBucket && bucketToHand(colony, p)) {
+			askedForBucket = true;
+			return deferTo(List.of("craft bucket 1"));
+		}
+		return giveUpWater("no bucket, and no iron for one");
+	}
+
+	@Nullable
+	private Status giveUpWater(String why) {
+		AiLog.log(c.name(), "farm: no water for the plot at {}: {}", waterHole == null ? "?" : waterHole.toShortString(), why);
+		noWater = true;
+		waterHole = null;
+		c.nav().stop();
+		return null;
+	}
+
+	private void walkNear(ServerWorld w, BlockPos b) {
+		if (c.nav().state() == Navigator.State.IDLE || c.nav().state() == Navigator.State.FAILED) {
+			c.nav().moveTo(Goal.reachVisible(w, b, ActionController.BLOCK_REACH - 1.5), false);
+		}
+	}
+
+	/** A bucket in the chests, or the iron to make one (ours and the chests'). */
+	private static boolean bucketToHand(Colony colony, CompanionPlayer p) {
+		int iron = count(p, s -> s.isOf(Items.IRON_INGOT)) + colony.count(s -> s.isOf(Items.IRON_INGOT));
+		return colony.count(s -> s.isOf(Items.BUCKET)) > 0 || iron >= 3;
+	}
+
+	private static boolean isSource(ServerWorld w, BlockPos b) {
+		var f = w.getFluidState(b);
+		return f.isIn(FluidTags.WATER) && f.isStill();
+	}
+
+	/** The nearest open water source near the farm that isn't another plot's water hole. */
+	@Nullable
+	static BlockPos findWater(Colony colony, ServerWorld w, BlockPos near) {
+		BlockPos best = null;
+		double bestD = Double.MAX_VALUE;
+		BlockPos.Mutable m = new BlockPos.Mutable();
+		for (int dx = -WATER_SEARCH; dx <= WATER_SEARCH; dx++) {
+			for (int dz = -WATER_SEARCH; dz <= WATER_SEARCH; dz++) {
+				int x = near.getX() + dx;
+				int z = near.getZ() + dz;
+				if (!w.isChunkLoaded(x >> 4, z >> 4) || Zones.isWaterSpot(colony, x, z)) {
+					continue;
+				}
+				int top = w.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+				if (!isSource(w, m.set(x, top, z)) || !w.getBlockState(m.up()).isAir()) {
+					continue;
+				}
+				double d = dx * dx + dz * dz;
+				if (d < bestD) {
+					bestD = d;
+					best = m.toImmutable();
+				}
+			}
+		}
+		return best;
+	}
+
 	/** The nearest thing to do, most useful first: harvest, plant, then (for seeds) pull grass, then till. */
 	@Nullable
-	private Job next(ServerWorld w, Colony.Zone farm, CompanionPlayer p) {
+	private Job next(ServerWorld w, Colony colony, List<Colony.Zone> farms, CompanionPlayer p) {
 		boolean seeds = count(p, SEED) > 0;
 		boolean hoe = hasHoe(p);
 		List<Job> harvest = new ArrayList<>();
 		List<Job> plant = new ArrayList<>();
 		List<Job> till = new ArrayList<>();
 		List<Job> clear = new ArrayList<>();
-		for (int x = farm.x1; x <= farm.x2; x++) {
-			for (int z = farm.z1; z <= farm.z2; z++) {
-				Job j = look(w, x, z);
-				if (j == null || skipped.contains(j.target())) {
-					continue;
-				}
-				switch (j.work()) {
-					case HARVEST -> harvest.add(j);
-					case PLANT -> plant.add(j);
-					case TILL -> till.add(j);
-					case CLEAR -> clear.add(j);
+		for (Colony.Zone farm : farms) {
+			for (int x = farm.x1; x <= farm.x2; x++) {
+				for (int z = farm.z1; z <= farm.z2; z++) {
+					Job j = Zones.isWaterSpot(colony, x, z) ? null : look(w, x, z);
+					if (j == null || skipped.contains(j.target())) {
+						continue;
+					}
+					switch (j.work()) {
+						case HARVEST -> harvest.add(j);
+						case PLANT -> plant.add(j);
+						case TILL -> till.add(j);
+						case CLEAR -> clear.add(j);
+					}
 				}
 			}
 		}
@@ -247,7 +403,9 @@ public class FarmTask extends Task {
 		if (best == null && (!seeds || !clear.isEmpty())) {
 			// Grass in the farm is in the way; grass around it is where seeds come from.
 			if (!seeds) {
-				clear.addAll(grassAround(w, farm));
+				for (Colony.Zone farm : farms) {
+					clear.addAll(grassAround(w, colony, farm));
+				}
 			}
 			clear.removeIf(j -> skipped.contains(j.target()));
 			best = nearest(clear, p);
@@ -282,11 +440,11 @@ public class FarmTask extends Task {
 	}
 
 	/** Grass plants within a few blocks of the farm (pulling them up drops seeds now and then). */
-	private static List<Job> grassAround(ServerWorld w, Colony.Zone farm) {
+	private static List<Job> grassAround(ServerWorld w, Colony colony, Colony.Zone farm) {
 		List<Job> out = new ArrayList<>();
 		for (int x = farm.x1 - GRASS_MARGIN; x <= farm.x2 + GRASS_MARGIN; x++) {
 			for (int z = farm.z1 - GRASS_MARGIN; z <= farm.z2 + GRASS_MARGIN; z++) {
-				if (farm.contains(x, z) || !w.isChunkLoaded(x >> 4, z >> 4)) {
+				if (Zones.at(colony, x, z) != null || !w.isChunkLoaded(x >> 4, z >> 4)) {
 					continue;
 				}
 				int top = w.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
@@ -299,30 +457,41 @@ public class FarmTask extends Task {
 		return out;
 	}
 
-	/** What the farm zone needs right now (cheap: one look per column). */
-	public static Needs needs(ServerWorld w, Colony.Zone farm) {
+	/** What the base's farm plots need right now (cheap: one look per column). */
+	public static Needs needs(ServerWorld w, Colony colony) {
 		int ripe = 0;
 		int empty = 0;
 		int tillable = 0;
 		int grass = 0;
-		for (int x = farm.x1; x <= farm.x2; x++) {
-			for (int z = farm.z1; z <= farm.z2; z++) {
-				if (!w.isChunkLoaded(x >> 4, z >> 4)) {
-					continue;
-				}
-				Job j = look(w, x, z);
-				if (j == null) {
-					continue;
-				}
-				switch (j.work()) {
-					case HARVEST -> ripe++;
-					case PLANT -> empty++;
-					case TILL -> tillable++;
-					case CLEAR -> grass++;
+		int dry = 0;
+		for (Colony.Zone farm : Zones.farms(colony)) {
+			for (int x = farm.x1; x <= farm.x2; x++) {
+				for (int z = farm.z1; z <= farm.z2; z++) {
+					if (!w.isChunkLoaded(x >> 4, z >> 4) || Zones.isWaterSpot(colony, x, z)) {
+						continue;
+					}
+					Job j = look(w, x, z);
+					if (j == null) {
+						continue;
+					}
+					switch (j.work()) {
+						case HARVEST -> ripe++;
+						case PLANT -> empty++;
+						case TILL -> tillable++;
+						case CLEAR -> grass++;
+					}
 				}
 			}
+			if (Zones.needsWater(w, farm)) {
+				dry++;
+			}
 		}
-		return new Needs(ripe, empty, tillable, grass);
+		return new Needs(ripe, empty, tillable, grass, dry);
+	}
+
+	/** Carrying a bucket (empty or full): a dry plot is worth the trip. */
+	public static boolean hasBucket(CompanionPlayer p) {
+		return count(p, s -> s.isOf(Items.BUCKET) || s.isOf(Items.WATER_BUCKET)) > 0;
 	}
 
 	private static boolean tillable(BlockState s) {

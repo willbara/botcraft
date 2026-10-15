@@ -98,6 +98,7 @@ public final class Incidents {
 				if (!a.equals(b)) {
 					Factions.clash(a, b, 10);
 					Diplomacy.death(a, b, victim.now());
+					Bounties.killed(Factions.of(victim), other.name(), isLeader(victim), victim.now());
 				}
 			}
 			return;
@@ -112,6 +113,11 @@ public final class Incidents {
 			w.speech().event("standing.murder", Map.of("player", name, "friend", victim.name()), 20 * 30, 1.0F);
 		}
 		Factions.incident(Factions.of(victim), player, Standing.Incident.KILLED, 1);
+		Bounties.killed(Factions.of(victim), name, isLeader(victim), victim.now());
+	}
+
+	private static boolean isLeader(Companion c) {
+		return Factions.of(c).rank(c.data.uuid.toString()) == Faction.Rank.LEADER;
 	}
 
 	/** A player killed a mob that was after one of us: that's a friend. */

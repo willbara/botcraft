@@ -397,4 +397,13 @@ class IntentParserTest {
 		assertEquals(Intent.Type.FARM, IntentParser.parse("bob tend the crops", List.of("bob")).intent().type());
 		assertEquals(Intent.Type.GATHER, IntentParser.parse("bob get some wheat", List.of("bob")).intent().type());
 	}
+
+	@Test
+	void fishing() {
+		assertEquals(Intent.Type.FISH, IntentParser.parse("bob go fishing", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.FISH, IntentParser.parse("bob, catch some fish", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.FISH, IntentParser.parse("bob get us some salmon", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.FISH, IntentParser.parse("bob catch 5 fish", List.of("bob")).intent().type());
+		assertEquals(5, IntentParser.parse("bob catch 5 fish", List.of("bob")).intent().count());
+	}
 }

@@ -63,6 +63,14 @@ public class Botcraft implements ModInitializer {
 		});
 		net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
 			CompanionManager m = CompanionManager.get();
+			// A companion killed someone its faction had a price on.
+			if (m != null && entity instanceof net.minecraft.server.network.ServerPlayerEntity victim
+				&& source.getAttacker() instanceof net.minecraft.server.network.ServerPlayerEntity killer && killer != victim) {
+				Companion c = m.byPlayer(killer);
+				if (c != null) {
+					com.botcraft.faction.Bounties.collect(c, victim.getGameProfile().getName(), c.now());
+				}
+			}
 			if (m != null && source.getAttacker() instanceof net.minecraft.server.network.ServerPlayerEntity killer && !(entity instanceof net.minecraft.entity.player.PlayerEntity)) {
 				Companion c = m.byPlayer(killer);
 				if (c != null) {

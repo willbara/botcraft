@@ -7,7 +7,9 @@ import com.botcraft.entity.CompanionPlayer;
 import net.minecraft.item.Items;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkSectionPos;
 import net.minecraft.util.math.Direction;
+import net.minecraft.world.Heightmap;
 import net.minecraft.world.LightType;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,6 +27,10 @@ public final class Lighting {
 	public static final int CAVE_DARK = 6;
 	/** Monsters spawn at block light 0 (1.18+); anything below this counts as dark at home. */
 	public static final int HOME_DARK = 1;
+	/** Within this of the base, look at its own level (under roofs too); further out, the open ground. */
+	private static final int NEAR_RADIUS = 12;
+	/** Open ground further than this above or below the base isn't home's to light. */
+	private static final int MAX_RISE = 8;
 
 	private long nextTorch;
 
@@ -75,17 +81,41 @@ public final class Lighting {
 	/** Dark patches of open ground within {@code radius} of the base, nearest first. */
 	public static List<BlockPos> darkSpots(ServerWorld world, BlockPos base, int radius) {
 		List<BlockPos> out = new ArrayList<>();
-		// About the base's own level: not pockets under the floor or in the hillside above.
-		for (BlockPos b : BlockPos.iterate(base.add(-radius, -1, -radius), base.add(radius, 2, radius))) {
-			if (b.getSquaredDistance(base) > radius * radius || !world.getBlockState(b).isAir() || !world.getBlockState(b.up()).isAir()
-				|| !world.getFluidState(b).isEmpty() || !world.getBlockState(b.down()).isSideSolidFullSquare(world, b.down(), Direction.UP)) {
-				continue;
-			}
-			if (world.getLightLevel(LightType.BLOCK, b) < HOME_DARK) {
+		// Close in, about the base's own level (floors under a roof too): not pockets under the
+		// floor or in the hillside above.
+		int near = Math.min(radius, NEAR_RADIUS);
+		for (BlockPos b : BlockPos.iterate(base.add(-near, -1, -near), base.add(near, 2, near))) {
+			if (b.getSquaredDistance(base) <= near * near && darkSpot(world, b)) {
 				out.add(b.toImmutable());
+			}
+		}
+		// Further out, the open ground wherever it is (home's edges go up and down hills), as long
+		// as it's not far above or below the base.
+		BlockPos.Mutable m = new BlockPos.Mutable();
+		for (int dx = -radius; dx <= radius; dx++) {
+			for (int dz = -radius; dz <= radius; dz++) {
+				int d2 = dx * dx + dz * dz;
+				if (d2 <= near * near || d2 > radius * radius) {
+					continue;
+				}
+				int x = base.getX() + dx;
+				int z = base.getZ() + dz;
+				if (!world.isChunkLoaded(ChunkSectionPos.getSectionCoord(x), ChunkSectionPos.getSectionCoord(z))) {
+					continue;
+				}
+				int y = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+				if (Math.abs(y - base.getY()) <= MAX_RISE && darkSpot(world, m.set(x, y, z))) {
+					out.add(m.toImmutable());
+				}
 			}
 		}
 		out.sort(Comparator.comparingDouble(b -> b.getSquaredDistance(base)));
 		return out;
+	}
+
+	private static boolean darkSpot(ServerWorld world, BlockPos b) {
+		return world.getBlockState(b).isAir() && world.getBlockState(b.up()).isAir() && world.getFluidState(b).isEmpty()
+			&& world.getBlockState(b.down()).isSideSolidFullSquare(world, b.down(), Direction.UP)
+			&& world.getLightLevel(LightType.BLOCK, b) < HOME_DARK;
 	}
 }

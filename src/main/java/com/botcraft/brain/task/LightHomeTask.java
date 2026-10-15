@@ -20,11 +20,13 @@ import java.util.Set;
 
 /**
  * Light up the base: walk to the darkest open ground near home (where monsters could spawn) and
- * put a torch there, until nothing within {@link #RADIUS} blocks is dark or we run out of torches.
+ * put a torch there, until nothing over home (see {@link #radius}) is dark or we run out of torches.
  */
 public class LightHomeTask extends Task {
 	public static final int RADIUS = 12;
-	private static final int MAX_TORCHES = 12;
+	/** Lighting a big home stops here (the base map, and what's worth walking for). */
+	public static final int MAX_RADIUS = 32;
+	private static final int MAX_TORCHES = 16;
 
 	@Nullable
 	private BlockPos target;
@@ -65,7 +67,7 @@ public class LightHomeTask extends Task {
 			return done();
 		}
 		if (target == null || !p.getWorld().getBlockState(target).isAir()) {
-			List<BlockPos> dark = Lighting.darkSpots(p.getServerWorld(), base, RADIUS);
+			List<BlockPos> dark = Lighting.darkSpots(p.getServerWorld(), base, radius(Colony.get()));
 			dark.removeIf(skipped::contains);
 			if (dark.isEmpty()) {
 				return done();
@@ -110,5 +112,17 @@ public class LightHomeTask extends Task {
 		}
 		var home = c.memory().place("home");
 		return home != null && home.dim.equals(c.dimension()) ? home.pos() : null;
+	}
+
+	/** How far round the base to light: out to the corners of the home zone (at least {@link #RADIUS}). */
+	public static int radius(@Nullable Colony colony) {
+		Colony.Zone home = colony == null ? null : colony.zone(com.botcraft.colony.Zones.HOME);
+		BlockPos base = colony == null ? null : colony.base();
+		if (home == null || base == null) {
+			return RADIUS;
+		}
+		int dx = Math.max(Math.abs(home.x1 - base.getX()), Math.abs(home.x2 - base.getX()));
+		int dz = Math.max(Math.abs(home.z1 - base.getZ()), Math.abs(home.z2 - base.getZ()));
+		return Math.max(RADIUS, Math.min(MAX_RADIUS, (int) Math.ceil(Math.sqrt(dx * dx + dz * dz))));
 	}
 }

@@ -33,6 +33,24 @@ public final class Faction {
 	public String warfare;
 	/** World time it was founded. */
 	public long founded;
+	/** Chunks it holds ({@link net.minecraft.util.math.ChunkPos#toLong}), in {@link #claimDim}. See {@link Territory}. */
+	public java.util.List<Long> claims = new java.util.ArrayList<>();
+	public String claimDim = "";
+	/** Factions whose land it has bordered (first contact happened). */
+	public java.util.List<String> met = new java.util.ArrayList<>();
+	/** Killer name -> bounty (see {@link Bounties}). */
+	public Map<String, Bounty> bounties = new LinkedHashMap<>();
+
+	/** A price on someone's head: how much the faction wants them dead. */
+	public static final class Bounty {
+		public String name;
+		/** Members of ours they killed, all told. */
+		public int kills;
+		/** The bounty now (decays over time). */
+		public double value;
+		public long lastKill;
+		public long lastDecay;
+	}
 
 	public Faction() {
 	}
@@ -80,6 +98,18 @@ public final class Faction {
 		}
 		if (color == null) {
 			color = "white";
+		}
+		if (claims == null) {
+			claims = new java.util.ArrayList<>();
+		}
+		if (claimDim == null) {
+			claimDim = "";
+		}
+		if (met == null) {
+			met = new java.util.ArrayList<>();
+		}
+		if (bounties == null) {
+			bounties = new LinkedHashMap<>();
 		}
 	}
 }

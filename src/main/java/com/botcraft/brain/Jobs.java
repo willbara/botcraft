@@ -88,6 +88,9 @@ public final class Jobs {
 				case "farm" -> {
 					return new com.botcraft.brain.task.FarmTask(c, num(w, 1, 0));
 				}
+				case "fish" -> {
+					return new com.botcraft.brain.task.FishTask(c, num(w, 1, 5));
+				}
 				case "dance" -> {
 					return new com.botcraft.brain.task.DanceTask(c);
 				}
@@ -161,6 +164,7 @@ public final class Jobs {
 			case "light" -> "light up the base";
 			case "tidy" -> "tidy up the base";
 			case "farm" -> "tend the farm";
+			case "fish" -> "go fishing";
 			case "found" -> "found our base";
 			case "raid" -> {
 				var f = w.length > 1 ? com.botcraft.faction.Factions.get(w[1]) : null;

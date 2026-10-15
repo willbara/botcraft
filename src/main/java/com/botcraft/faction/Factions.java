@@ -94,6 +94,7 @@ public final class Factions {
 		}
 		ensureDefault();
 		Scope.reset();
+		Territory.invalidate();
 	}
 
 	private static void ensureDefault() {
@@ -233,7 +234,9 @@ public final class Factions {
 		}
 		for (Faction f : FACTIONS.values()) {
 			f.relations.remove(key);
+			f.met.remove(key);
 		}
+		Territory.invalidate();
 		if (server != null) {
 			Team t = server.getScoreboard().getTeam(teamName(key));
 			if (t != null) {

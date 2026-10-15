@@ -22,7 +22,12 @@ import java.util.Random;
  *   <li><b>Declaring war:</b> with no truce in the way, a faction whose most aggressive member is
  *       spoiling for a fight, and that outnumbers a neutral neighbour with a base, may declare war on
  *       it. Aggressive factions do it more.</li>
+ *   <li><b>First contact</b> ({@link #contact}, any faction mode): when two factions' land first
+ *       touches ({@link Territory}), enemies already at war say so; in dynamic mode neutral ones size
+ *       each other up, and it's war or a truce.</li>
  * </ul>
+ * With territory on, wars are declared (and fought by raids) only between factions whose borders
+ * touch, and the side suing for peace gives up border land.
  * Without this, two hostile factions in dynamic mode fight forever (neutral factions don't fight
  * at all except in self-defence).
  */
@@ -60,7 +65,7 @@ public final class Diplomacy {
 				String b = ids.get(j);
 				if (Factions.hostile(a, b)) {
 					weariness(a, b, now);
-				} else if (!Factions.friendly(a, b) && now >= TRUCE_UNTIL.getOrDefault(pair(a, b), 0L)) {
+				} else if (!Factions.friendly(a, b) && now >= TRUCE_UNTIL.getOrDefault(pair(a, b), 0L) && Territory.neighbours(a, b)) {
 					maybeWar(a, b, now);
 				}
 			}
@@ -89,7 +94,9 @@ public final class Diplomacy {
 		Faction w = Factions.get(weary);
 		Faction o = Factions.get(other);
 		announce(weary, "faction.truce", o == null ? other : o.name);
-		AiLog.log("faction", "{} sued {} for peace after losing {} to {}", weary, other, Math.max(lostA, lostB), Math.min(lostA, lostB));
+		int ceded = Territory.cede(weary, other, 3);
+		AiLog.log("faction", "{} sued {} for peace after losing {} to {} (gave up {} chunk(s))", weary, other, Math.max(lostA, lostB),
+			Math.min(lostA, lostB), ceded);
 		if (w != null && o != null) {
 			clearFights(weary, other);
 		}
@@ -119,6 +126,53 @@ public final class Diplomacy {
 		Faction t = Factions.get(target);
 		announce(attacker, "faction.war", t == null ? target : t.name);
 		AiLog.log("faction", "{} declared war on {}", attacker, target);
+	}
+
+	/**
+	 * Two factions' land has just touched. Already enemies: the war is on at the border. Already
+	 * allies, or in teams mode (where the operator sets who fights whom): nothing changes. Otherwise
+	 * (dynamic mode) the two size each other up: aggressive leaders and lopsided numbers make war
+	 * likely; sociable ones make a truce (a while of guaranteed peace, and warmer relations).
+	 */
+	public static void contact(String a, String b, long now) {
+		Faction fa = Factions.get(a);
+		Faction fb = Factions.get(b);
+		if (fa == null || fb == null) {
+			return;
+		}
+		if (Factions.hostile(a, b)) {
+			announce(a, "faction.border_war", fb.name);
+			announce(b, "faction.border_war", fa.name);
+			AiLog.log("faction", "{} and {} meet at the border, already at war", a, b);
+			return;
+		}
+		if (Factions.friendly(a, b) || !Factions.dynamic()) {
+			announce(a, "faction.border_meet", fb.name);
+			AiLog.log("faction", "{} and {} meet at the border", a, b);
+			return;
+		}
+		int na = Math.max(1, Factions.members(a).size());
+		int nb = Math.max(1, Factions.members(b).size());
+		float aggA = mostAggressive(a);
+		float aggB = mostAggressive(b);
+		String bolder = aggA * na >= aggB * nb ? a : b;
+		String other = bolder.equals(a) ? b : a;
+		Companion them = spokesperson(other);
+		double ratio = Math.min(2.0, Math.max(na, nb) / (double) Math.min(na, nb));
+		double war = 0.15 + 0.45 * Math.max(aggA, aggB) * ratio / 2.0 - (them == null ? 0 : 0.2 * them.brain().personality().sociability());
+		Faction fo = Factions.get(other);
+		Faction fbold = Factions.get(bolder);
+		if (RANDOM.nextDouble() < war) {
+			Factions.setRelation(a, b, -50);
+			announce(bolder, "faction.war", fo == null ? other : fo.name);
+			AiLog.log("faction", "{} met {} at the border and declared war (odds {})", bolder, other, String.format("%.2f", war));
+		} else {
+			Factions.setRelation(a, b, Math.max(fa.relation(b), 15));
+			TRUCE_UNTIL.put(pair(a, b), now + TRUCE);
+			announce(bolder, "faction.border_truce", fo == null ? other : fo.name);
+			announce(other, "faction.border_truce", fbold == null ? bolder : fbold.name);
+			AiLog.log("faction", "{} and {} met at the border and agreed a truce (war odds were {})", a, b, String.format("%.2f", war));
+		}
 	}
 
 	private static float mostAggressive(String faction) {

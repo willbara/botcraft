@@ -433,6 +433,20 @@ public final class FactionCommand {
 					Formatting.GRAY);
 			}
 		}
+		if (com.botcraft.faction.Territory.on()) {
+			say(ctx, "  land: " + com.botcraft.faction.Territory.size(f) + " chunk(s)" + (f.met.isEmpty() ? "" : ", borders " + String.join(", ", f.met)),
+				Formatting.GRAY);
+		}
+		long now = ctx.getSource().getServer().getOverworld().getTime();
+		List<Faction.Bounty> bounties = com.botcraft.faction.Bounties.list(f, now);
+		if (!bounties.isEmpty()) {
+			List<String> bs = new ArrayList<>();
+			for (Faction.Bounty b : bounties) {
+				bs.add(b.name + " " + String.format(java.util.Locale.ROOT, "%.1f", b.value) + " (" + b.kills + " kill" + (b.kills == 1 ? "" : "s") + ")"
+					+ (b.value >= com.botcraft.faction.Bounties.WANTED ? " WANTED" : ""));
+			}
+			say(ctx, "  bounties: " + String.join(", ", bs), Formatting.GOLD);
+		}
 		if (!f.players.isEmpty()) {
 			say(ctx, "  standing:", Formatting.GRAY);
 			for (Standing s : f.players.values()) {

@@ -57,7 +57,7 @@ public final class Hostility {
 			if (fresh) {
 				return grudge;
 			}
-			return onSight || grudge || inTerritory(mine, other);
+			return onSight || grudge || Bounties.wanted(mine, o.name(), c.now()) || inTerritory(mine, other);
 		}
 		if (isProtectedOwner(c, other)) {
 			return false;
@@ -73,7 +73,7 @@ public final class Hostility {
 		if (!enemy) {
 			return false;
 		}
-		if (onSight) {
+		if (onSight || Bounties.wanted(mine, name, c.now())) {
 			return true;
 		}
 		Standing s = Factions.peek(mine, other.getUuid());
@@ -100,10 +100,10 @@ public final class Hostility {
 		return player != null && player.getUuid().equals(c.data.owner) && !"standing".equals(CompanionConfig.get().ownerAuthority);
 	}
 
-	/** Inside (or close to) the faction's base. */
+	/** On the faction's land ({@link Territory}), or close to its base. */
 	public static boolean inTerritory(Faction f, ServerPlayerEntity other) {
 		Colony colony = Colony.of(f.id);
 		return colony != null && colony.hasBase() && colony.world() == other.getServerWorld()
-			&& colony.near(other.getServerWorld(), other.getBlockPos(), TERRITORY);
+			&& (colony.near(other.getServerWorld(), other.getBlockPos(), TERRITORY) || Territory.inside(f.id, other.getServerWorld(), other.getBlockPos()));
 	}
 }

@@ -262,7 +262,7 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 
 ### 30. Teams (red vs blue)
 - [ ] Spawn 6 companions (`/companion batch 6`), set them free, then `/companion faction teams red blue`: chat lists the two teams; names show red and blue in the tab list and chat; teammates can't hurt each other.
-- [ ] With no bases set, within a minute or two (daytime) one member of each team says it's founding a base and walks to a flat spot at least 64 blocks from the other team's base; `/companion faction info red` shows the base; `/companion colony` (default colony) is unaffected.
+- [ ] With no bases set, within a minute or two (daytime) one member of each team says it's founding a base and walks to a flat spot at least 160 blocks from the other team's base (walking on to look further if nothing in sight will do); `/companion faction info red` shows the base; `/companion colony` (default colony) is unaffected.
 - [ ] Each team gets its own zones (farm, beds...), its own board and stock; companions only share with teammates.
 - [ ] "red team, follow me" makes only red companions follow (you own them all).
 - [ ] With `warfare: defend`, a red companion walking into blue's base gets attacked; with `/companion faction warfare pvp`, they fight on sight.
@@ -284,6 +284,20 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] With Xaero's minimap or world map installed, companions saved in the world rejoin when it loads (they used to be dropped at once and stayed offline).
 - [ ] Give Bob a shield: it moves to the off hand within 2 seconds. Against a skeleton, Bob raises it while the skeleton draws (arrows are blocked) and walks in. Against a hissing creeper, it backs off behind the shield.
 - [ ] Fighting zombies, Bob often jumps and hits on the way down (critical hit particles). A hothead does it more often.
+
+### 33. Upkeep, farms, land, bounties and fishing (0.13)
+- [ ] **Upkeep.** Put a 3-high dirt or cobblestone pillar and a log stump (a log with no leaves) on flat ground just outside the home zone, and dig a one-block pit next to them. Within a minute `/companion colony` counts them, "tidy up the base" goes on the board, and a free companion takes the pillar and stump down and fills the pit. A pillar you put a torch or chest on top of is left alone, and so is anything you placed with a block you'd normally build with (planks, bricks...).
+- [ ] Old companion dirt that has grown grass (a bridge or pillar from an earlier session) is taken down too.
+- [ ] **Fence.** With 24+ logs in the base chests, upkeep adds fence posts round the home zone: the companion crafts fences (and gates) from the base's wood, puts them up along home's edge, and leaves gates where the paths to the farm and pen cross it and in the middle of each side. Companions walk through the gates. `fenceHome: false` stops it.
+- [ ] **Lighting.** A dark corner of a big home zone (20+ blocks from the base, up or down a slope) gets a torch.
+- [ ] **Farm water.** On a farm plot with no water within 4 blocks, give the farmer a bucket (or 3 iron in the chests): it fills the bucket at nearby water, digs out the plot's middle, pours it in, and the soil goes dark (wet). The middle is never tilled or planted, and upkeep doesn't fill it. `latest.log`: "farm: watered the plot".
+- [ ] **More plots.** With 4+ members and the first plot three-quarters planted, a few minutes later `/companion colony` lists `farm2`, a block away from the first plot on the side with the most flat soil; it gets its own water and planting. Plots stop at one plus one per four members (four at most). `expandFarms: false` stops it.
+- [ ] **Land.** Teams or dynamic mode with bases: `/companion faction info red` shows "land: 25 chunk(s)" at first and grows every minute and a half. When two factions' land first touches, `latest.log` shows "meet at the border"; already-enemies say so in chat; in dynamic mode neutral ones either declare war or agree a truce ("Truce with Blue. Stay on your side."). Factions whose land doesn't touch don't raid each other or declare war.
+- [ ] **Occupation.** At war, stand enemy companions out of a border chunk and your faction's companions in it: within a couple of minutes the chunk changes hands ("took a chunk of ... land" in the log, "That land's ours now"). The 5x5 chunks round a base never change hands.
+- [ ] **Peace terms.** When a losing faction sues for peace, the log says how many chunks it gave up (up to 3).
+- [ ] **Splits** (dynamic, territory on): a new band starts on cool terms (not at war), settles 160+ blocks away, and the fight (or truce) starts when its land reaches the old faction's.
+- [ ] **Bounties.** Kill three of a faction's companions (or let one enemy companion do it): the faction's spokesperson puts a price on the killer's head, and `/companion faction info <faction>` lists "WANTED". The faction's companions go for the wanted one on sight (from up to 32 blocks), before other enemies, as long as the two sides are enemies. When one of them kills the wanted one, it brags ("Got Red10! The bounty's mine.") and the bounty is gone. Without more kills, a bounty halves every 30 minutes and drops off the list.
+- [ ] **Fishing.** Walk a curious companion (scout, `/companion archetype Bob scout`) past a lake by day with a fishing rod (or 2 string and some sticks) on it: it remembers the water, and later goes fishing there: it walks to the shore, casts, reels in when the bobber dips, and comes back with cod or salmon. "Bob, go fishing" / "catch 5 fish" does it on request. Without a rod it crafts one first. `fishing: false` stops the free-mode fishing.
 
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

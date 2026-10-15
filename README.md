@@ -1,8 +1,8 @@
 # Botcraft
 
-AI companions for Minecraft 1.20.1 (Fabric) that join the server as real players. A companion can follow you or live on its own: it chops whole trees, mines (caves first, whole veins), crafts, smelts, hunts and cooks, farms, fights monsters (with crits and a shield), sleeps when you sleep, helps the other companions, remembers what it has seen, and chats with you and with the others.
+AI companions for Minecraft 1.20.1 (Fabric) that join the server as real players. A companion can follow you or live on its own: it chops whole trees, mines (caves first, whole veins), crafts, smelts, hunts and cooks, farms (adding watered plots as the base grows), fishes, fights monsters (with crits and a shield), sleeps when you sleep, helps the other companions, remembers what it has seen, and chats with you and with the others.
 
-Each companion has a personality (twelve traits, presets such as guard or miner), moods that come and go, and feelings about the people it knows. Companions can live as one colony, as fixed teams (red vs blue), or as factions that form, split up, found their own bases and raid each other. Every faction remembers how each player has treated it, and only players on good terms may give orders.
+Each companion has a personality (twelve traits, presets such as guard or miner), moods that come and go, and feelings about the people it knows. Companions can live as one colony, as fixed teams (red vs blue), or as factions that form, split up, found their own bases far apart, spread their land until their borders meet (then it's war or a truce), raid each other and put bounties on whoever keeps killing them. Every faction remembers how each player has treated it, and only players on good terms may give orders.
 
 - **Server-side only.** It works on dedicated servers and in singleplayer, and clients don't need the mod.
 - **Self-contained.** There are no API keys, language models or native libraries. The only dependency is Fabric API.

@@ -265,7 +265,7 @@ public final class GoalTree {
 		return switch (key) {
 			case "sleep", "shelter", "cook", "hunt", "fetch_food", "stock_food", "place_bed", "bed", "night_chores", "farm", "bread" -> Root.SURVIVE;
 			case "store", "light_home", "board", "found_base" -> Root.FACTION;
-			case "explore" -> Root.CURIOSITY;
+			case "explore", "fish" -> Root.CURIOSITY;
 			case "home" -> Root.REST;
 			default -> Root.PROGRESS;
 		};
