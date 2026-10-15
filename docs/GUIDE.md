@@ -242,10 +242,15 @@ While mining:
 - **Tending it** ("farm", or free mode when there's something to do), nearest work first:
   1. **Harvest** ripe wheat, carrots, potatoes and beetroot.
   2. **Plant** empty farmland. Potatoes and carrots go first (they're food straight away), then wheat seeds, then beetroot seeds.
-  3. **Pull up grass** in the farm, and around it when it has no seeds (grass drops seeds now and then).
+  3. **Pull up grass and flowers** in the farm, and grass around it when it has no seeds (grass drops seeds now and then).
   4. **Till** grass and dirt with a hoe when there are seeds to plant. It makes a wooden hoe first if it has none.
 - **Picking up.** Drops are picked up like any others.
-- **Free mode** goes farming by day, within 64 blocks of the base, when the crops are ripe or there's planting to do, and bakes bread from 3 wheat when short of food. The farm is looked at every 20 seconds, shared by everyone at the base.
+- **Free mode** goes farming by day, within 64 blocks of the base, when it's worth the trip, and bakes bread from 3 wheat when short of food:
+  - at least 6 ripe crops (any, when it has no food and is hungry);
+  - at least 3 tiles to plant or till;
+  - or grass and flowers in the way.
+
+  One companion tends a base's farm at a time, and a farmer rests from farming for 3 minutes after a run. The farm is looked at every 20 seconds, shared by everyone at the base.
 
 ### Picking up after itself
 
@@ -414,12 +419,18 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - crowding.
 
   Unhappy members grumble. When three or more stay unhappy, and they're a quarter of the faction, the most ambitious leaves with them, and with whoever likes it better than the rest, as a new faction ("Bob's Band"). They start as enemies of the old one, found their own base, and the raids begin. At most one split per faction per in-game day, and at most `maxFactions` factions. Empty factions disband. Companions grow fond of each other by chatting and helping each other out.
-- **Diplomacy** is by command for now: `/companion faction relation <a> <b> <allied|neutral|hostile|number>`. Enemies are -30 or less; allies are 60 or more both ways. Hits and raids between factions push them apart. `/companion faction ceasefire` makes everyone neutral at once.
+- **War and peace** (dynamic mode). Every two minutes:
+  - **Peace:** a faction at war that has lost 6 or more members to the other side in 20 minutes, at least twice what it took from them, sues for peace ("We've lost too many. Truce with Blue!"). The two become neutral, and neither declares war on the other for 20 minutes.
+  - **War:** after that, a bigger faction with an aggressive member may declare war on a neutral neighbour with a base ("We're going to war with Red!"). Aggressive factions, and lopsided ones, do it more.
+
+  So wars come and go instead of lasting forever.
+- **Diplomacy by command:** `/companion faction relation <a> <b> <allied|neutral|hostile|number>`. Enemies are -30 or less; allies are 60 or more both ways. Hits and raids between factions push them apart. `/companion faction ceasefire` makes everyone neutral at once.
+- **Respawn grace:** for a minute after respawning, a companion only hits back and doesn't go looking for enemies. A companion killed by a player or an enemy doesn't go back to where it died for its things.
 - **Commands:** `/companion faction` lists factions. The subcommands are:
   - `mode`, `warfare`, `teams`;
   - `create <id> [colour]`, `remove <id>`;
   - `join <companion> <faction>`;
-  - `member <faction> <player> <member|officer|leader|remove>`;
+  - `member <faction> <player or companion> <member|officer|leader|remove>`: a companion given a rank also joins the faction. Its leader founds the faction's base and speaks for it (truces, declarations of war). A companion still following you stays with you; say "do your own thing" to let it live with its faction;
   - `relation`, `raid`, `ceasefire`;
   - `info <faction>`.
 
@@ -561,7 +572,11 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 ### Free mode
 
 - **Progression stops at diamond gear.** The target ladder ends there: no enchanting, Nether or End yet. There's no base building (beyond chests, beds and the farm), trading or exploring for structures.
-- **Factions are new.** Raids take what's in chests but don't plan an approach or hold formation. A split doesn't divide the old base's chests (leavers keep what they carry). There's no diplomacy beyond commands. Bases don't move once founded.
+- **Factions are new.**
+  - Raids take what's in chests but don't plan an approach or hold formation.
+  - A split doesn't divide the old base's chests (leavers keep what they carry).
+  - Diplomacy is war and peace only (no alliances on their own).
+  - Bases don't move once founded.
 - **A simple planner.** It plans one target at a time for one companion; work for the whole colony goes through the request board instead. Its time estimates start from rough guesses and improve with experience.
 - **Unarmed nights** mean digging in, not fighting.
 

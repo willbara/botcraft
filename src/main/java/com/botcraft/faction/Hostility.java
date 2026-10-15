@@ -26,6 +26,8 @@ public final class Hostility {
 	private static final long INCIDENT_TICKS = 20 * 30;
 	/** Inside this distance of the base counts as being in our territory. */
 	public static final double TERRITORY = 48;
+	/** Back from the dead this recently: only fight back, don't go looking for it. */
+	public static final long RESPAWN_GRACE = 20 * 60;
 
 	private Hostility() {
 	}
@@ -42,13 +44,20 @@ public final class Hostility {
 			return false;
 		}
 		boolean onSight = "pvp".equals(warfare) || "raid".equals(warfare);
+		// Just respawned (probably without its gear): only hits back, so a death isn't followed by
+		// walking straight back into the same fight.
+		boolean fresh = c.now() - c.spawnedAt < RESPAWN_GRACE;
 		if (other instanceof CompanionPlayer) {
 			CompanionManager m = CompanionManager.get();
 			Companion o = m == null ? null : m.byPlayer(other);
 			if (o == null || !Factions.hostile(mine.id, Factions.idOf(o))) {
 				return false;
 			}
-			return onSight || c.relations().grudge(o.name(), GRUDGE_TICKS) || inTerritory(mine, other);
+			boolean grudge = c.relations().grudge(o.name(), GRUDGE_TICKS);
+			if (fresh) {
+				return grudge;
+			}
+			return onSight || grudge || inTerritory(mine, other);
 		}
 		if (isProtectedOwner(c, other)) {
 			return false;
@@ -56,6 +65,9 @@ public final class Hostility {
 		String name = other.getGameProfile().getName();
 		if (c.relations().grudge(name, GRUDGE_TICKS)) {
 			return true; // self-defence
+		}
+		if (fresh) {
+			return false;
 		}
 		boolean enemy = isHostilePlayer(mine, other);
 		if (!enemy) {

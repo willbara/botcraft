@@ -88,6 +88,15 @@ public class Companion {
 	/** Don't try to go to bed again before this tick (after failing to find one). */
 	public long sleepRetryAfter;
 
+	/** Times it was dropped right after joining and sent back in (see CompanionManager). */
+	int rejoinTries;
+	/** The next rejoin is a retry of a failed join (back where it was), not a respawn after dying. */
+	boolean rejoinPending;
+	/** Server tick it last (re)joined: fresh from a respawn it stays out of fights for a minute. */
+	public long spawnedAt = -1_000_000L;
+	/** Killed by a player or another faction's companion last time (no going back for the things). */
+	private boolean lastKilledInFight;
+
 	/** Server tick at which a dead/kicked companion should rejoin; -1 = not scheduled. */
 	long respawnAtTick = -1;
 	int deadTicks;
@@ -309,6 +318,8 @@ public class Companion {
 
 	/** Called after the player joined: "new", "summoned", "restored", "respawned" or "reskinned". */
 	void onSpawned(String reason) {
+		CompanionManager mgr = CompanionManager.get();
+		spawnedAt = mgr == null ? now : mgr.tickCount();
 		nav.stop();
 		actions.reset();
 		if (data.job != null && !brain.hasJob()) {
@@ -355,8 +366,9 @@ public class Companion {
 			return;
 		}
 		long age = player.getWorld().getTime() - death.time;
-		if (age > 20 * 60 * 4 || lastDeathUnrecoverable) {
-			AiLog.log(name(), "not going back for my things ({})", lastDeathUnrecoverable ? "nothing to recover there" : "too long ago");
+		if (age > 20 * 60 * 4 || lastDeathUnrecoverable || lastKilledInFight) {
+			AiLog.log(name(), "not going back for my things ({})", lastDeathUnrecoverable ? "nothing to recover there"
+				: lastKilledInFight ? "whoever killed me is still there" : "too long ago");
 			return;
 		}
 		int nearby = 0;
@@ -474,6 +486,7 @@ public class Companion {
 		var source = player == null ? null : player.getRecentDamageSource();
 		String cause = source == null ? "unknown" : source.getName();
 		com.botcraft.faction.Incidents.companionKilled(this, source);
+		lastKilledInFight = source != null && source.getAttacker() instanceof ServerPlayerEntity;
 		lastDeathUnrecoverable = source != null && (source.isIn(net.minecraft.registry.tag.DamageTypeTags.IS_FIRE)
 			|| source.isOf(net.minecraft.entity.damage.DamageTypes.LAVA) || source.isOf(net.minecraft.entity.damage.DamageTypes.DROWN)
 			|| source.isOf(net.minecraft.entity.damage.DamageTypes.OUT_OF_WORLD));

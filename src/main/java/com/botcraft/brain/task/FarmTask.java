@@ -43,6 +43,18 @@ public class FarmTask extends Task {
 	public static final List<Item> SEEDS = List.of(Items.POTATO, Items.CARROT, Items.WHEAT_SEEDS, Items.BEETROOT_SEEDS);
 	private static final Predicate<ItemStack> SEED = s -> SEEDS.contains(s.getItem());
 	private static final Predicate<ItemStack> HOE = s -> s.getItem() instanceof HoeItem;
+	/** Per base: who's farming it, and until when (renewed every tick while they are). */
+	private static final java.util.Map<String, String> FARMER = new java.util.HashMap<>();
+	private static final java.util.Map<String, Long> FARMER_UNTIL = new java.util.HashMap<>();
+
+	/** Someone else is tending this base's farm right now. */
+	public static boolean someoneElseFarming(String colony, String name, long now) {
+		String who = FARMER.get(colony);
+		return who != null && !who.equals(name) && now < FARMER_UNTIL.getOrDefault(colony, 0L);
+	}
+
+	/** Ripe crops worth a trip to the farm (when not hungry). */
+	public static final int RIPE_TRIP = 6;
 	/** How far around the farm to look for grass to pull up for seeds. */
 	private static final int GRASS_MARGIN = 8;
 
@@ -59,9 +71,13 @@ public class FarmTask extends Task {
 
 	/** What the farm needs (for deciding whether to go farming at all). */
 	public record Needs(int ripe, int empty, int tillable, int grass) {
-		/** Anything worth a trip, given whether we have seeds and a hoe. */
-		public boolean worthIt(boolean seeds, boolean hoe) {
-			return ripe > 0 || (seeds && empty > 0) || (seeds && hoe && tillable > 0) || (!seeds && empty + tillable > 0 && grass > 0);
+		/**
+		 * Worth a trip: a few ripe crops (any, when hungry), a few tiles to plant or till, or grass in
+		 * the way. One ripe stalk isn't worth walking over for.
+		 */
+		public boolean worthIt(boolean seeds, boolean hoe, boolean hungry) {
+			return ripe >= (hungry ? 1 : RIPE_TRIP) || (seeds && empty >= 3) || (seeds && hoe && tillable >= 3) || grass >= 3
+				|| (!seeds && empty + tillable > 0 && grass > 0);
 		}
 	}
 
@@ -111,6 +127,8 @@ public class FarmTask extends Task {
 			return done();
 		}
 		ServerWorld world = p.getServerWorld();
+		FARMER.put(colony.id(), c.name());
+		FARMER_UNTIL.put(colony.id(), c.now() + 20 * 15);
 		if (job == null || !stillToDo(world, job)) {
 			job = next(world, farm, p);
 			jobTicks = 0;
@@ -191,7 +209,7 @@ public class FarmTask extends Task {
 		return switch (j.work()) {
 			case HARVEST -> above.getBlock() instanceof CropBlock crop && crop.isMature(above);
 			case PLANT -> ground.isOf(Blocks.FARMLAND) && above.isAir();
-			case CLEAR -> isGrass(above);
+			case CLEAR -> inTheWay(above);
 			case TILL -> tillable(ground) && above.isAir();
 		};
 	}
@@ -248,7 +266,7 @@ public class FarmTask extends Task {
 		if (a.getBlock() instanceof CropBlock crop) {
 			return crop.isMature(a) ? new Job(Work.HARVEST, ground, above) : null;
 		}
-		if (isGrass(a)) {
+		if (inTheWay(a)) {
 			return new Job(Work.CLEAR, ground, above);
 		}
 		if (!a.isAir()) {
@@ -309,6 +327,11 @@ public class FarmTask extends Task {
 
 	private static boolean tillable(BlockState s) {
 		return s.isOf(Blocks.GRASS_BLOCK) || s.isOf(Blocks.DIRT) || s.isOf(Blocks.DIRT_PATH);
+	}
+
+	/** Plants in the farm zone that have to go before it can be tilled: grass, ferns, flowers. */
+	static boolean inTheWay(BlockState s) {
+		return isGrass(s) || s.isIn(net.minecraft.registry.tag.BlockTags.SMALL_FLOWERS) || s.isIn(net.minecraft.registry.tag.BlockTags.TALL_FLOWERS);
 	}
 
 	/** Short grass, tall grass and ferns (seeds drop from them). */

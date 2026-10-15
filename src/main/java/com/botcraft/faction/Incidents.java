@@ -97,6 +97,7 @@ public final class Incidents {
 				String b = Factions.idOf(other);
 				if (!a.equals(b)) {
 					Factions.clash(a, b, 10);
+					Diplomacy.death(a, b, victim.now());
 				}
 			}
 			return;
