@@ -179,5 +179,8 @@
   "bounty.raised": ["{target} again! That's {kills} of us. Double the bounty!", "{target} won't stop. Everyone, hunt them down.", "{kills} kills, {target}. You're our most wanted."],
   "bounty.collected": ["Got {target}! The bounty's mine.", "{target} won't be killing any more of us.", "That's {target} dealt with. Justice!"],
   "faction.leader_chosen": ["Looks like I'm leading {faction} now. Stick with me.", "{faction}, you've chosen me. I won't let you down.", "Right, {faction}: I'm in charge. Let's get to work."],
-  "faction.officer_named": ["{name}, I want you as my officer.", "{name}, you're an officer of {faction} now. I trust you.", "{name} is my second from now on."]
+  "faction.officer_named": ["{name}, I want you as my officer.", "{name}, you're an officer of {faction} now. I trust you.", "{name} is my second from now on."],
+  "standing.owner_hit": ["Ow! {player}, what was that for?", "Hey! I thought we were on the same side, {player}.", "{player}, that hurt. Please don't."],
+  "standing.owner_hostile": ["I'll still do what you say, {player}. But I don't trust you any more.", "You're the boss, {player}. Doesn't mean I have to like it.", "{player}... I'll keep working. Just stay away from me."],
+  "standing.owner_murder": ["{player} just killed {friend}! Why?!", "{friend}! {player}, what did they ever do to you?", "{player} killed {friend}. I won't forget that."]
 }
