@@ -17,8 +17,15 @@ import net.minecraft.util.math.BlockPos;
 public class CompanionPlayer extends ServerPlayerEntity {
 	private FakeClientConnection fakeConnection;
 
+	/** Every skin layer: cape, jacket, both sleeves, both trouser legs and the hat (bits 0-6). */
+	private static final byte ALL_SKIN_PARTS = 0x7F;
+
 	public CompanionPlayer(MinecraftServer server, ServerWorld world, GameProfile profile) {
 		super(server, world, profile);
+		// A real client says which skin layers to show (its skin customisation settings); a
+		// companion never does, which left it with only the base layer: no hats, jackets or
+		// sleeves, and no cape. Show them all, as a player with default settings would.
+		this.getDataTracker().set(PLAYER_MODEL_PARTS, ALL_SKIN_PARTS);
 	}
 
 	void setFakeConnection(FakeClientConnection connection) {
