@@ -139,8 +139,8 @@ public class Speech {
 
 	private void broadcast(String text) {
 		CompanionPlayer p = c.player();
-		if (p == null || p.isDead()) {
-			return;
+		if (p == null || p.isDead() || com.botcraft.brain.EasterEggs.silent(c)) {
+			return; // (Herobrine and Hausemaster never say a word)
 		}
 		c.server.getPlayerManager().broadcast(Text.translatable("chat.type.text", p.getDisplayName(), Text.literal(text)), false);
 	}

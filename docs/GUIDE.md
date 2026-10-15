@@ -554,14 +554,36 @@ It goes to bed when you do (and on its own at night in free mode), so the night 
 
 ### Easter eggs
 
-Spawn a companion named popbob (any capitalisation) and it turns on everyone:
+Some names (any capitalisation) make a companion someone else. `easterEggs: false` makes them ordinary companions.
 
-- It goes for the nearest player or companion within 48 blocks, with the best weapon it has, taunting as it goes.
-- With nobody around it wanders and griefs: planks, wool, glass, stairs, slabs, fences, doors, torches, crafting tables, cobblestone, bricks and similar build blocks. It never breaks containers or other block entities, dirt or stone, or anything unbreakable.
-- It ignores every order and question, doesn't greet anyone, and never shares or asks for help.
-- Other companions treat it as a threat. Armed ones fight it from up to 12 blocks away; unarmed ones fight back once it's within 4.
+**popbob**, a patient menace:
+- Belongs to no faction (`/companion faction join` refuses it) and ignores every order and question.
+- **Gears up first,** like anyone would: tools, then an iron sword (or a stone one and some armour). Until then it gets on with it and leaves people alone.
+- **Then, turn and turn about:**
+  - **raids** the nearest faction base it hasn't robbed in 10 minutes (up to 320 blocks away), taking the most valuable things from its chests ("Thanks for the 12 things, Red!");
+  - **bothers** someone within 48 blocks for half a minute or so: tags along, takes a swipe every few seconds, taunts them;
+  - and in between **wrecks** build blocks in reach (planks, wool, glass, stairs, fences, doors, torches, cobblestone, bricks...). Never containers or block entities, dirt or stone, or anything unbreakable.
+- Hit it and, geared and healthy, it fights back properly; otherwise it backs off. Companions only gang up on it once it's armed: armed ones from 12 blocks, unarmed ones within 4. Its kills put a bounty on it like anyone's.
 - It can only hurt players and companions when PvP is on (`pvp=true` in `server.properties`; singleplayer has it on).
-- Remove it with `/companion remove popbob`, or set `easterEggs: false` to make popbob an ordinary companion.
+
+**Herobrine**:
+- Silent: never says a word, ignores chat. Wears no armour (takes it off). Belongs to no faction.
+- Picks someone (a player or a companion, within 96 blocks) and stalks them. At night it stands at the edge of sight (24-40 blocks) and stares; by day it keeps further off. Come within 10 blocks and it's gone, 60-110 blocks away.
+- By day it makes signs (gathering wood if it has none) and leaves them about, blank, and now and then strips the leaves off a tree.
+- Wears Herobrine's skin (the `MHF_Herobrine` account, else `Herobrine`), fetched when it joins if it isn't on.
+
+**Technoblade**:
+- An ordinary companion (it joins factions, takes orders), but fearless: never flees or retreats, goes for enemy companions and players on sight whatever the warfare setting (short of off), and hunts pigs first.
+- Every time it respawns: "Technoblade never dies!"
+- Wears the Technoblade account's skin, fetched when it joins if it isn't on.
+
+**Hausemaster**:
+- Plays for itself: free mode, no faction, no orders, never a word.
+- Can't be hurt (falling out of the world puts it back on solid ground).
+- If popbob comes near (or takes a swing at it), it teleports away, 48-96 blocks.
+- Wears the Hausemaster account's skin, fetched when it joins if it isn't on.
+
+Skins are looked up only with `allowSkinLookup` on, once per session. Remove any of them with `/companion remove <name>`.
 
 ---
 

@@ -90,6 +90,9 @@ public final class Jobs {
 				case "found" -> {
 					return new com.botcraft.brain.task.FoundTask(c);
 				}
+				case "steal" -> {
+					return w.length > 1 && com.botcraft.colony.Colony.of(w[1]) != null ? new com.botcraft.brain.task.StealTask(c, w[1]) : null;
+				}
 				case "farm" -> {
 					return new com.botcraft.brain.task.FarmTask(c, num(w, 1, 0));
 				}
@@ -171,6 +174,7 @@ public final class Jobs {
 			case "farm" -> "tend the farm";
 			case "fish" -> "go fishing";
 			case "found" -> "found our base";
+			case "steal" -> "make trouble at a base";
 			case "raid" -> {
 				var f = w.length > 1 ? com.botcraft.faction.Factions.get(w[1]) : null;
 				yield "raid " + (f == null ? (w.length > 1 ? w[1] : "the enemy") : f.name);

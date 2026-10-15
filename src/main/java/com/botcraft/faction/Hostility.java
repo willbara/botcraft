@@ -43,7 +43,8 @@ public final class Hostility {
 		if ("off".equals(warfare)) {
 			return false;
 		}
-		boolean onSight = "pvp".equals(warfare) || "raid".equals(warfare);
+		// (Technoblade goes for enemies on sight whatever the warfare setting, short of off.)
+		boolean onSight = "pvp".equals(warfare) || "raid".equals(warfare) || com.botcraft.brain.EasterEggs.fearless(c);
 		// Just respawned (probably without its gear): only hits back, so a death isn't followed by
 		// walking straight back into the same fight.
 		boolean fresh = c.now() - c.spawnedAt < RESPAWN_GRACE;

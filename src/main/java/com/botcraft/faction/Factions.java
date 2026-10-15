@@ -250,7 +250,7 @@ public final class Factions {
 
 	/** The faction a companion is in (the default colony in single mode). */
 	public static String idOf(Companion c) {
-		if (!enabled()) {
+		if (!enabled() || com.botcraft.brain.EasterEggs.factionless(c)) {
 			return DEFAULT;
 		}
 		String f = c.data.faction;
@@ -268,7 +268,7 @@ public final class Factions {
 		CompanionManager m = CompanionManager.get();
 		if (m != null) {
 			for (Companion c : m.all()) {
-				if (idOf(c).equals(id)) {
+				if (idOf(c).equals(id) && !com.botcraft.brain.EasterEggs.factionless(c)) {
 					out.add(c);
 				}
 			}
@@ -278,6 +278,9 @@ public final class Factions {
 
 	/** Put a companion in a faction. */
 	public static void join(Companion c, String id) {
+		if (com.botcraft.brain.EasterEggs.factionless(c)) {
+			return; // some names belong to nobody
+		}
 		c.data.faction = DEFAULT.equals(id) ? null : id;
 		String uuid = c.data.uuid.toString();
 		for (Faction o : FACTIONS.values()) {
@@ -511,6 +514,7 @@ public final class Factions {
 			return ids;
 		}
 		List<Companion> all = new ArrayList<>(m.all());
+		all.removeIf(com.botcraft.brain.EasterEggs::factionless);
 		all.sort((a, b) -> a.name().compareToIgnoreCase(b.name()));
 		if ("owner".equals(how)) {
 			Map<UUID, String> byOwner = new LinkedHashMap<>();
