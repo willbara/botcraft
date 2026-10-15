@@ -234,7 +234,8 @@ public final class FactionCommand {
 			List<String> names = Factions.members(id).stream().map(Companion::name).toList();
 			say(ctx, "Team " + id + ": " + (names.isEmpty() ? "nobody yet" : String.join(", ", names)), Formatting.WHITE);
 		}
-		say(ctx, "Teams are enemies (warfare " + CompanionConfig.get().warfare + "). Each needs a base: tell a member \"this is home\", or let them find one.",
+		say(ctx, "Teams start as strangers: neutral, with " + CompanionConfig.get().factionGraceMinutes + " minutes' grace before anything can turn to war "
+			+ "(set it with /companion faction relation). Each needs a base: tell a member \"this is home\", or let them find one.",
 			Formatting.GRAY);
 		return ids.size();
 	}

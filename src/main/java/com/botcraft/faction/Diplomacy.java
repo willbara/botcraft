@@ -55,7 +55,11 @@ public final class Diplomacy {
 
 	/** Called every server tick by the manager. */
 	public static void tick(CompanionManager m, long now) {
-		if (now % CHECK_TICKS != 71 || !Factions.dynamic()) {
+		if (now % CHECK_TICKS != 71 || !Factions.enabled()) {
+			return;
+		}
+		mingle(m, now);
+		if (!Factions.dynamic()) {
 			return;
 		}
 		List<String> ids = Factions.ids();
@@ -65,7 +69,8 @@ public final class Diplomacy {
 				String b = ids.get(j);
 				if (Factions.hostile(a, b)) {
 					weariness(a, b, now);
-				} else if (!Factions.friendly(a, b) && now >= TRUCE_UNTIL.getOrDefault(pair(a, b), 0L) && Territory.neighbours(a, b)) {
+				} else if (!Factions.friendly(a, b) && now >= TRUCE_UNTIL.getOrDefault(pair(a, b), 0L) && !Factions.inGrace(a, b)
+					&& Territory.neighbours(a, b)) {
 					maybeWar(a, b, now);
 				}
 			}
@@ -146,7 +151,7 @@ public final class Diplomacy {
 			AiLog.log("faction", "{} and {} meet at the border, already at war", a, b);
 			return;
 		}
-		if (Factions.friendly(a, b) || !Factions.dynamic()) {
+		if (Factions.friendly(a, b) || !Factions.dynamic() || Factions.inGrace(a, b)) {
 			announce(a, "faction.border_meet", fb.name);
 			AiLog.log("faction", "{} and {} meet at the border", a, b);
 			return;
@@ -174,6 +179,83 @@ public final class Diplomacy {
 			AiLog.log("faction", "{} and {} met at the border and agreed a truce (war odds were {})", a, b, String.format("%.2f", war));
 		}
 	}
+
+	/**
+	 * How factions get on when their members meet (any faction mode). Each check, for every two
+	 * factions with members within {@link #MEET_RANGE} of each other:
+	 * <ul>
+	 *   <li><b>A spark:</b> a hothead (aggression {@link #HOTHEAD} or more) may pick a quarrel with
+	 *       the other side's member it's near: the two factions think less of each other, and
+	 *       enough quarrels add up to enmity (and then fighting). Not in a faction's grace period.</li>
+	 *   <li><b>Getting along:</b> otherwise, sociable members who meet without trouble warm the
+	 *       factions to each other, slowly, up to alliance.</li>
+	 * </ul>
+	 */
+	static void mingle(CompanionManager m, long now) {
+		List<Companion> all = new ArrayList<>();
+		for (Companion c : m.all()) {
+			if (c.isOnline() && c.player() != null && !c.player().isDead()) {
+				all.add(c);
+			}
+		}
+		Map<String, List<Companion[]>> meetings = new HashMap<>();
+		for (int i = 0; i < all.size(); i++) {
+			for (int j = i + 1; j < all.size(); j++) {
+				Companion x = all.get(i);
+				Companion y = all.get(j);
+				String a = Factions.idOf(x);
+				String b = Factions.idOf(y);
+				if (a.equals(b) || x.player().getWorld() != y.player().getWorld()
+					|| x.player().squaredDistanceTo(y.player()) > MEET_RANGE * MEET_RANGE) {
+					continue;
+				}
+				meetings.computeIfAbsent(pair(a, b), k -> new ArrayList<>()).add(new Companion[]{x, y});
+			}
+		}
+		for (Map.Entry<String, List<Companion[]>> e : meetings.entrySet()) {
+			Companion[] first = e.getValue().get(0);
+			String a = Factions.idOf(first[0]);
+			String b = Factions.idOf(first[1]);
+			if (Factions.hostile(a, b)) {
+				continue; // already enemies: the fighting speaks for itself
+			}
+			Companion[] spark = null;
+			float sociable = 0;
+			for (Companion[] meet : e.getValue()) {
+				for (int k = 0; k < 2 && spark == null; k++) {
+					float aggr = meet[k].brain().personality().aggression();
+					if (aggr >= HOTHEAD && RANDOM.nextDouble() < 0.06 + 0.3 * (aggr - HOTHEAD) / (1 - HOTHEAD)) {
+						spark = k == 0 ? meet : new Companion[]{meet[1], meet[0]};
+					}
+				}
+				sociable += (meet[0].brain().personality().sociability() + meet[1].brain().personality().sociability()) / 2;
+			}
+			sociable /= e.getValue().size();
+			if (spark != null && !Factions.inGrace(a, b)) {
+				Companion hothead = spark[0];
+				Companion other = spark[1];
+				Factions.clash(a, b, SPARK);
+				hothead.speech().event("faction.spat", Map.of("name", other.name()), 20 * 60, 1.0F);
+				other.relations().note(hothead.name(), com.botcraft.brain.Relationship.Event.INSULT);
+				AiLog.log("faction", "{} picked a quarrel with {} ({} and {} now {})", hothead.name(), other.name(), a, b,
+					Factions.get(a) == null ? "?" : Factions.get(a).relation(b));
+			} else if (spark == null && sociable > 0.4) {
+				Faction fa = Factions.get(a);
+				if (fa != null && fa.relation(b) < WARM_CAP) {
+					Factions.setRelation(a, b, Math.min(WARM_CAP, fa.relation(b) + (sociable > 0.65 ? 2 : 1)));
+				}
+			}
+		}
+	}
+
+	/** Members this close count as meeting. */
+	private static final double MEET_RANGE = 12;
+	/** Aggression from which a member may start a quarrel. */
+	static final float HOTHEAD = 0.65F;
+	/** A quarrel costs this much standing between the two factions (four or so make enemies). */
+	private static final int SPARK = 8;
+	/** Getting along stops here (just past alliance). */
+	private static final int WARM_CAP = 65;
 
 	private static float mostAggressive(String faction) {
 		float best = 0;

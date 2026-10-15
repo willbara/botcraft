@@ -37,6 +37,23 @@ public final class Leadership {
 
 	/** Called every server tick by the manager. */
 	public static void tick(CompanionManager m, long now) {
+		if (now % DIRECT_TICKS == 23 && Factions.enabled()) {
+			try {
+				recruit(m);
+			} catch (RuntimeException e) {
+				com.botcraft.Botcraft.LOG.error("Error recruiting", e);
+			}
+			for (Faction f : new ArrayList<>(Factions.all())) {
+				String prev = Scope.enter(f.id);
+				try {
+					direct(f, now);
+				} catch (RuntimeException e) {
+					com.botcraft.Botcraft.LOG.error("Error directing {}", f.id, e);
+				} finally {
+					Scope.exit(prev);
+				}
+			}
+		}
 		if (now % CHECK_TICKS != 89 || !Factions.enabled()) {
 			return;
 		}
@@ -210,6 +227,177 @@ public final class Leadership {
 			}
 		}
 		return null;
+	}
+
+	// ---- giving orders --------------------------------------------------------------------------------
+
+	/** How often leaders look over their people. */
+	private static final long DIRECT_TICKS = 20 * 30;
+	/** Chat about how the faction is doing at most this often. */
+	private static final long RALLY_GAP = 20 * 60 * 8;
+	private static final Map<String, Long> LAST_RALLY = new java.util.HashMap<>();
+
+	/**
+	 * The leader (or, while it's away, an officer) looks over the faction: how well stocked the
+	 * base is against what it wants ({@link #performance}), and who's standing about. Idle members
+	 * get the most important open request they can do (the board's work, given out by the leader
+	 * rather than waited for), more of them when the faction is struggling, and everyone else is
+	 * told to get on with something. A struggling faction hears a rallying call; a thriving one,
+	 * praise.
+	 */
+	static void direct(Faction f, long now) {
+		com.botcraft.colony.Colony colony = com.botcraft.colony.Colony.get();
+		if (colony == null || !colony.hasBase()) {
+			return; // the founder's busy finding a home
+		}
+		List<Companion> members = Factions.members(f.id);
+		Companion boss = commander(f, members);
+		if (boss == null || boss.player() == null || boss.perception().isNight()) {
+			return;
+		}
+		double perf = performance(colony);
+		boolean young = now - f.founded < 20 * 60 * 20;
+		int orders = perf < 0.4 || young ? 3 : perf < 0.75 ? 2 : 1;
+		int given = 0;
+		for (Companion c : members) {
+			if (!idle(c)) {
+				continue;
+			}
+			if (given < orders && com.botcraft.brain.Board.openCount() > 0) {
+				com.botcraft.brain.Board.Assignment a = com.botcraft.brain.Board.direct(c, now);
+				if (a != null && c.life().directed(c, a, now)) {
+					given++;
+					if (c != boss) {
+						boss.speech().event("faction.order", Map.of("name", c.name(), "task", a.request().describe()), 20 * 20, 0.9F);
+					}
+					AiLog.log("faction", "{}: {} asks {} for {} (faction at {}%)", f.id, boss.name(), c.name(), a.request().describe(),
+						Math.round(perf * 100));
+					continue;
+				}
+			}
+			c.life().hurry(now); // nothing on the board for them: get on with something of their own
+		}
+		if (now - LAST_RALLY.getOrDefault(f.id, -RALLY_GAP) >= RALLY_GAP && members.size() > 1) {
+			LAST_RALLY.put(f.id, now);
+			if (perf < 0.4) {
+				boss.speech().event("faction.rally", Map.of("faction", f.name), 0, 1.0F);
+			} else if (perf >= 0.85) {
+				boss.speech().event("faction.praise", Map.of("faction", f.name), 0, 0.8F);
+				for (Companion c : members) {
+					if (c != boss) {
+						c.mood().bump(com.botcraft.brain.Mood.Kind.JOY, 0.1F, now);
+					}
+				}
+			}
+		}
+	}
+
+	/** How well stocked the base is: the average share of each stock target it holds (0..1). */
+	static double performance(com.botcraft.colony.Colony colony) {
+		double sum = 0;
+		int n = 0;
+		for (var t : com.botcraft.colony.StockTargets.active(colony)) {
+			int want = t.want(colony);
+			if (want <= 0) {
+				continue;
+			}
+			sum += Math.min(1.0, colony.count(t.counts()) / (double) want);
+			n++;
+		}
+		return n == 0 ? 1.0 : sum / n;
+	}
+
+	/** Living on its own with nothing to do right now (not fighting, sleeping or on an errand). */
+	private static boolean idle(Companion c) {
+		var p = c.player();
+		var obj = c.brain().currentObjective();
+		return c.isOnline() && p != null && !p.isDead() && !p.isSleeping() && "free".equals(c.data.mode) && c.jobs().isIdle()
+			&& obj != com.botcraft.brain.Objective.FIGHT && obj != com.botcraft.brain.Objective.FLEE && obj != com.botcraft.brain.Objective.RETREAT;
+	}
+
+	/** Who gives the orders: the leader if it's about, else an officer. */
+	@Nullable
+	private static Companion commander(Faction f, List<Companion> members) {
+		Companion officer = null;
+		for (Companion c : members) {
+			if (!c.isOnline() || c.player() == null || c.player().isDead()) {
+				continue;
+			}
+			Faction.Rank r = f.rank(c.data.uuid.toString());
+			if (r == Faction.Rank.LEADER) {
+				return c;
+			}
+			if (r == Faction.Rank.OFFICER && officer == null) {
+				officer = c;
+			}
+		}
+		return officer;
+	}
+
+	// ---- recruiting ------------------------------------------------------------------------------------
+
+	/**
+	 * Companions in no faction of their own (the default colony, outside single mode, while it has
+	 * no base and fewer than three members: just spawned, or left over) are taken in. Teams: the
+	 * smallest team, to keep them even. Dynamic: the faction it likes best, nearer ones first.
+	 */
+	static void recruit(CompanionManager m) {
+		if (!com.botcraft.config.CompanionConfig.get().recruit) {
+			return;
+		}
+		List<Companion> loose = Factions.members(Factions.DEFAULT);
+		com.botcraft.colony.Colony home = com.botcraft.colony.Colony.of(Factions.DEFAULT);
+		if (loose.isEmpty() || loose.size() >= 3 || (home != null && home.hasBase())) {
+			return;
+		}
+		List<Faction> open = new ArrayList<>();
+		for (Faction f : Factions.all()) {
+			if (!f.id.equals(Factions.DEFAULT) && !Factions.members(f.id).isEmpty()) {
+				open.add(f);
+			}
+		}
+		if (open.isEmpty()) {
+			return;
+		}
+		for (Companion c : loose) {
+			Faction best = null;
+			double bestScore = Double.NEGATIVE_INFINITY;
+			for (Faction f : open) {
+				List<Companion> fm = Factions.members(f.id);
+				double score;
+				if (Factions.dynamic()) {
+					double like = 0;
+					double nearest = Double.MAX_VALUE;
+					for (Companion o : fm) {
+						like += c.relations().affinity(o.name());
+						if (o.player() != null && c.player() != null && o.player().getWorld() == c.player().getWorld()) {
+							nearest = Math.min(nearest, o.player().distanceTo(c.player()));
+						}
+					}
+					score = like / fm.size() - Math.min(nearest, 256) / 128.0 - fm.size() * 0.02;
+				} else {
+					score = -fm.size(); // teams: keep them even
+				}
+				if (score > bestScore) {
+					bestScore = score;
+					best = f;
+				}
+			}
+			if (best == null) {
+				continue;
+			}
+			Factions.join(c, best.id);
+			Companion boss = commander(best, Factions.members(best.id));
+			if (boss != null && boss != c) {
+				boss.speech().event("faction.recruit", Map.of("name", c.name(), "faction", best.name), 0, 1.0F);
+			}
+			c.speech().event("faction.joined", Map.of("faction", best.name), 0, 0.8F);
+			AiLog.log("faction", "{} joins {}", c.name(), best.id);
+		}
+	}
+
+	public static void clear() {
+		LAST_RALLY.clear();
 	}
 
 	/** Is this companion an officer (or the leader) of its faction? */
