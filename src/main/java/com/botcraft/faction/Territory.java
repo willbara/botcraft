@@ -178,7 +178,7 @@ public final class Territory {
 			long chunk = ChunkPos.toLong(p.getBlockX() >> 4, p.getBlockZ() >> 4);
 			int dx = ChunkPos.getPackedX(chunk) - home.x;
 			int dz = ChunkPos.getPackedZ(chunk) - home.z;
-			if (frontier.contains(chunk) && !OWNER.containsKey(chunk) && dx * dx + dz * dz <= MAX_REACH * MAX_REACH) {
+			if (frontier.contains(chunk) && !OWNER.containsKey(chunk) && dx * dx + dz * dz <= MAX_REACH * MAX_REACH && !noMansLand(f, chunk)) {
 				f.claims.add(chunk);
 				OWNER.put(chunk, f.id);
 				frontier.remove(chunk);
@@ -202,7 +202,7 @@ public final class Territory {
 		for (long c : frontier(f)) {
 			int dx = ChunkPos.getPackedX(c) - home.x;
 			int dz = ChunkPos.getPackedZ(c) - home.z;
-			if (!OWNER.containsKey(c) && dx * dx + dz * dz <= MAX_REACH * MAX_REACH) {
+			if (!OWNER.containsKey(c) && dx * dx + dz * dz <= MAX_REACH * MAX_REACH && !noMansLand(f, c)) {
 				free.add(c);
 			}
 		}
@@ -238,7 +238,7 @@ public final class Territory {
 			double bestScore = Double.NEGATIVE_INFINITY;
 			Set<Long> mine = new HashSet<>(f.claims);
 			for (long c : frontier(f)) {
-				if (OWNER.containsKey(c)) {
+				if (OWNER.containsKey(c) || noMansLand(f, c)) {
 					continue;
 				}
 				int x = ChunkPos.getPackedX(c);
@@ -266,6 +266,20 @@ public final class Territory {
 			OWNER.put(best, f.id);
 		}
 		Factions.markDirty();
+	}
+
+	/**
+	 * Free land touching the land of a faction we're in a ceasefire (or a parley) with: the
+	 * borders are frozen while it holds, so neither side creeps forward into the gap.
+	 */
+	private static boolean noMansLand(Faction f, long chunk) {
+		for (long nb : neighboursOf(chunk)) {
+			String owner = OWNER.get(nb);
+			if (owner != null && !owner.equals(f.id) && (Ceasefire.active(f.id, owner) || Ceasefire.parleying(f.id, owner))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Chunks next to ours that aren't ours. */

@@ -492,6 +492,14 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - `authority [absolute|standing]`: show or switch owner authority (see above);
   - `info <faction>`.
 
+- **Ceasefires and parleys** (dynamic mode, `ceasefires`). A lopsided war ends when the losing side sues for peace. An even one used to go on for ever, every death costing iron and diamond gear. Now, once a war has run 8 minutes and both sides are bleeding (10 deaths between them lately, at least 3 each), every 2 minutes the two leaders may agree to talk: likelier the longer and bloodier it's been, and with calmer, more sociable leaders.
+  - **The parley.** Both leaders call everyone home ("Everyone back to base, now!"), and nobody fights the other side while they talk (leader's rules). Each leader walks out with up to two officers to the ground halfway between the bases; when they're face to face (or after 3 minutes, by messenger) they talk.
+  - **Hotheads.** Then the most aggressive member of either side may refuse it ("Peace? Never!") and the war is on again: a small chance (12-37%, by how hot-headed), halving every round. After 2 minutes of renewed fighting the leaders call everyone home and try again, round after round, until a parley holds.
+  - **The ceasefire** then holds for 40 minutes: no fighting, no raids, no declarations. The terms, RISK-style: the borders freeze (neither side takes free land touching the other's), and the side that lost clearly more in the war gives up border land: a chunk for every 4 deaths more, up to 2.
+  - **Strain.** While it holds, what would have brought war back (a member hit or killed, a raid, a hothead's quarrel) can't, but strains the deal. Strain eases off over time; as it builds the leaders warn each other, and after the first 12 minutes enough of it may make the angrier leader call the ceasefire off. Kept with the factions, so it survives a restart.
+  - **After it runs out** the two are neutral, and for 30 minutes a new war between them is half as likely.
+  - `/companion faction parley <a> <b>` starts a parley; `/companion faction ceasefire <a> <b>` agrees a ceasefire at once; `/companion faction info` shows "(ceasefire, N min left)". (`/companion faction ceasefire` alone still makes every faction and player neutral.)
+
 ### Planning and progression
 
 - **Progression targets** are data, a ladder in `brain/plan/Targets.java`. Free mode first gets the basic wooden and stone tools, then works up the ladder:
@@ -713,6 +721,7 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `farming` | true | Free mode tends the base's farm zone. Asking a companion to farm works either way. |
 | `clearTrees` | true | Upkeep fells the trees standing in the home zone. |
 | `expandFarms` | true | Farmers add plots next to the farm as the base grows, and water each plot from a hole in its middle. |
+| `ceasefires` | true | Dynamic mode: leaders of two factions locked in an even, bloody war may parley and agree a ceasefire. |
 | `taming` | true | Free companions with bones (theirs or the base's) try to tame a wolf they see, when nothing more pressing is on. |
 | `fenceHome` | true | Upkeep puts a fence round the home zone (gates on the paths) once the base has wood to spare. |
 | `fishing` | true | Curious or hungry companions who know of water make a rod and fish. |

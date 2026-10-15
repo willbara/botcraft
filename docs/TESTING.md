@@ -362,5 +362,11 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] Busy on a job (or a leader's order) with a wolf in sight: it carries on with the job; it only goes for the wolf once that's done.
 - [ ] With two wolves of its own already, it leaves wild wolves be.
 
+### 44. Parleys and ceasefires (0.15.3)
+- [ ] Dynamic mode, two evenly matched factions at war: after ~8+ minutes and a dozen deaths, log "will parley"; both leaders say "Everyone back to base", members go home and stop fighting each other, and the leaders (and officers) walk to the middle ground. Face to face, they talk ("You came...").
+- [ ] Either a hothead spoils it ("Peace? Never!", log "spoils the parley ... round N") and fighting resumes, with another parley 2 minutes later; or "agreed a ceasefire at the parley" with terms (borders frozen, maybe a chunk or two ceded). `/companion faction info` shows "(ceasefire, N min left)".
+- [ ] During the ceasefire: no fights or raids between the two, and their land doesn't grow into the gap between them. Hit the other side's members a few times: "the ceasefire's wearing thin"; keep at it after 12 minutes and it may be broken ("the deal's off").
+- [ ] `/companion faction parley red blue` starts one on demand.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

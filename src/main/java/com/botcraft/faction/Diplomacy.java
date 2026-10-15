@@ -67,10 +67,11 @@ public final class Diplomacy {
 			for (int j = i + 1; j < ids.size(); j++) {
 				String a = ids.get(i);
 				String b = ids.get(j);
+				Ceasefire.check(a, b, now);
 				if (Factions.hostile(a, b)) {
 					weariness(a, b, now);
 				} else if (!Factions.friendly(a, b) && now >= TRUCE_UNTIL.getOrDefault(pair(a, b), 0L) && !Factions.inGrace(a, b)
-					&& Territory.neighbours(a, b)) {
+					&& !Ceasefire.active(a, b) && !Ceasefire.parleying(a, b) && Territory.neighbours(a, b)) {
 					maybeWar(a, b, now);
 				}
 			}
@@ -90,6 +91,11 @@ public final class Diplomacy {
 			other = a;
 		}
 		if (weary == null) {
+			// An even war: nobody's losing badly enough to sue. The leaders may still agree to stop.
+			if (Ceasefire.consider(a, b, lostA, lostB, now)) {
+				DEATHS.remove(a + ">" + b);
+				DEATHS.remove(b + ">" + a);
+			}
 			return;
 		}
 		Factions.setRelation(a, b, -5);
@@ -113,7 +119,7 @@ public final class Diplomacy {
 	 */
 	public static boolean mayDeclare(String a, String b, long now) {
 		return Factions.dynamic() && !Factions.hostile(a, b) && !Factions.friendly(a, b) && !Factions.inGrace(a, b)
-			&& now >= TRUCE_UNTIL.getOrDefault(pair(a, b), 0L) && Territory.neighbours(a, b);
+			&& now >= TRUCE_UNTIL.getOrDefault(pair(a, b), 0L) && !Ceasefire.active(a, b) && !Ceasefire.parleying(a, b) && Territory.neighbours(a, b);
 	}
 
 	/** {@code attacker} declares war on {@code target}; its spokesperson says why ({@code key}). */
@@ -141,6 +147,9 @@ public final class Diplomacy {
 		float aggression = mostAggressive(attacker);
 		// A bigger, aggressive faction picks fights; evenly matched or peaceful ones rarely do.
 		double odds = 0.15 * aggression * Math.min(2.0, Math.max(na, nb) / (double) Math.min(na, nb));
+		if (Ceasefire.wary(a, b)) {
+			odds /= 2; // a ceasefire just ran out: neither's keen to start again
+		}
 		if (RANDOM.nextDouble() >= odds) {
 			return;
 		}
@@ -168,7 +177,7 @@ public final class Diplomacy {
 			AiLog.log("faction", "{} and {} meet at the border, already at war", a, b);
 			return;
 		}
-		if (Factions.friendly(a, b) || !Factions.dynamic() || Factions.inGrace(a, b)) {
+		if (Factions.friendly(a, b) || !Factions.dynamic() || Factions.inGrace(a, b) || Ceasefire.active(a, b)) {
 			announce(a, "faction.border_meet", fb.name);
 			AiLog.log("faction", "{} and {} meet at the border", a, b);
 			return;
@@ -314,7 +323,7 @@ public final class Diplomacy {
 	}
 
 	/** Peace: stop the fights already under way between the two. */
-	private static void clearFights(String a, String b) {
+	static void clearFights(String a, String b) {
 		for (Companion c : Factions.members(a)) {
 			c.brain().reconsider();
 		}
@@ -332,7 +341,7 @@ public final class Diplomacy {
 		return times.size();
 	}
 
-	private static String pair(String a, String b) {
+	static String pair(String a, String b) {
 		return a.compareTo(b) < 0 ? a + "|" + b : b + "|" + a;
 	}
 

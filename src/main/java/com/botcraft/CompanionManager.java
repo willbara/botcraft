@@ -101,6 +101,7 @@ public final class CompanionManager {
 		com.botcraft.faction.Territory.clear();
 		com.botcraft.faction.Leadership.clear();
 		com.botcraft.faction.Strategy.clear();
+		com.botcraft.faction.Ceasefire.clear();
 		com.botcraft.brain.EasterEggs.clear();
 		com.botcraft.chat.Lexicon.clear();
 		com.botcraft.colony.Builds.save(server);
@@ -394,6 +395,7 @@ public final class CompanionManager {
 			com.botcraft.faction.Raids.tick(this, tickCount);
 			com.botcraft.faction.Fracture.tick(this, tickCount);
 			com.botcraft.faction.Diplomacy.tick(this, tickCount);
+			com.botcraft.faction.Ceasefire.tick(this, tickCount);
 			com.botcraft.faction.Territory.tick(this, tickCount);
 			com.botcraft.faction.Leadership.tick(this, tickCount);
 			com.botcraft.faction.Merger.tick(this, tickCount);

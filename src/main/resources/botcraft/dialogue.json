@@ -205,5 +205,17 @@
   "faction.order_failed": ["Sorry {leader}, I couldn't manage {task}.", "{leader}, {task} didn't work out.", "Couldn't do {task}, {leader}. Someone else might."],
   "faction.order_thanks": ["Good work, {name}.", "Thanks, {name}.", "Nice one, {name}.", "Well done, {name}."],
   "faction.order_shrug": ["Never mind, {name}. Someone else will.", "Alright, {name}. Leave it.", "Fine, {name}, we'll manage."],
-  "event.tamed": ["Got myself a {mob}! Good dog.", "Look, {player}, the {mob} likes me!", "A new friend. Come on, boy.", "Heh, the {mob}'s mine now."]
+  "event.tamed": ["Got myself a {mob}! Good dog.", "Look, {player}, the {mob} likes me!", "A new friend. Come on, boy.", "Heh, the {mob}'s mine now."],
+  "faction.ceasefire": ["{leader}, enough. Both of us are bleeding for nothing. Ceasefire: you stay off our land, we stay off yours.", "This war's costing us everything we've built. {faction}, let's call a ceasefire.", "{leader}! A ceasefire. We stop, you stop, and nobody touches anybody's chests."],
+  "faction.ceasefire_reply": ["Fine, {leader}. A ceasefire. Don't make me regret it.", "Agreed. We've lost enough. Ceasefire, {faction}.", "Deal, {leader}. Keep your people on your side."],
+  "faction.ceasefire_strain": ["{faction}, that's not what we agreed. One more and the ceasefire's off.", "Careful, {faction}. The ceasefire's wearing thin.", "{faction}, keep your hotheads in line or the deal's done."],
+  "faction.ceasefire_broken": ["That's it, {faction}. The ceasefire's over. To arms!", "{faction} broke faith. The deal's off: we fight!", "Enough of this. No more ceasefire with {faction}."],
+  "faction.ceasefire_over": ["The ceasefire with {faction} is over. Let's hope it stays quiet.", "Our ceasefire with {faction} has run its course. Keep your eyes open."],
+  "faction.parley_call": ["Everyone back to base, now! I'm going to talk with {faction}. Nobody lays a finger on them.", "All of you, home! I'm meeting {faction}'s leader. No fighting while we talk.", "Back to base, all of you. I'll parley with {faction}. Leave them be."],
+  "faction.parley_again": ["Enough! Everyone home again. I'll try {faction} once more.", "Back to base! One more try at talking to {faction}. Hands off them.", "Stand down, all of you. I'm going back to talk with {faction}."],
+  "faction.parley_open": ["{leader}. You came. We're both burying too many of our own.", "So, {leader}. Shall we stop this before there's nothing left to fight over?", "{leader}, let's talk. This war's eating both of us alive."],
+  "faction.parley_reply": ["I'm listening, {leader}.", "Say what you came to say, {leader}.", "Go on, {leader}. My people are tired too."],
+  "faction.parley_hothead": ["Peace? With {faction}? After what they did? Never!", "No deal! {faction} will pay for every one of ours!", "I'm not shaking hands with {faction}. Charge!"],
+  "faction.ceasefire_terms": ["The border stays where it is. Your side's yours, ours is ours.", "Terms: the lines are frozen. Nobody takes another chunk.", "The border holds where it stands. Keep to your side."],
+  "faction.ceasefire_tribute": ["And {faction} gives up {count} chunk(s) of border land for its trouble. The lines freeze there.", "Terms: {count} chunk(s) of {faction}'s border are ours now, and the border freezes.", "{faction} hands over {count} chunk(s) of land. Then nobody moves the border."]
 }

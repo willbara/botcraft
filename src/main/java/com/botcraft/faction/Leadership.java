@@ -256,6 +256,9 @@ public final class Leadership {
 		if (boss == null || boss.player() == null || boss.perception().isNight()) {
 			return;
 		}
+		if (Ceasefire.inParley(f.id)) {
+			return; // everyone's called home while the leader talks
+		}
 		checkIn(f, boss, now);
 		double perf = performance(colony);
 		boolean young = now - f.founded < 20 * 60 * 20;

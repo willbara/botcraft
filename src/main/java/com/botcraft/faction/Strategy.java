@@ -50,6 +50,9 @@ public final class Strategy {
 			return;
 		}
 		NEXT.put(f.id, now + PLAN_TICKS + RANDOM.nextInt(20 * 30));
+		if (Ceasefire.inParley(f.id)) {
+			return;
+		}
 		Colony colony = Colony.get();
 		if (colony == null || !colony.hasBase() || colony.world() == null) {
 			return;

@@ -91,7 +91,7 @@ public class Speech {
 
 	/** What a member still says when only the leader talks (see {@link #factionHushed}): answering its orders. */
 	public static final java.util.Set<String> MEMBER_KEEPS = java.util.Set.of("faction.order_ack", "faction.checkin_reply",
-		"faction.order_done", "faction.order_failed");
+		"faction.order_done", "faction.order_failed", "faction.parley_hothead");
 	/** What the one in charge says when only the leader talks: the faction's business. */
 	private static final java.util.List<String> LEADER_PREFIXES = java.util.List.of("faction.", "bounty.", "standing.", "raid.",
 		"colony.", "found.", "board.");

@@ -313,6 +313,12 @@ public class Life {
 		String h = home.getX() + " " + home.getY() + " " + home.getZ();
 		double fromHome = Math.sqrt(p.getBlockPos().getSquaredDistance(home));
 
+		// 0. Our leader's parleying with the enemy: everyone home and staying put; envoys to the meeting.
+		List<String> parley = com.botcraft.faction.Ceasefire.parleyJobs(c, fromHome);
+		if (parley != null) {
+			return parley.isEmpty() ? null : new Goal("parley", parley, "our leader's gone to parley: we're called home");
+		}
+
 		// 1. Night: sleep if that skips the night (someone else is sleeping, or there's nobody else
 		// to wait for); otherwise carry on with work close to home, carefully: the base's upkeep,
 		// the farm, the night chores, mining from home. Unarmed, arm up or dig in.
