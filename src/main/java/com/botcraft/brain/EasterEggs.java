@@ -30,7 +30,7 @@ import java.util.Set;
  *   <li><b>Technoblade</b>: an ordinary companion, but fearless (never flees), keen on hunting
  *       pigs and enemy companions, and never dies (so he says, every time he's back).</li>
  *   <li><b>Hausemaster</b>: plays for itself (free mode, no faction, no orders), silent, can't be
- *       killed, and teleports away from popbob.</li>
+ *       killed, passive to everyone but popbob once popbob has started it.</li>
  * </ul>
  * Each wears its namesake's skin: the account's skin is fetched when it joins, if it isn't on.
  *
