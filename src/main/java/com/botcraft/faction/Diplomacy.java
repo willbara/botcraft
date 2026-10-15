@@ -291,7 +291,7 @@ public final class Diplomacy {
 	}
 
 	@Nullable
-	static Companion spokesperson(String faction) {
+	public static Companion spokesperson(String faction) {
 		Faction f = Factions.get(faction);
 		Companion best = null;
 		Companion officer = null;

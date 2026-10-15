@@ -229,6 +229,19 @@ public class GatherLogsTask extends Task {
 		if (treeBase == null && area != null) {
 			// Clearing: nothing left standing in the area (that we can get at) means done.
 			AiLog.log(c.name(), "gather: no trees left to clear ({} logs)", gathered);
+			if (gathered == 0) {
+				// Home still lists trees we couldn't find or get at: take them off its list a while.
+				com.botcraft.colony.Colony colony = com.botcraft.colony.Colony.get();
+				if (colony != null) {
+					java.util.Set<BlockPos> taken = new HashSet<>();
+					CLAIMED.forEach((b, who) -> {
+						if (!who.equals(c.name())) {
+							taken.add(b);
+						}
+					});
+					com.botcraft.colony.Upkeep.noneToFell(colony, p.getWorld().getTime(), taken);
+				}
+			}
 			return gathered > 0 ? Status.SUCCESS : quietSuccess();
 		}
 		if (treeBase == null) {

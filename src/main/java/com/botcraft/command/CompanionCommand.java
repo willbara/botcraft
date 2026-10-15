@@ -72,6 +72,11 @@ public final class CompanionCommand {
 					.executes(CompanionCommand::remove)))
 			.then(CommandManager.literal("chat")
 				.executes(CompanionCommand::chatShow)
+				.then(CommandManager.literal("factions")
+					.executes(ctx -> factionChat(ctx, null))
+					.then(CommandManager.argument("who", StringArgumentType.word())
+						.suggests((ctx, b) -> CommandSource.suggestMatching(List.of("leader", "all"), b))
+						.executes(ctx -> factionChat(ctx, StringArgumentType.getString(ctx, "who")))))
 				.then(CommandManager.argument("level", StringArgumentType.word())
 					.suggests((ctx, b) -> CommandSource.suggestMatching(List.of("all", "quiet", "off"), b))
 					.executes(CompanionCommand::chatSet)))
@@ -267,7 +272,30 @@ public final class CompanionCommand {
 	private static int chatShow(CommandContext<ServerCommandSource> ctx) {
 		CompanionConfig cfg = CompanionConfig.get();
 		String level = !cfg.chatEnabled ? "off" : cfg.chatVerbosity;
-		ctx.getSource().sendFeedback(() -> Text.literal("Companion chat: " + level + " (/companion chat all|quiet|off)"), false);
+		ctx.getSource().sendFeedback(() -> Text.literal("Companion chat: " + level + " (/companion chat all|quiet|off); in factions: "
+			+ cfg.factionChat + " (/companion chat factions leader|all)"), false);
+		return 1;
+	}
+
+	/**
+	 * /companion chat factions leader|all: in a faction, only the leader talks (orders, check-ins,
+	 * news) and members just answer it (and players); or everyone talks. Saved in the config.
+	 */
+	private static int factionChat(CommandContext<ServerCommandSource> ctx, @org.jetbrains.annotations.Nullable String who) {
+		CompanionConfig cfg = CompanionConfig.get();
+		if (who == null) {
+			ctx.getSource().sendFeedback(() -> Text.literal("Faction chat: " + cfg.factionChat + " (/companion chat factions leader|all)"), false);
+			return 1;
+		}
+		if (!who.equals("leader") && !who.equals("all")) {
+			ctx.getSource().sendError(Text.literal("Faction chat is leader or all"));
+			return 0;
+		}
+		cfg.factionChat = who;
+		CompanionConfig.save();
+		ctx.getSource().sendFeedback(() -> Text.literal(who.equals("leader")
+			? "Faction chat: leader. Only whoever's in charge talks (orders, check-ins, news); members answer it, and you."
+			: "Faction chat: all. Every member talks."), true);
 		return 1;
 	}
 

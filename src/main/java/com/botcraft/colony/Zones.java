@@ -343,9 +343,20 @@ public final class Zones {
 		return bestScore > 0.5 ? best : null;
 	}
 
-	/** A flat 9x9 a short walk from the core, clear of the other zones. */
+	/**
+	 * A flat 9x9 a short walk from the core, clear of the other zones. In a wood there may be no
+	 * open ground at all: then the best plot that would do once its trees are down (and its bumps
+	 * levelled) is taken anyway. The home zone grows round it, so its trees get felled like any at
+	 * home (see Upkeep), and the farm or pen starts as the ground clears.
+	 */
 	@Nullable
 	private static Zone field(Colony colony, BaseMap map, BlockPos base, String kind) {
+		Zone open = field(colony, map, base, kind, false);
+		return open != null ? open : field(colony, map, base, kind, true);
+	}
+
+	@Nullable
+	private static Zone field(Colony colony, BaseMap map, BlockPos base, String kind, boolean rough) {
 		Zone best = null;
 		double bestScore = -1;
 		int half = FIELD / 2;
@@ -365,7 +376,7 @@ public final class Zones {
 				if (colony.zones().stream().anyMatch(o -> !o.kind.equals(HOME) && o.overlaps(z, 2))) {
 					continue;
 				}
-				double score = usable(map, z, y, kind.equals(FARM)) - dist / 100.0;
+				double score = (rough ? clearable(map, z, y) : usable(map, z, y, kind.equals(FARM))) - dist / 100.0;
 				if (kind.equals(FARM) && waterNear(map, z)) {
 					score += 0.3;
 				}
@@ -409,15 +420,47 @@ public final class Zones {
 		return all == 0 ? 0 : (double) good / all;
 	}
 
+	/**
+	 * Share of the zone that would be good ground once cleared: open ground at the height (or a
+	 * block off, which levelling fixes), and trees (they get felled). Not water, lava or buildings.
+	 */
+	static double clearable(BaseMap map, Zone z, int groundY) {
+		double good = 0;
+		int all = 0;
+		for (int x = z.x1; x <= z.x2; x++) {
+			for (int zz = z.z1; zz <= z.z2; zz++) {
+				all++;
+				BaseMap.Ground g = map.ground(x, zz);
+				int dy = Math.abs(map.groundY(x, zz) - groundY);
+				if (g == BaseMap.Ground.TREE) {
+					good += 0.8;
+				} else if ((g == BaseMap.Ground.SOIL || g == BaseMap.Ground.STONE || g == BaseMap.Ground.SAND || g == BaseMap.Ground.OTHER) && dy <= 1) {
+					good += dy == 0 ? 1.0 : 0.7;
+				}
+			}
+		}
+		for (BaseMap.Feature f : BaseMap.Feature.values()) {
+			for (BlockPos p : map.features(f)) {
+				if (f != BaseMap.Feature.TORCH && z.contains(p)) {
+					good -= 3;
+				}
+			}
+		}
+		return all == 0 ? 0 : good / all;
+	}
+
 	/** The most common ground height in a rectangle, or MIN_VALUE if the map doesn't cover it. */
 	private static int levelOf(BaseMap map, int x1, int z1, int x2, int z2) {
 		Map<Integer, Integer> counts = new HashMap<>();
 		for (int x = x1; x <= x2; x++) {
 			for (int z = z1; z <= z2; z++) {
-				if (map.ground(x, z) == BaseMap.Ground.UNKNOWN) {
+				BaseMap.Ground g = map.ground(x, z);
+				if (g == BaseMap.Ground.UNKNOWN) {
 					return Integer.MIN_VALUE;
 				}
-				counts.merge(map.groundY(x, z), 1, Integer::sum);
+				if (g != BaseMap.Ground.TREE) { // (a tree's column reads as its trunk's top)
+					counts.merge(map.groundY(x, z), 1, Integer::sum);
+				}
 			}
 		}
 		return counts.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse(Integer.MIN_VALUE);
