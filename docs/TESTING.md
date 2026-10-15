@@ -350,5 +350,12 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] Every so often a curious member is sent scouting ("go and see what's out past the border"), walks 120-200 blocks out and comes home.
 - [ ] Dynamic mode, a poorly stocked faction with an aggressive leader next to a well stocked, smaller neighbour: it declares war for their stores and raids at once (log: "goes to war with ... for their stores").
 
+### 42. Farms in a wood, faction chat, respawning on the right side (0.15.1)
+- [ ] A base founded in a wood (no open 9x9 nearby): `/companion colony` shows a farm and a pen within a few minutes; their trees get felled ("clearing the trees at home"); the farm gets tilled and planted as the ground clears.
+- [ ] A new farm and nobody has seeds: the farmer pulls up grass round the farm (up to 20 blocks out) and plants what drops. Put seeds in a base chest: the farmer takes them first.
+- [ ] A base whose remaining home trees can't be reached: members don't loop "clearing the trees at home" every couple of seconds (log: at most one empty "no trees left to clear" per few minutes per base).
+- [ ] Teams mode: only leaders talk ("X, see to ..."), the member answers ("On it"), the leader checks in every ~2 minutes, the member reports back and is thanked. Other members are silent unless you talk to them. `/companion chat factions all` brings the old chatter back.
+- [ ] Move a companion from Blue to Red (`/companion faction join SomeBot red`) after it slept in a bed at Blue's base, then kill it: it comes back at Red's base, not Blue's (log: "won't respawn at its bed").
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

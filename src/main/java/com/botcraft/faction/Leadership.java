@@ -256,6 +256,7 @@ public final class Leadership {
 		if (boss == null || boss.player() == null || boss.perception().isNight()) {
 			return;
 		}
+		checkIn(f, boss, now);
 		double perf = performance(colony);
 		boolean young = now - f.founded < 20 * 60 * 20;
 		int orders = perf < 0.4 || young ? 3 : perf < 0.75 ? 2 : 1;
@@ -269,7 +270,7 @@ public final class Leadership {
 				if (a != null && c.life().directed(c, a, now)) {
 					given++;
 					if (c != boss) {
-						boss.speech().event("faction.order", Map.of("name", c.name(), "task", a.request().describe()), 20 * 20, 0.9F);
+						order(f, boss, c, a.request().describe(), now);
 					}
 					AiLog.log("faction", "{}: {} asks {} for {} (faction at {}%)", f.id, boss.name(), c.name(), a.request().describe(),
 						Math.round(perf * 100));
@@ -399,6 +400,75 @@ public final class Leadership {
 
 	public static void clear() {
 		LAST_RALLY.clear();
+		ORDERS.clear();
+	}
+
+	// ---- orders and check-ins ------------------------------------------------------------------------
+
+	/** An order out: who gave it, what for, and when the giver last asked how it's going. */
+	private static final class Order {
+		final String faction;
+		final String boss;
+		final String task;
+		long lastCheck;
+
+		Order(String faction, String boss, String task, long now) {
+			this.faction = faction;
+			this.boss = boss;
+			this.task = task;
+			this.lastCheck = now;
+		}
+	}
+
+	/** Orders out, by the member carrying them out. */
+	private static final Map<String, Order> ORDERS = new java.util.HashMap<>();
+	/** How often the one in charge asks how an order's going. */
+	static final long CHECKIN_TICKS = 20 * 60 * 2;
+	/** A member answers this long after it's spoken to (so the two lines come in order). */
+	private static final int ANSWER_DELAY = 50;
+
+	/** The one in charge gives {@code c} an order out loud; {@code c} says it's on it. */
+	private static void order(Faction f, Companion boss, Companion c, String task, long now) {
+		ORDERS.put(c.name(), new Order(f.id, boss.name(), task, now));
+		boss.speech().event("faction.order", Map.of("name", c.name(), "task", task), 0, 1.0F);
+		c.speech().sayIn("faction.order_ack", null, Map.of("leader", boss.name(), "task", task), ANSWER_DELAY);
+	}
+
+	/** Every so often, the one in charge asks those still on its orders how it's going; they answer. */
+	private static void checkIn(Faction f, Companion boss, long now) {
+		CompanionManager m = CompanionManager.get();
+		for (var it = ORDERS.entrySet().iterator(); it.hasNext(); ) {
+			var e = it.next();
+			Order o = e.getValue();
+			if (!o.faction.equals(f.id)) {
+				continue;
+			}
+			Companion c = m == null ? null : m.byName(e.getKey());
+			if (c == null || !c.isOnline() || !c.life().onOrder() || !f.id.equals(Factions.idOf(c))) {
+				it.remove(); // gone, or moved on without a word (it'll say when it finishes)
+				continue;
+			}
+			if (now - o.lastCheck < CHECKIN_TICKS || c == boss) {
+				continue;
+			}
+			o.lastCheck = now;
+			boss.speech().event("faction.checkin", Map.of("name", c.name(), "task", o.task), 0, 1.0F);
+			c.speech().sayIn("faction.checkin_reply", null, Map.of("leader", boss.name(), "task", o.task, "doing", c.describeActivity()), ANSWER_DELAY);
+		}
+	}
+
+	/** {@code c} finished (or gave up on) an order: it reports back, and gets a word of thanks. */
+	public static void reportBack(Companion c, boolean ok, long now) {
+		Order o = ORDERS.remove(c.name());
+		if (o == null) {
+			return;
+		}
+		c.speech().event(ok ? "faction.order_done" : "faction.order_failed", Map.of("leader", o.boss, "task", o.task), 0, 1.0F);
+		CompanionManager m = CompanionManager.get();
+		Companion boss = m == null ? null : m.byName(o.boss);
+		if (boss != null && boss != c && boss.isOnline()) {
+			boss.speech().sayIn(ok ? "faction.order_thanks" : "faction.order_shrug", null, Map.of("name", c.name(), "task", o.task), ANSWER_DELAY);
+		}
 	}
 
 	/** Is this companion an officer (or the leader) of its faction? */

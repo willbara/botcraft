@@ -288,8 +288,46 @@ public final class Factions {
 				dirty = true; // a rank in the faction it left goes with it
 			}
 		}
+		rehome(c, id);
 		c.brain().reconsider();
 		syncTeams();
+	}
+
+	/**
+	 * A new faction with a base: that's home now, and a bed somewhere else (at the old faction's
+	 * base) is no longer ours to sleep or come back to life in. Without this, members who changed
+	 * sides kept respawning at their old base: in the middle of their enemies, once at war.
+	 */
+	private static void rehome(Companion c, String id) {
+		if (loners(id)) {
+			return;
+		}
+		com.botcraft.colony.Colony col = com.botcraft.colony.Colony.of(id);
+		if (col == null || !col.hasBase() || col.world() == null) {
+			return;
+		}
+		var w = col.world();
+		String dim = w.getRegistryKey().getValue().toString();
+		var home = c.memory().place("home");
+		if (home == null || !dim.equals(home.dim) || !com.botcraft.colony.Zones.inHome(col, w, home.pos())) {
+			c.memory().setPlace("home", col.base(), dim, w.getTime());
+		}
+		var bed = c.memory().place("bed");
+		if (bed != null && (!dim.equals(bed.dim) || !com.botcraft.colony.Zones.inHome(col, w, bed.pos()))) {
+			c.memory().forgetPlace("bed");
+		}
+	}
+
+	/** The faction (not {@code ours}, and not the factionless) whose base this spot is at, or null. */
+	@Nullable
+	public static String foreignBase(String ours, net.minecraft.server.world.ServerWorld w, net.minecraft.util.math.BlockPos pos) {
+		for (com.botcraft.colony.Colony o : com.botcraft.colony.Colony.all()) {
+			if (o.hasBase() && !o.id().equals(ours) && !loners(o.id())
+				&& (o.near(w, pos, com.botcraft.colony.Colony.BASE_RADIUS) || com.botcraft.colony.Zones.inHome(o, w, pos))) {
+				return o.id();
+			}
+		}
+		return null;
 	}
 
 	// ---- between factions -----------------------------------------------------------------------

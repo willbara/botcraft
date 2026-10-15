@@ -197,5 +197,12 @@
   "faction.merge_join": ["We're with {faction} now. Glad to be back together.", "{faction} it is. No point standing apart.", "Joining {faction}. Let's make it work."],
   "faction.war_resources": ["{faction} sits on full chests while we go hungry. Not any more: war!", "We need what {faction} has. Arm up, we're taking it.", "{faction} won't share? Then we'll take. To war!"],
   "faction.expand": ["{name}, take a few of us and stake out the land past our border.", "We need more room. {name}, go claim the ground out there.", "{name}, push our border out. That land should be ours."],
-  "faction.scout": ["{name}, go and see what's out past the border. Report back.", "Scout ahead for us, {name}. I want to know who our neighbours are.", "{name}, take a look around out there and come back safe."]
+  "faction.scout": ["{name}, go and see what's out past the border. Report back.", "Scout ahead for us, {name}. I want to know who our neighbours are.", "{name}, take a look around out there and come back safe."],
+  "faction.order_ack": ["On it, {leader}.", "Sure thing, {leader}: {task}.", "Got it. {task}, coming up.", "Okay {leader}, I'll see to it.", "Yes, {leader}."],
+  "faction.checkin": ["{name}, how's {task} coming along?", "{name}, how's it going with {task}?", "Any progress on {task}, {name}?", "{name}? Still on {task}?"],
+  "faction.checkin_reply": ["Still at it, {leader}: {doing}.", "Getting there. {doing}.", "Working on it, {leader}. {doing}.", "Nearly. {doing}."],
+  "faction.order_done": ["Done, {leader}: {task}.", "{leader}, that's {task} sorted.", "All done with {task}, {leader}.", "Finished {task}."],
+  "faction.order_failed": ["Sorry {leader}, I couldn't manage {task}.", "{leader}, {task} didn't work out.", "Couldn't do {task}, {leader}. Someone else might."],
+  "faction.order_thanks": ["Good work, {name}.", "Thanks, {name}.", "Nice one, {name}.", "Well done, {name}."],
+  "faction.order_shrug": ["Never mind, {name}. Someone else will.", "Alright, {name}. Leave it.", "Fine, {name}, we'll manage."]
 }

@@ -60,7 +60,44 @@ public final class Upkeep {
 	private static final java.util.Map<String, List<Work>> LATEST = new java.util.HashMap<>();
 	private static final java.util.Map<String, Long> LATEST_AT = new java.util.HashMap<>();
 
+	/** Per colony: trees a clearing job couldn't find or get at (by base), and until when they're left be. */
+	private static final java.util.Map<String, java.util.Map<BlockPos, Long>> UNFELLABLE = new java.util.HashMap<>();
+	/** How long a tree nobody could get at is left off the list. */
+	private static final long UNFELLABLE_TICKS = 20 * 60 * 10;
+
 	private Upkeep() {
+	}
+
+	/**
+	 * A clearing job looked and found none of the listed trees it could fell (hidden, unreachable,
+	 * built, in enemy land, or already being felled by someone else): take them off the list for a
+	 * while, so the base doesn't keep sending people to clear trees that aren't there for them.
+	 * Trees in {@code takenBy} are someone else's work right now and stay listed.
+	 */
+	public static void noneToFell(Colony colony, long now, java.util.Set<BlockPos> taken) {
+		java.util.Map<BlockPos, Long> skip = UNFELLABLE.computeIfAbsent(colony.id(), k -> new java.util.HashMap<>());
+		List<Work> kept = new ArrayList<>();
+		for (Work w : LATEST.getOrDefault(colony.id(), List.of())) {
+			if (w.kind() == Kind.FELL && !taken.contains(w.pos())) {
+				skip.put(w.pos(), now + UNFELLABLE_TICKS);
+			} else {
+				kept.add(w);
+			}
+		}
+		LATEST.put(colony.id(), kept);
+	}
+
+	private static boolean unfellable(Colony colony, BlockPos base, long now) {
+		java.util.Map<BlockPos, Long> skip = UNFELLABLE.get(colony.id());
+		if (skip == null) {
+			return false;
+		}
+		Long until = skip.get(base);
+		if (until != null && (now > until || now < until - UNFELLABLE_TICKS)) {
+			skip.remove(base);
+			return false;
+		}
+		return until != null;
 	}
 
 	/** How many jobs of this kind are waiting at this colony's home (as last found). */
@@ -121,7 +158,7 @@ public final class Upkeep {
 			clearGround(colony, w, map, area, out);
 		}
 		if (com.botcraft.config.CompanionConfig.get().clearTrees && Experiments.on("clearTrees")) {
-			trees(w, map, home, out);
+			trees(colony, w, map, home, out);
 		}
 		if (com.botcraft.config.CompanionConfig.get().fenceHome && Experiments.on("fenceHome") && woodToSpare(colony)) {
 			fences(colony, w, map, home, out);
@@ -214,7 +251,8 @@ public final class Upkeep {
 	 * Natural trees standing in the home zone (their trunks' lowest logs): they take the room the
 	 * zones need and hide the ground monsters spawn on. Felled with the tidying.
 	 */
-	private static void trees(ServerWorld w, BaseMap map, Zone home, List<Work> out) {
+	private static void trees(Colony colony, ServerWorld w, BaseMap map, Zone home, List<Work> out) {
+		long now = w.getTime();
 		java.util.Set<BlockPos> bases = new java.util.HashSet<>();
 		BlockPos.Mutable m = new BlockPos.Mutable();
 		for (int x = home.x1; x <= home.x2; x++) {
@@ -231,7 +269,8 @@ public final class Upkeep {
 					m.move(0, -1, 0);
 				}
 				BlockPos base = m.toImmutable();
-				if (bases.size() < MAX_TREES && !Builds.recorded(w, base) && Builds.partOfTree(w, base) && bases.add(base)) {
+				if (bases.size() < MAX_TREES && !Builds.recorded(w, base) && Builds.partOfTree(w, base) && !unfellable(colony, base, now)
+					&& bases.add(base)) {
 					out.add(new Work(Kind.FELL, base));
 				}
 			}
@@ -419,5 +458,6 @@ public final class Upkeep {
 	public static void clear() {
 		LATEST.clear();
 		LATEST_AT.clear();
+		UNFELLABLE.clear();
 	}
 }
