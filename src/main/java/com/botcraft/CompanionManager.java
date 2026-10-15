@@ -100,6 +100,7 @@ public final class CompanionManager {
 		com.botcraft.faction.Diplomacy.clear();
 		com.botcraft.faction.Territory.clear();
 		com.botcraft.faction.Leadership.clear();
+		com.botcraft.faction.Strategy.clear();
 		com.botcraft.brain.EasterEggs.clear();
 		com.botcraft.chat.Lexicon.clear();
 		com.botcraft.colony.Builds.save(server);

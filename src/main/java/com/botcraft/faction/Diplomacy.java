@@ -107,6 +107,23 @@ public final class Diplomacy {
 		}
 	}
 
+	/**
+	 * May {@code a} declare war on {@code b} now? Not friends, not already at war, no grace or
+	 * truce in the way, and (with territory on) their land touches.
+	 */
+	public static boolean mayDeclare(String a, String b, long now) {
+		return Factions.dynamic() && !Factions.hostile(a, b) && !Factions.friendly(a, b) && !Factions.inGrace(a, b)
+			&& now >= TRUCE_UNTIL.getOrDefault(pair(a, b), 0L) && Territory.neighbours(a, b);
+	}
+
+	/** {@code attacker} declares war on {@code target}; its spokesperson says why ({@code key}). */
+	public static void declare(String attacker, String target, String key, long now) {
+		Factions.setRelation(attacker, target, -50);
+		Faction t = Factions.get(target);
+		announce(attacker, key, t == null ? target : t.name);
+		AiLog.log("faction", "{} declared war on {} ({})", attacker, target, key);
+	}
+
 	/** Neutral neighbours: an aggressive, bigger faction may declare war. */
 	private static void maybeWar(String a, String b, long now) {
 		Colony ca = Colony.of(a);
