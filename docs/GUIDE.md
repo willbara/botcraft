@@ -431,7 +431,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
   | a quiet in-game day | 10% of the way back to where you started |
 
   The bands are trusted (60+), friendly (20+), neutral, and hostile (-30 or less), with a 5-point margin before you drop out of one, so a player near a threshold doesn't flicker. The companion it happened to (and friends who saw it) also remember it personally, and the victim calls it out in chat ("Steve just attacked me!"). An enemy can't open a companion's inventory. `/companion standing <faction> [player] [value]` shows or sets it; `/companion faction info <faction>` lists everyone.
-- **Owner authority** (`ownerAuthority`): `absolute` (the default) means your own companions always obey you and never treat you as an enemy, whatever you do. They still feel it: hitting or killing one is remembered (it and its friends like and trust you less), they say so ("I'll still do what you say. But I don't trust you any more."), and the faction's standing for you falls like anyone's (see `/companion standing`), but there's no bounty and no fighting back. `standing` means you're judged like anyone else, starting trusted at `ownerStartStanding`: hit them enough and they stop listening, fight back, and put a price on your head.
+- **Owner authority** (`ownerAuthority`, or in game `/companion faction authority absolute|standing`, saved to the config): `absolute` (the default) means your own companions always obey you and never treat you as an enemy, whatever you do. They still feel it: hitting or killing one is remembered (it and its friends like and trust you less), they say so ("I'll still do what you say. But I don't trust you any more."), and the faction's standing for you falls like anyone's (see `/companion standing`), but there's no bounty and no fighting back. `standing` means you're judged like anyone else, starting trusted at `ownerStartStanding`: hit them enough and they stop listening, fight back, and put a price on your head.
 - **Warfare** (`warfare`, or per faction with `/companion faction warfare <level> [faction]`):
   - **off:** never fight players or other factions.
   - **defend** (the default): fight whoever just hit them, and enemies (hostile players, enemy factions' companions) who are inside their base (48 blocks) or on their land, who just attacked one of them, or who are wanted.
@@ -463,6 +463,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - `join <companion> <faction>`;
   - `member <faction> <player or companion> <member|officer|leader|remove>`: a companion given a rank also joins the faction. Its leader founds the faction's base and speaks for it (truces, declarations of war). Ranks given this way are never changed by the automatic leadership below. A companion still following you stays with you; say "do your own thing" to let it live with its faction;
   - `relation`, `raid`, `ceasefire`;
+  - `authority [absolute|standing]`: show or switch owner authority (see above);
   - `info <faction>`.
 
 ### Planning and progression

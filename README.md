@@ -60,7 +60,7 @@ All commands need permission level 2 by default (`commandPermissionLevel`).
 | `/companion goals <name>` | Its goal tree: what free mode is choosing between, the scores, what's put aside after failing and for how long. |
 | `/companion archetype <name> <type>` | Give it a preset character: miner, farmer, guard, scout, builder, trader, leader, hothead, coward or joker. |
 | `/companion trait <name> <trait> <0..1>` | Set one personality trait. |
-| `/companion faction` | Factions: `mode single\|teams\|dynamic`, `teams red blue [owner]`, `warfare off\|defend\|pvp\|raid [faction]`, `create`, `remove`, `join <companion> <faction>`, `member <faction> <player> <rank>`, `relation <a> <b> <allied\|neutral\|hostile>`, `raid <faction>`, `ceasefire`, `info <faction>`. |
+| `/companion faction` | Factions: `mode single\|teams\|dynamic`, `teams red blue [owner]`, `warfare off\|defend\|pvp\|raid [faction]`, `create`, `remove`, `join <companion> <faction>`, `member <faction> <player> <rank>`, `relation <a> <b> <allied\|neutral\|hostile>`, `raid <faction>`, `ceasefire`, `authority absolute\|standing` (whether owners must earn obedience too), `info <faction>`. |
 | `/companion standing <faction> [player] [value]` | What a faction thinks of players (-100..100), or set it. |
 | `/companion stop <name>` | Stays put and drops any job. |
 | `/companion task <name> <text>` | Anything you could say in chat, for example `get 10 logs then craft a stone pickaxe`. |
