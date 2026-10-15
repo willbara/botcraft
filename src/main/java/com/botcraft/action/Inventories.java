@@ -214,6 +214,27 @@ public final class Inventories {
 		return changed;
 	}
 
+	/** A shield in the off hand if we have one (it blocks there). @return true if anything changed */
+	public static boolean equipShield(ServerPlayerEntity p) {
+		if (p.getOffHandStack().isOf(Items.SHIELD)) {
+			return false;
+		}
+		PlayerInventory inv = p.getInventory();
+		int slot = find(inv, s -> s.isOf(Items.SHIELD));
+		if (slot < 0 || (!p.getOffHandStack().isEmpty() && p.getOffHandStack().isOf(Items.TOTEM_OF_UNDYING))) {
+			return false;
+		}
+		ItemStack off = p.getOffHandStack().copy();
+		p.equipStack(EquipmentSlot.OFFHAND, inv.getStack(slot).copy());
+		inv.setStack(slot, off);
+		return true;
+	}
+
+	/** Has a shield (carried or in the off hand). */
+	public static boolean hasShield(ServerPlayerEntity p) {
+		return p.getOffHandStack().isOf(Items.SHIELD) || find(p.getInventory(), s -> s.isOf(Items.SHIELD)) >= 0;
+	}
+
 	/**
 	 * Best food slot, or -1. Normal food scores by hunger + saturation restored; "bad" food
 	 * (poison/hunger effects) only when {@code starving}.

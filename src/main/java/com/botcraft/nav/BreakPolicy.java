@@ -72,7 +72,7 @@ public final class BreakPolicy {
 	/** A throwaway block (dirt, cobblestone...) that a companion put down here. */
 	public static boolean placedByCompanion(ServerWorld world, BlockPos pos, BlockState state) {
 		var colony = com.botcraft.colony.Colony.get();
-		return colony != null && com.botcraft.util.Experiments.on("placedLedger") && com.botcraft.action.Inventories.isThrowaway(new net.minecraft.item.ItemStack(state.getBlock().asItem()))
+		return colony != null && com.botcraft.util.Experiments.on("placedLedger") && com.botcraft.colony.Upkeep.throwaway(state)
 			&& colony.placedByCompanion(world.getRegistryKey().getValue().toString(), pos);
 	}
 

@@ -43,6 +43,11 @@ public final class Jobs {
 		try {
 			switch (w[0]) {
 				case "gather" -> {
+					if (w.length > 3 && w[3].equals("home")) {
+						var colony = com.botcraft.colony.Colony.get();
+						var home = colony == null ? null : colony.zone(com.botcraft.colony.Zones.HOME);
+						return home == null ? null : new GatherLogsTask(c, num(w, 2, 256), home);
+					}
 					return new GatherLogsTask(c, num(w, 2, 16));
 				}
 				case "mine" -> {
@@ -78,6 +83,24 @@ public final class Jobs {
 				}
 				case "tidy" -> {
 					return new com.botcraft.brain.task.TidyTask(c);
+				}
+				case "raid" -> {
+					return w.length > 1 && com.botcraft.faction.Factions.get(w[1]) != null ? new com.botcraft.brain.task.RaidTask(c, w[1]) : null;
+				}
+				case "found" -> {
+					return new com.botcraft.brain.task.FoundTask(c);
+				}
+				case "steal" -> {
+					return w.length > 1 && com.botcraft.colony.Colony.of(w[1]) != null ? new com.botcraft.brain.task.StealTask(c, w[1]) : null;
+				}
+				case "farm" -> {
+					return new com.botcraft.brain.task.FarmTask(c, num(w, 1, 0));
+				}
+				case "fish" -> {
+					return new com.botcraft.brain.task.FishTask(c, num(w, 1, 5));
+				}
+				case "tame" -> {
+					return new com.botcraft.brain.task.TameTask(c);
 				}
 				case "dance" -> {
 					return new com.botcraft.brain.task.DanceTask(c);
@@ -132,7 +155,7 @@ public final class Jobs {
 	public static String describe(String spec) {
 		String[] w = base(spec).split(" ");
 		return switch (w[0]) {
-			case "gather" -> "chop " + num(w, 2, 16) + " logs";
+			case "gather" -> w.length > 3 && w[3].equals("home") ? "clear the trees at home" : "chop " + num(w, 2, 16) + " logs";
 			case "mine" -> {
 				OreKind k = w.length > 1 ? OreKind.byWord(w[1]) : null;
 				yield "mine " + num(w, 2, 8) + " " + (k == null ? w[1] : k.noun());
@@ -151,6 +174,15 @@ public final class Jobs {
 			case "dance" -> "dance";
 			case "light" -> "light up the base";
 			case "tidy" -> "tidy up the base";
+			case "farm" -> "tend the farm";
+			case "fish" -> "go fishing";
+			case "tame" -> "tame a wolf";
+			case "found" -> "found our base";
+			case "steal" -> "make trouble at a base";
+			case "raid" -> {
+				var f = w.length > 1 ? com.botcraft.faction.Factions.get(w[1]) : null;
+				yield "raid " + (f == null ? (w.length > 1 ? w[1] : "the enemy") : f.name);
+			}
 			case "withdraw" -> "get " + label(w.length > 1 ? w[1] : "food") + " from the chests";
 			case "gear" -> "get " + (w.length > 1 ? "a " + w[1].replace('_', ' ') : "gear");
 			case "smelt" -> {

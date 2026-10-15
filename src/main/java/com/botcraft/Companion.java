@@ -69,7 +69,21 @@ public class Companion {
 	private final com.botcraft.brain.Watchdog watchdog = new com.botcraft.brain.Watchdog();
 	private final com.botcraft.brain.Failsafe failsafe = new com.botcraft.brain.Failsafe();
 	private final com.botcraft.brain.Lighting lighting = new com.botcraft.brain.Lighting();
-	private final com.botcraft.brain.Popbob popbob = new com.botcraft.brain.Popbob();
+	/** An easter egg's own touches, and which egg it's for (rebuilt if that changes). */
+	@Nullable
+	private com.botcraft.brain.Persona persona;
+	@Nullable
+	private com.botcraft.brain.EasterEggs.Kind personaKind;
+
+	@Nullable
+	public com.botcraft.brain.Persona persona() {
+		var kind = com.botcraft.brain.EasterEggs.of(this);
+		if (kind != personaKind) {
+			personaKind = kind;
+			persona = com.botcraft.brain.EasterEggs.newPersona(kind);
+		}
+		return persona;
+	}
 	/** Recent deaths (where, when): don't keep walking back into the same danger. */
 	private final java.util.ArrayDeque<long[]> recentDeaths = new java.util.ArrayDeque<>();
 	private boolean lastDeathUnrecoverable;
@@ -77,6 +91,8 @@ public class Companion {
 	public long baseUnreachableUntil;
 	private final EventWatcher events = new EventWatcher();
 	private final Random random = new Random();
+	private final com.botcraft.brain.Mood mood = new com.botcraft.brain.Mood();
+	private final com.botcraft.brain.Relations relations = new com.botcraft.brain.Relations(this);
 
 	private record Heard(UUID sender, List<Intent> intents, boolean append, long due) {
 	}
@@ -85,6 +101,21 @@ public class Companion {
 	private long now;
 	/** Don't try to go to bed again before this tick (after failing to find one). */
 	public long sleepRetryAfter;
+
+	/** Times it was dropped right after joining and sent back in (see CompanionManager). */
+	int rejoinTries;
+	/** The next rejoin is a retry of a failed join (back where it was), not a respawn after dying. */
+	boolean rejoinPending;
+	/** Server tick it last (re)joined: fresh from a respawn it stays out of fights for a minute. */
+	public long spawnedAt = -1_000_000L;
+	/** Killed by a player or another faction's companion last time (no going back for the things). */
+	private boolean lastKilledInFight;
+	/** Who killed us last (a player or another faction's companion), and whether a trip back waits on them leaving. */
+	@Nullable
+	private java.util.UUID lastKiller;
+	private boolean recoveryWaiting;
+	/** AI time (ms) this companion has saved up for heavy work (see TickBudget). */
+	double budgetCredit;
 
 	/** Server tick at which a dead/kicked companion should rejoin; -1 = not scheduled. */
 	long respawnAtTick = -1;
@@ -144,6 +175,17 @@ public class Companion {
 		return life;
 	}
 
+	/** How it feels about the people it knows. */
+	public com.botcraft.brain.Relations relations() {
+		return relations;
+	}
+
+	/** How it feels right now (fear, joy, frustration...). */
+	public com.botcraft.brain.Mood mood() {
+		mood.update(now);
+		return mood;
+	}
+
 	/** What our own work dropped and we still have to pick up. */
 	public com.botcraft.brain.Leftovers leftovers() {
 		return leftovers;
@@ -176,11 +218,26 @@ public class Companion {
 		now = serverTick;
 		perception.tick(serverTick);
 		processHeard();
-		if (serverTick % 40 == 0 && Inventories.equipBestArmor(player)) {
-			AiLog.log(name(), "put on better armour");
+		if (serverTick % 40 == 0) {
+			if (com.botcraft.brain.EasterEggs.noArmour(this)) {
+				com.botcraft.brain.EasterEggs.stripArmour(this);
+			} else if (Inventories.equipBestArmor(player)) {
+				AiLog.log(name(), "put on better armour");
+			}
+		}
+		if (serverTick % 40 == 20 && !player.isUsingItem() && Inventories.equipShield(player)) {
+			AiLog.log(name(), "took my shield in my off hand");
 		}
 		if (serverTick % 100 == 0) {
 			headBackIfLost("idle");
+		}
+		if (serverTick % 1200 == 600 && com.botcraft.config.CompanionConfig.get().nightWork && !player.isSleeping()) {
+			// Working through the night instead of sleeping is a companion's choice, not insomnia:
+			// no phantoms for it (they'd only come after three sleepless nights anyway).
+			player.resetStat(net.minecraft.stat.Stats.CUSTOM.getOrCreateStat(net.minecraft.stat.Stats.TIME_SINCE_REST));
+		}
+		if (recoveryWaiting && serverTick % 100 == 50 && perception.enemyPlayers().isEmpty()) {
+			planRecovery(); // killed in a fight: see whether the killer has gone yet
 		}
 		if (serverTick % 40 == 0 && watchdog.check(this, serverTick)) {
 			onStalled();
@@ -191,6 +248,9 @@ public class Companion {
 		if (serverTick % 5 == 0) {
 			com.botcraft.brain.Blackboard.publish(this);
 		}
+		if (serverTick % 20 == 3) {
+			feel();
+		}
 		if (serverTick % 20 == 0) {
 			Memory.Place home = memory.place("home");
 			String why = failsafe.check(this, serverTick, home != null && dimension().equals(home.dim) ? home.pos() : null);
@@ -198,12 +258,18 @@ public class Companion {
 				rescueHome(why);
 			}
 		}
-		if (com.botcraft.brain.Popbob.is(this)) {
-			popbob.tick(this, serverTick); // the easter egg: no jobs, no plans, just trouble
+		// Easter eggs are the ordinary companion plus a persona's own touches (see brain.Persona).
+		com.botcraft.brain.Persona persona = persona();
+		if (persona != null) {
+			persona.always(this, serverTick);
+		}
+		if (persona != null && persona.ownPlans(this, serverTick)) {
+			tickJobs(serverTick);
 		} else {
-			jobs.tick();
-			life.tick(this, serverTick);
-			brain.tick(serverTick);
+			tickNormal(serverTick);
+		}
+		if (persona != null && com.botcraft.brain.EasterEggs.free(this)) {
+			persona.act(this, serverTick);
 		}
 		nav.tick();
 		actions.tick();
@@ -211,7 +277,69 @@ public class Companion {
 		speech.tick(serverTick);
 	}
 
+	/** Just the jobs we were given and the brain's drives (no free-mode plans of our own). */
+	public void tickJobs(long serverTick) {
+		jobs.tick();
+		brain.tick(serverTick);
+	}
+
+	/** The ordinary routine: jobs, free-mode plans, and the brain's drives (easter eggs use it in between). */
+	public void tickNormal(long serverTick) {
+		jobs.tick();
+		life.tick(this, serverTick);
+		brain.tick(serverTick);
+	}
+
+	/** Once a second: tiredness from working, rest from sleeping, fear from what's around. */
+	private void feel() {
+		mood.update(now);
+		if (player.isSleeping()) {
+			mood.reset(com.botcraft.brain.Mood.Kind.FATIGUE);
+			return;
+		}
+		if (brain.hasJob()) {
+			mood.bump(com.botcraft.brain.Mood.Kind.FATIGUE, 0.0004F, now);
+		}
+		int threats = perception.threats().size();
+		if (threats >= 3) {
+			mood.bump(com.botcraft.brain.Mood.Kind.FEAR, 0.03F * (1.0F - brain.personality().bravery()), now);
+		}
+	}
+
+	/** Took damage: fear, and anger at whoever did it (see faction.Standing for what players get). */
+	public void onDamaged(float amount, @Nullable net.minecraft.entity.Entity attacker) {
+		if (player == null) {
+			return;
+		}
+		float share = amount / Math.max(1.0F, player.getMaxHealth());
+		mood.bump(com.botcraft.brain.Mood.Kind.FEAR, share * (1.5F - brain.personality().bravery()), now);
+		if (attacker instanceof ServerPlayerEntity) {
+			mood.bump(com.botcraft.brain.Mood.Kind.ANGER, 0.2F + share, now);
+		}
+		// React now (fight back, back off), and so do friends close by: a hit is heard and seen.
+		alarm();
+		CompanionManager m = CompanionManager.get();
+		if (m != null) {
+			String faction = com.botcraft.faction.Factions.idOf(this);
+			for (Companion o : m.all()) {
+				CompanionPlayer op = o.player();
+				if (o != this && op != null && o.isOnline() && op.getWorld() == player.getWorld() && op.squaredDistanceTo(player) < ALARM_RANGE * ALARM_RANGE
+					&& com.botcraft.faction.Factions.idOf(o).equals(faction)) {
+					o.alarm();
+				}
+			}
+		}
+	}
+
 	private long nextHeadBack;
+	/** Friends this close to a companion that gets hit look round at once. */
+	private static final double ALARM_RANGE = 24;
+
+	/** Look round and decide again right away (we, or a friend nearby, were just attacked). */
+	public void alarm() {
+		perception.alert();
+		brain.alert();
+	}
 
 	/**
 	 * Don't stay lost: with nothing to do (a job failed, or simply ran out of things to do) and
@@ -262,6 +390,8 @@ public class Companion {
 
 	/** Called after the player joined: "new", "summoned", "restored", "respawned" or "reskinned". */
 	void onSpawned(String reason) {
+		CompanionManager mgr = CompanionManager.get();
+		spawnedAt = mgr == null ? now : mgr.tickCount();
 		nav.stop();
 		actions.reset();
 		if (data.job != null && !brain.hasJob()) {
@@ -269,6 +399,7 @@ public class Companion {
 			jobs.pushFront(List.of(data.job));
 			data.job = null;
 		}
+		com.botcraft.brain.EasterEggs.onSpawned(this, reason);
 		brain.reconsider();
 		AiLog.log(name(), "spawned ({}), personality {}", reason, brain.personality().summary());
 		speech.tick(now);
@@ -308,8 +439,21 @@ public class Companion {
 			return;
 		}
 		long age = player.getWorld().getTime() - death.time;
+		boolean wasWaiting = recoveryWaiting;
+		recoveryWaiting = false;
 		if (age > 20 * 60 * 4 || lastDeathUnrecoverable) {
-			AiLog.log(name(), "not going back for my things ({})", lastDeathUnrecoverable ? "nothing to recover there" : "too long ago");
+			if (!wasWaiting) {
+				AiLog.log(name(), "not going back for my things ({})", lastDeathUnrecoverable ? "nothing to recover there" : "too long ago");
+			}
+			return;
+		}
+		// Killed in a fight: only once the killer has moved off (or died, or left), like a player
+		// waiting for the coast to clear. Checked again every few seconds until the items are gone.
+		if (lastKilledInFight && killerNear(death.pos())) {
+			if (!wasWaiting) {
+				AiLog.log(name(), "waiting for whoever killed me to leave before going back for my things");
+			}
+			recoveryWaiting = true;
 			return;
 		}
 		int nearby = 0;
@@ -328,6 +472,15 @@ public class Companion {
 		jobs.pushFront(List.of("goto " + at.getX() + " " + at.getY() + " " + at.getZ() + " " + RECOVERY));
 		AiLog.log(name(), "going back for my things at {}", at.toShortString());
 		speech.event("event.recover", Map.of(), 0, 0.8F);
+	}
+
+	/** Our last killer is alive within 40 blocks of where we died. */
+	private boolean killerNear(BlockPos at) {
+		if (lastKiller == null) {
+			return false;
+		}
+		ServerPlayerEntity k = server.getPlayerManager().getPlayer(lastKiller);
+		return k != null && k.isAlive() && k.getWorld() == player.getWorld() && k.getBlockPos().getSquaredDistance(at) < 40 * 40;
 	}
 
 	/** The label of the trip back to where we died (it's in the job spec). */
@@ -407,6 +560,7 @@ public class Companion {
 		brain.setJob(null);
 		jobs.abandonRest();
 		life.failed(now);
+		mood.bump(com.botcraft.brain.Mood.Kind.FRUSTRATION, 0.25F, now);
 		speech.event("event.task_failed", Map.of("reason", reason, "job", what), 0, 1.0F);
 	}
 
@@ -414,6 +568,9 @@ public class Companion {
 		AiLog.log(name(), "died");
 		nav.stop();
 		memory.count("deaths", 1);
+		mood.bump(com.botcraft.brain.Mood.Kind.FRUSTRATION, 0.3F, now);
+		mood.reset(com.botcraft.brain.Mood.Kind.FEAR);
+		com.botcraft.brain.Personality.drift(data, "bravery", -0.02F); // once bitten, twice shy
 		// A goal that got us killed is put aside for a while, like one that failed; and the way we
 		// were going about it is remembered as dangerous.
 		life.failed(now);
@@ -422,6 +579,10 @@ public class Companion {
 		}
 		var source = player == null ? null : player.getRecentDamageSource();
 		String cause = source == null ? "unknown" : source.getName();
+		com.botcraft.faction.Incidents.companionKilled(this, source);
+		lastKilledInFight = source != null && source.getAttacker() instanceof ServerPlayerEntity;
+		lastKiller = lastKilledInFight ? source.getAttacker().getUuid() : null;
+		recoveryWaiting = false;
 		lastDeathUnrecoverable = source != null && (source.isIn(net.minecraft.registry.tag.DamageTypeTags.IS_FIRE)
 			|| source.isOf(net.minecraft.entity.damage.DamageTypes.LAVA) || source.isOf(net.minecraft.entity.damage.DamageTypes.DROWN)
 			|| source.isOf(net.minecraft.entity.damage.DamageTypes.OUT_OF_WORLD));
@@ -459,6 +620,9 @@ public class Companion {
 	public void onKill(LivingEntity victim) {
 		AiLog.log(name(), "killed {}", victim.getType().getUntranslatedName());
 		memory.count("killed_" + victim.getType().getUntranslatedName(), 1);
+		mood.bump(com.botcraft.brain.Mood.Kind.JOY, 0.12F, now);
+		mood.bump(com.botcraft.brain.Mood.Kind.FEAR, -0.2F, now);
+		com.botcraft.brain.Personality.drift(data, "aggression", 0.004F);
 		CompanionManager m = CompanionManager.get();
 		if (m != null) {
 			com.botcraft.chat.Social.onKill(this, victim, m.all());
@@ -505,6 +669,9 @@ public class Companion {
 
 	/** Brain callback when a task ends. */
 	public void onTaskFinished(Task task, Status status, boolean interrupt) {
+		if (task instanceof SleepTask && status == Status.SUCCESS) {
+			mood.reset(com.botcraft.brain.Mood.Kind.FATIGUE);
+		}
 		if (task instanceof SleepTask && task.spec() == null) {
 			if (status == Status.FAILED) {
 				sleepRetryAfter = now + 20 * 60;
@@ -537,6 +704,7 @@ public class Companion {
 		}
 		if (status == Status.FAILED) {
 			life.failed(now);
+			mood.bump(com.botcraft.brain.Mood.Kind.FRUSTRATION, 0.25F, now);
 			int dropped = jobs.abandonRest();
 			speech.event(dropped > 0 ? "event.plan_failed" : "event.task_failed",
 				Map.of("reason", task.failReason(), "job", Jobs.describe(task.spec())), 0, 1.0F);
@@ -550,6 +718,8 @@ public class Companion {
 		if (jobs.pending().isEmpty()) {
 			life.succeeded(now);
 		}
+		mood.bump(com.botcraft.brain.Mood.Kind.JOY, 0.08F, now);
+		mood.bump(com.botcraft.brain.Mood.Kind.FRUSTRATION, -0.1F, now);
 		String result = resultPhrase(task);
 		if (!jobs.pending().isEmpty()) {
 			speech.event("event.step_done", Map.of("result", result, "next", Jobs.describe(jobs.pending().get(0))), 0, 0.6F);

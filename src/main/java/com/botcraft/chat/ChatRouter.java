@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
 /**
@@ -55,11 +56,23 @@ public final class ChatRouter {
 				players.add(pl.getGameProfile().getName());
 			}
 		}
-		IntentParser.Parsed parsed = IntentParser.parse(message, names, players);
 		List<Companion> targets = new ArrayList<>();
-		if (parsed.addressed().contains(IntentParser.ALL)) {
+		// "Red team, follow me": everyone in a faction.
+		com.botcraft.faction.Faction team = null;
+		Matcher tm = TEAM_ADDRESS.matcher(IntentParser.normalize(message));
+		if (com.botcraft.faction.Factions.enabled() && tm.find()) {
+			team = com.botcraft.faction.Factions.find(tm.group(1));
+			if (team != null) {
+				message = tm.group(2);
+				targets.addAll(com.botcraft.faction.Factions.members(team.id));
+			}
+		}
+		IntentParser.Parsed parsed = IntentParser.parse(message, names, players);
+		if (team != null) {
+			// (named members on top of the team are fine; the whole team hears it)
+		} else if (parsed.addressed().contains(IntentParser.ALL)) {
 			for (Companion c : m.all()) {
-				if (sender.getUuid().equals(c.data.owner)) {
+				if (sender.getUuid().equals(c.data.owner) || leads(sender, c)) {
 					targets.add(c);
 				}
 			}
@@ -71,14 +84,220 @@ public final class ChatRouter {
 				}
 			}
 		}
-		boolean unknown = parsed.intents().size() == 1 && parsed.intent().type() == Intent.Type.UNKNOWN;
+		List<Intent> intents = parsed.intents();
+		boolean append = parsed.append();
+		boolean direct = parsed.direct() || team != null;
+		boolean unknown = intents.size() == 1 && intents.get(0).type() == Intent.Type.UNKNOWN;
+		long now = sender.getServer().getOverworld().getTime();
+
+		// Teaching words: "Bob, when I say lumber I mean logs".
+		Lexicon.Lesson lesson = targets.isEmpty() ? null : Lexicon.lesson(parsed.rest());
+		if (lesson != null) {
+			teach(sender, targets.get(0), lesson);
+			return;
+		}
+		// Joining a faction: "Bob, join the red team".
+		if (!targets.isEmpty() && joinFaction(sender, targets, parsed.rest())) {
+			return;
+		}
+		// Follow-ups to the last order: "make it 30", "and coal too", "you too, Alice".
+		if (unknown) {
+			Followups.Last last = LAST_ORDERS.get(sender.getUuid());
+			if (last != null && now - last.at() < FOLLOWUP_TICKS) {
+				Followups.Resolved r = Followups.resolve(parsed.rest(), last);
+				if (r != null) {
+					intents = r.intents();
+					append = r.append();
+					unknown = false;
+					direct = true;
+					if (targets.isEmpty() && !r.otherAddressee()) {
+						for (String n : last.to()) {
+							Companion c = m.byName(n);
+							if (c != null) {
+								targets.add(c);
+							}
+						}
+					}
+				}
+			}
+		}
+		if (!unknown && intents.stream().anyMatch(i -> i.type().isOrder()) && !targets.isEmpty()) {
+			LAST_ORDERS.put(sender.getUuid(), new Followups.Last(intents, targets.stream().map(Companion::name).toList(), now));
+		}
 		for (Companion c : targets) {
-			if (!c.isOnline() || (unknown && !parsed.direct())) {
+			if (!c.isOnline() || (unknown && !direct)) {
 				continue; // only mentioned in passing
 			}
-			AiLog.log(c.name(), "heard {} (append={}) from {}: '{}'", parsed.intents(), parsed.append(), sender.getGameProfile().getName(), message);
-			c.hear(sender, parsed.intents(), parsed.append());
+			AiLog.log(c.name(), "heard {} (append={}) from {}: '{}'", intents, append, sender.getGameProfile().getName(), message);
+			c.hear(sender, intents, append);
 		}
+	}
+
+	/** "Red team, ..." / "the blue team: ...". */
+	private static final java.util.regex.Pattern TEAM_ADDRESS = java.util.regex.Pattern.compile("^(?:the |hey |ok |okay )?([a-z0-9_]{1,12}) (?:team|faction|squad)\\b(?: ,)? ?(.*)$");
+	/** "join the red team", "you're with blue now". */
+	private static final java.util.regex.Pattern JOIN = java.util.regex.Pattern.compile(
+		"^(?:(?:go )?join|switch to|you'?re (?:with|on|in)|you are (?:with|on|in)|go to|be on) (?:the )?([a-z0-9_]{1,12})(?: team| faction| side)?(?: now| please)?$");
+	/** How long a follow-up ("make it 30") still refers to the last order. */
+	private static final long FOLLOWUP_TICKS = 20 * 90;
+	/** Each player's last order, for follow-ups. */
+	private static final Map<java.util.UUID, Followups.Last> LAST_ORDERS = new HashMap<>();
+
+	/** A leader or officer of the companion's faction (outside single mode). */
+	private static boolean leads(ServerPlayerEntity sender, Companion c) {
+		if (!com.botcraft.faction.Factions.enabled()) {
+			return false;
+		}
+		var rank = com.botcraft.faction.Factions.of(c).rank(sender.getUuidAsString());
+		return rank == com.botcraft.faction.Faction.Rank.LEADER || rank == com.botcraft.faction.Faction.Rank.OFFICER;
+	}
+
+	/** Learn (or forget) a word, if the speaker may tell this companion what to do. */
+	private static void teach(ServerPlayerEntity sender, Companion c, Lexicon.Lesson lesson) {
+		Map<String, String> vars = new HashMap<>();
+		vars.put("word", lesson.word());
+		if (com.botcraft.faction.Authority.of(c, sender) != com.botcraft.faction.Authority.Level.ORDER) {
+			c.speech().reply("not_owner", sender, vars);
+			return;
+		}
+		if (lesson.forget()) {
+			Lexicon.forget(lesson.word());
+			LexiconStore.save(c.server);
+			vars.put("meaning", "nothing special");
+			c.speech().reply("teach.learned", sender, vars);
+			return;
+		}
+		vars.put("meaning", lesson.meaning());
+		// A routine if the meaning is something to do; otherwise a word for a thing.
+		IntentParser.Parsed meant = IntentParser.parse(lesson.meaning(), List.of(), List.of());
+		boolean routine = meant.intents().stream().anyMatch(i -> i.type() != Intent.Type.UNKNOWN && i.type().isOrder());
+		boolean thing = ItemNames.resolve(lesson.meaning()) != null || CommandTasks.isWoodWord(lesson.meaning()) || OreKind.byWord(lesson.meaning()) != null;
+		if (!routine && !thing && meant.intents().stream().allMatch(i -> i.type() == Intent.Type.UNKNOWN)) {
+			c.speech().reply("teach.unknown", sender, vars);
+			return;
+		}
+		Lexicon.teach(lesson.word(), lesson.meaning());
+		LexiconStore.save(c.server);
+		AiLog.log(c.name(), "learned '{}' = '{}' from {}", lesson.word(), lesson.meaning(), sender.getGameProfile().getName());
+		if (routine) {
+			vars.put("plan", lesson.meaning());
+		}
+		c.speech().reply(routine ? "teach.routine" : "teach.learned", sender, vars);
+	}
+
+	/** "Bob, join the red team": move companions to a faction (for those who may order them). @return true if it was that */
+	private static boolean joinFaction(ServerPlayerEntity sender, List<Companion> targets, String rest) {
+		Matcher jm = JOIN.matcher(rest.trim());
+		if (!com.botcraft.faction.Factions.enabled() || !jm.find()) {
+			return false;
+		}
+		var faction = com.botcraft.faction.Factions.find(jm.group(1));
+		if (faction == null) {
+			return false;
+		}
+		for (Companion c : targets) {
+			Map<String, String> vars = new HashMap<>();
+			vars.put("faction", faction.name);
+			if (com.botcraft.faction.Authority.of(c, sender) != com.botcraft.faction.Authority.Level.ORDER) {
+				c.speech().reply("not_owner", sender, vars);
+				continue;
+			}
+			com.botcraft.faction.Factions.join(c, faction.id);
+			com.botcraft.faction.Factions.markDirty();
+			c.speech().reply("faction.joined", sender, vars);
+		}
+		return true;
+	}
+
+	/** "Do you trust me?" / "do you trust alex?": what we think of them (personally, and as a faction). */
+	private static void trust(Companion c, @Nullable ServerPlayerEntity sender, String about, Map<String, String> vars) {
+		if (!about.isEmpty() && (sender == null || !about.equalsIgnoreCase(sender.getGameProfile().getName()))) {
+			vars.put("person", about);
+			vars.put("feeling", feelingAbout(c, about));
+			c.speech().reply("opinion.person", sender, vars);
+			return;
+		}
+		if (sender == null) {
+			c.speech().reply("standing.trust", null, vars);
+			return;
+		}
+		String name = sender.getGameProfile().getName();
+		float affinity = c.relations().affinity(name);
+		var band = com.botcraft.faction.Factions.standing(com.botcraft.faction.Factions.of(c), sender).band;
+		boolean owner = sender.getUuid().equals(c.data.owner);
+		String key;
+		if (band == com.botcraft.faction.Standing.Band.HOSTILE || affinity < -0.2F) {
+			key = "standing.distrust";
+		} else if (band == com.botcraft.faction.Standing.Band.TRUSTED || (owner && affinity > -0.1F)) {
+			key = "standing.trust";
+		} else if (band == com.botcraft.faction.Standing.Band.FRIENDLY || affinity > 0.2F) {
+			key = "standing.friendly";
+		} else {
+			key = "standing.neutral";
+		}
+		c.speech().reply(key, sender, vars);
+	}
+
+	/** Someone this companion knows (a remembered person or another companion). */
+	private static boolean isPerson(Companion c, String name) {
+		if (name == null || name.isBlank() || name.contains(" ")) {
+			return false;
+		}
+		CompanionManager m = CompanionManager.get();
+		return c.memory().knownPerson(name) != null || (m != null && m.byName(name) != null);
+	}
+
+	/** How a companion feels about someone, in a few words. */
+	static String feelingAbout(Companion c, String name) {
+		float a = c.relations().affinity(name);
+		float t = c.relations().trust(name);
+		if (a > 0.5F) {
+			return "I really like them.";
+		}
+		if (a > 0.15F) {
+			return "They're alright.";
+		}
+		if (a < -0.4F) {
+			return "Can't stand them.";
+		}
+		if (a < -0.1F) {
+			return "Not my favourite person.";
+		}
+		if (t < 0.35F) {
+			return "I don't trust them.";
+		}
+		return c.memory().knownPerson(name) == null ? "Don't know them that well." : "They're fine, I guess.";
+	}
+
+	/** When an apology was last accepted from each player (they only count every few minutes). */
+	private static final Map<String, Long> LAST_APOLOGY = new HashMap<>();
+
+	/**
+	 * "Sorry": if they've hurt us or our faction, it helps a little (more from someone we trust).
+	 * @return true if there was something to forgive (and we answered)
+	 */
+	private static boolean apologise(Companion c, ServerPlayerEntity sender) {
+		var faction = com.botcraft.faction.Factions.of(c);
+		var standing = com.botcraft.faction.Factions.peek(faction, sender.getUuid());
+		String name = sender.getGameProfile().getName();
+		boolean wronged = standing != null && standing.value < standing.baseline - 1;
+		if (!wronged && c.relations().affinity(name) >= 0) {
+			return false;
+		}
+		long now = c.server.getOverworld().getTime();
+		String key = faction.id + "|" + sender.getUuidAsString();
+		Map<String, String> vars = new HashMap<>();
+		if (now - LAST_APOLOGY.getOrDefault(key, -100_000L) < 20 * 60 * 5) {
+			c.speech().reply("apology.again", sender, vars);
+			return true;
+		}
+		LAST_APOLOGY.put(key, now);
+		float trust = c.relations().trust(name);
+		int times = trust > 0.6F ? 2 : 1;
+		var before = com.botcraft.faction.Factions.incident(faction, sender, com.botcraft.faction.Standing.Incident.APOLOGY, times);
+		c.relations().note(name, com.botcraft.brain.Relationship.Event.APOLOGY);
+		c.speech().reply(before != null ? "apology.forgiven" : "apology.accepted", sender, vars);
+		return true;
 	}
 
 	/** "The base needs 64 coal" / "we have enough cobblestone": change what the base keeps. */
@@ -159,13 +378,37 @@ public final class ChatRouter {
 	 */
 	@Nullable
 	public static String respond(Companion c, @Nullable ServerPlayerEntity sender, List<Intent> intents, boolean append) {
+		// For its own faction: its colony, its board (commands and chat arrive outside of its tick).
+		String prev = com.botcraft.faction.Scope.enter(com.botcraft.faction.Factions.idOf(c));
+		try {
+			return respondInScope(c, sender, intents, append);
+		} finally {
+			com.botcraft.faction.Scope.exit(prev);
+		}
+	}
+
+	@Nullable
+	private static String respondInScope(Companion c, @Nullable ServerPlayerEntity sender, List<Intent> intents, boolean append) {
 		Speech speech = c.speech();
+		if (com.botcraft.brain.EasterEggs.silent(c)) {
+			return null; // Herobrine and Hausemaster: no answer at all
+		}
 		if (com.botcraft.brain.Popbob.is(c)) {
 			// The easter egg doesn't take orders, or answer questions nicely.
 			speech.reply("popbob.ignore", sender, new java.util.HashMap<>(Map.of("player", sender == null ? "you" : sender.getGameProfile().getName())));
 			return null;
 		}
-		boolean isOwner = sender == null || c.data.owner == null || sender.getUuid().equals(c.data.owner);
+		// Who may ask what: the owner anything; others by their standing with its faction.
+		com.botcraft.faction.Authority.Level level = com.botcraft.faction.Authority.of(c, sender);
+		if (level == com.botcraft.faction.Authority.Level.NONE && sender != null && intents.stream().anyMatch(i -> i.type() == Intent.Type.SORRY)
+			&& apologise(c, sender)) {
+			return null; // an enemy can still say sorry
+		}
+		if (level == com.botcraft.faction.Authority.Level.NONE) {
+			Map<String, String> vars = new HashMap<>();
+			speech.reply("refuse.hostile", sender, vars);
+			return "they won't listen to you (you're not on good terms)";
+		}
 		List<String> jobs = new ArrayList<>();
 		String mode = null;
 		boolean defend = false;
@@ -174,9 +417,10 @@ public final class ChatRouter {
 
 		for (Intent intent : intents) {
 			Map<String, String> vars = new HashMap<>();
-			if (intent.type().isOrder() && !isOwner) {
-				speech.reply("not_owner", sender, vars);
-				return "not the owner";
+			if (!com.botcraft.faction.Authority.allows(level, intent.type())) {
+				boolean order = intent.type().isOrder();
+				speech.reply(!order ? "refuse.private" : level == com.botcraft.faction.Authority.Level.REQUEST ? "refuse.request" : "not_owner", sender, vars);
+				return order ? "not the owner (and not trusted enough to give orders)" : "they won't tell you that";
 			}
 			switch (intent.type()) {
 				case FOLLOW -> {
@@ -311,6 +555,18 @@ public final class ChatRouter {
 						jobs.addAll(specs);
 					}
 				}
+				case FARM -> {
+					var colony = com.botcraft.colony.Colony.get();
+					if (colony == null || colony.zone(com.botcraft.colony.Zones.FARM) == null) {
+						vars.put("reason", colony == null || !colony.hasBase() ? "we don't have a base yet (say \"this is home\")"
+							: "the base hasn't got a farm yet (it's laid out once the base map has seen the area)");
+						speech.reply("cant.do", sender, vars);
+						error = vars.get("reason");
+					} else {
+						jobs.add(intent.count() > 0 ? "farm " + intent.count() : "farm");
+					}
+				}
+				case FISH -> jobs.add(intent.count() > 0 ? "fish " + intent.count() : "fish");
 				case HUNT -> {
 					String what = intent.item();
 					int n = intent.count() < 0 ? 3 : intent.count();
@@ -355,6 +611,7 @@ public final class ChatRouter {
 				case FOUND -> found(c, sender, intent.item(), vars);
 				case HELP -> speech.reply("help", sender, vars);
 				case STATUS -> speech.reply("status", sender, vars);
+				case TRUST -> trust(c, sender, intent.target(), vars);
 				case GREETING -> {
 					Memory.Person p = sender == null ? null : c.memory().knownPerson(sender.getGameProfile().getName());
 					speech.reply(p != null && p.orders > 3 ? "greeting.friend" : "greeting", sender, vars);
@@ -362,12 +619,28 @@ public final class ChatRouter {
 				case THANKS -> {
 					if (sender != null) {
 						c.memory().person(sender.getGameProfile().getName(), c.server.getOverworld().getTime()).thanks++;
+						c.relations().note(sender.getGameProfile().getName(), com.botcraft.brain.Relationship.Event.THANKS);
 					}
 					speech.reply("thanks", sender, vars);
 				}
 				case JOKE, COMPLIMENT, INSULT, WHO, LOVE, BYE, TIME, FAVORITE, OPINION, FEELING, SORRY -> {
 					if (intent.type() == Intent.Type.COMPLIMENT && sender != null) {
 						c.memory().person(sender.getGameProfile().getName(), c.server.getOverworld().getTime()).thanks++;
+						c.relations().note(sender.getGameProfile().getName(), com.botcraft.brain.Relationship.Event.PRAISE);
+						c.mood().bump(com.botcraft.brain.Mood.Kind.JOY, 0.1F, c.now());
+					}
+					if (intent.type() == Intent.Type.INSULT && sender != null) {
+						c.relations().note(sender.getGameProfile().getName(), com.botcraft.brain.Relationship.Event.INSULT);
+						c.mood().bump(com.botcraft.brain.Mood.Kind.ANGER, 0.1F, c.now());
+					}
+					if (intent.type() == Intent.Type.SORRY && sender != null && apologise(c, sender)) {
+						break; // they had something to apologise for: that's the answer
+					}
+					if (intent.type() == Intent.Type.OPINION && isPerson(c, intent.item())) {
+						vars.put("person", intent.item());
+						vars.put("feeling", feelingAbout(c, intent.item()));
+						speech.reply("opinion.person", sender, vars);
+						break;
 					}
 					SmallTalk.reply(c, sender, intent);
 				}

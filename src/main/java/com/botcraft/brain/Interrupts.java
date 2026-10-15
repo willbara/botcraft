@@ -24,6 +24,9 @@ public final class Interrupts {
 				if (threats.isEmpty() && c.data.defendOwner) {
 					threats = c.perception().ownerThreats();
 				}
+				if (threats.isEmpty() && !c.perception().enemyPlayers().isEmpty()) {
+					yield new FightTask(c, c.perception().enemyPlayers().get(0));
+				}
 				if (threats.isEmpty()) {
 					var popbob = Popbob.near(c, 12);
 					yield popbob == null ? null : new FightTask(c, popbob);

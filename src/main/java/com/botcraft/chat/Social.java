@@ -41,12 +41,12 @@ public final class Social {
 	private static List<Companion> near(Companion c, Collection<Companion> all, double radius) {
 		List<Companion> out = new ArrayList<>();
 		CompanionPlayer p = c.player();
-		if (com.botcraft.brain.Popbob.is(c)) {
+		if (com.botcraft.brain.Popbob.is(c) || com.botcraft.brain.EasterEggs.silent(c)) {
 			return out; // nobody's friend
 		}
 		for (Companion o : all) {
 			CompanionPlayer op = o.player();
-			if (o != c && !com.botcraft.brain.Popbob.is(o) && op != null && o.isOnline() && !op.isDead() && op.getWorld() == p.getWorld() && op.distanceTo(p) <= radius) {
+			if (o != c && !com.botcraft.brain.EasterEggs.silent(o) && !com.botcraft.brain.Popbob.is(o) && op != null && o.isOnline() && !op.isDead() && op.getWorld() == p.getWorld() && op.distanceTo(p) <= radius) {
 				out.add(o);
 			}
 		}
@@ -67,7 +67,7 @@ public final class Social {
 				if (!idle(b) || now < pairCooldown.getOrDefault(key, 0L)) {
 					continue;
 				}
-				float chance = 0.04F * (a.data.chattiness + b.data.chattiness);
+				float chance = 0.04F * (a.data.chattiness + b.data.chattiness) * (a.brain().personality().banter() + b.brain().personality().banter()) / 2;
 				pairCooldown.put(key, now + PAIR_COOLDOWN / 4); // re-roll every ~1.5 min at most
 				if (RANDOM.nextFloat() < chance) {
 					pairCooldown.put(key, now + PAIR_COOLDOWN);
@@ -106,6 +106,9 @@ public final class Social {
 		}
 		String topic = forced != null && (topics.contains(forced)) ? forced : topics.get(RANDOM.nextInt(topics.size()));
 		AiLog.log(a.name(), "banter with {} about {}", b.name(), topic);
+		// Chatting brings companions closer (it's how friendships, and so factions, form).
+		a.relations().note(b.name(), com.botcraft.brain.Relationship.Event.TEAMWORK);
+		b.relations().note(a.name(), com.botcraft.brain.Relationship.Event.TEAMWORK);
 		Map<String, String> va = with(b);
 		Map<String, String> vb = with(a);
 		switch (topic) {
@@ -170,6 +173,7 @@ public final class Social {
 
 	public static void onDeath(Companion dead, Collection<Companion> all) {
 		for (Companion o : near(dead, all, 32)) {
+			o.mood().bump(com.botcraft.brain.Mood.Kind.GRIEF, 0.3F + 0.4F * o.relations().affinity(dead.name()), o.now());
 			o.speech().event("social.friend_died", Map.of("friend", dead.name()), 20 * 30, 0.8F);
 		}
 	}

@@ -4,7 +4,7 @@
 
 | Command | What it covers |
 |---|---|
-| `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts), `Templates` (every key fills with no leftover placeholders) and `SkinUtil` (each default skin maps to a stable v3 UUID). |
+| `./gradlew build` | Compiles. Runs JUnit tests for `IntentParser` (addressing, direct address, chained clauses, append, every intent, item phrases and counts, stack amounts, trust and farming phrases), `Templates` (every key fills with no leftover placeholders), `SkinUtil` (each default skin maps to a stable v3 UUID), `Followups` ("make it 30", "and coal too", "no, I meant gold", "same again", "you too"), `Lexicon` (teaching words and routines), `Personality` (seeded traits, archetypes, bounded drift), `Mood` (half-lives, strongest feeling), `Relationship` (grudges, decay, caps), `Standing` (two hits make an enemy, hysteresis, healing over days), `GoalTree` (personality weights, commitment, doubling backoff, strict order) and `Thompson` (Beta draws). |
 | `./gradlew runGametest` | Headless server, 103 GameTests (the table below lists the early ones, and the pathfinding symptom tests). Results go to `build/gametest/junit.xml`. Enable `verboseAiLogging` in `build/gametest/config/botcraft.json` to see AI traces. |
 | `tools/navbench.sh <name> [workers] [minutes]` | The navigation bench: one companion per server walks its share of 100 fixed start/goal pairs (`tools/navbench-pairs.json`, from seed 12345: 50 across the surface, 25 from the surface down into a cave, 15 from a cave up, 10 cave to cave), carrying a netherite pickaxe with Efficiency V (like the manual Baritone runs it was compared with), 32 cobblestone and bread. Each trip records whether it arrived, ticks, blocks walked against the straight line, searches, nodes, ticks spent waiting on searches, stuck events, jumps, AI ms per server tick and server tick ms. `tools/navbench-compare.py <name> <name>...` puts runs side by side, with times and path lengths over the trips every run completed. The pair list can grow: add a pair where a companion was seen to fail. `tools/navbench-generate.sh` remakes it. `CLASSES_FROM=<dir>` runs an older build's classes. |
 | `tools/bench.sh <name> [trials] [goal] [minutes] [seed]` | The bench: one companion with an empty inventory on a fixed-seed world (12345), told to get a diamond pickaxe (or `iron_pickaxe`, `stone_pickaxe`), from a different fixed start point per trial; trials run side by side. Each milestone (first log, crafting table, wooden pickaxe, first stone, stone pickaxe, coal, furnace, raw iron, iron ingot, iron pickaxe, below y 0, diamond, diamond pickaxe) is timed, with what went wrong in between: stuck events, failed searches, search nodes, failed jobs, deaths. Path search is limited by node counts, not the clock, so the machine's load doesn't change a run. Reports in `run/bench/<name>/t*/`; `tools/bench-watch.sh <name>` follows a run live (milestones, re-orders, exceptions per trial); `tools/bench-compare.py <name> <name>...` puts runs side by side (trials reaching each milestone, median times). The standard check for whether a change made companions better: the times should only go down. Needs one `./gradlew runSoak` first for the launch files. |
@@ -238,6 +238,135 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] "the base needs 20 torches" (one companion answers), `/companion colony want glass 8`: the targets update; "we have enough cobblestone" sets it to 0 and the cobblestone request disappears.
 - [ ] Give a companion holding a request an order ("follow me"): the request goes back to open within a few seconds.
 - [ ] `/companion why <name>` on a companion working a request shows the request and its bid.
+
+### 27. Personality, mood, goals (0.12)
+- [ ] `/companion info Bob` shows twelve traits, a mood ("calm" at first), the faction, and (after some chat) feelings about people.
+- [ ] `/companion archetype Bob hothead` then `/companion info Bob`: aggression 0.95, bravery 0.85, caution 0.1. `/companion trait Bob humor 1` sets one trait.
+- [ ] Hit Bob (as a non-owner, or with `ownerAuthority: standing`): `/companion info Bob` shows fear and anger, and a lowered affinity for you.
+- [ ] "Bob, do your own thing", wait a minute, `/companion goals Bob`: roots with scored goals, one marked `>`, others "not needed now". Make a goal fail (e.g. take away its axe mid-job): it shows "put aside N min" and "[failed 1x]".
+- [ ] "Bob, how do you feel?" reflects its mood after a fight or a failure.
+
+### 28. Chat follow-ups and teaching
+- [ ] "Bob, get 10 logs", then "make it 20" (no name): Bob re-plans for 20. "and coal too" adds mining coal. "no, I meant birch" swaps the wood. "Ann, you too": Ann gets the same order.
+- [ ] "Bob, get half a stack of cobblestone" asks for 32; "two stacks" 128.
+- [ ] "Bob, when I say lumber I mean logs", then "Bob, get me 5 lumber" chops 5 logs. "Bob, morning routine means get food then light the base", then "Bob, morning routine" queues both. Restart: still known. "Bob, forget lumber" removes it.
+- [ ] A player who isn't the owner can't teach words (Bob says it doesn't take orders from them).
+
+### 29. Standing and authority
+- [ ] With a second account (not the owner): "Bob, follow me" is refused; "Bob, what time is it?" is answered; "Bob, where are you?" is refused as private.
+- [ ] `/companion standing colony <player> 30` (friendly): "Bob, give me a log" works, "Bob, follow me" is refused. At 70 (trusted): orders work.
+- [ ] As that player, hit Bob once: a warning ("Hey! Watch it.") if they were friendly, else "<player> just attacked me!". Hit again: standing hostile; armed companions nearby fight them (defend mode: while they're at the base or right after the attack). "sorry" raises the standing; a second "sorry" within 5 minutes gets "Words are cheap".
+- [ ] As that player, open a base chest: "Hey, that's our chest!" and -15 standing (once a minute). Right-click a companion while hostile: it won't open its inventory. Give a companion something through its inventory: thanks, and standing goes up.
+- [ ] As a non-owner, kill a zombie that's attacking a companion: "Thanks for the save" and +5.
+- [ ] Set `ownerAuthority: standing`, restart, hit your own companion three times: it stops taking your orders. Back to `absolute`: it obeys again.
+
+### 30. Teams (red vs blue)
+- [ ] Spawn 6 companions (`/companion batch 6`), set them free, then `/companion faction teams red blue`: chat lists the two teams; names show red and blue in the tab list and chat; teammates can't hurt each other.
+- [ ] With no bases set, within a minute or two (daytime) one member of each team says it's founding a base and walks to a flat spot at least 160 blocks from the other team's base (walking on to look further if nothing in sight will do); `/companion faction info red` shows the base; `/companion colony` (default colony) is unaffected.
+- [ ] Each team gets its own zones (farm, beds...), its own board and stock; companions only share with teammates.
+- [ ] "red team, follow me" makes only red companions follow (you own them all).
+- [ ] With `warfare: defend`, a red companion walking into blue's base gets attacked; with `/companion faction warfare pvp`, they fight on sight.
+- [ ] `/companion faction ceasefire` stops the fighting; `/companion faction relation red blue allied` makes them share requests.
+
+### 31. Raids and dynamic factions
+- [ ] Teams with bases, armed companions: `/companion faction raid red` sends up to four red fighters ("Raid on Blue! Follow me!"). They walk to blue's base and fight. With `griefing: false` it's a skirmish and nothing is taken; with `griefing: true` they break through blue's walls (not doors, beds or gates), take diamonds, iron, gear and food from blue's chests, then go home and deposit.
+- [ ] Raiders below 40% health pull out ("Falling back!").
+- [ ] `/companion faction mode dynamic`: warfare becomes raid for every faction; raids start on their own (at most every 15 minutes per faction) when one side clearly outmatches the other.
+- [ ] Dynamic mode at war: when one side has lost 6+ members in 20 minutes (twice what it took), it calls a truce ("Truce with Blue!"), and the fighting stops. Twenty minutes or more later, a bigger, aggressive faction may declare war again. `latest.log`: "sued ... for peace", "declared war on".
+- [ ] A respawned companion doesn't go looking for enemies for a minute (it still hits back), and doesn't walk back to where an enemy killed it.
+- [ ] `/companion faction member <faction> <companion> leader`: the companion joins that faction (its name takes the colour), says it's in charge, and founds the base if the faction has none (once in free mode).
+- [ ] Dynamic mode with 8+ companions over a long run: unhappy companions grumble ("Nobody around here listens to me."); eventually a group splits off as "<Name>'s Band", hostile to the old faction, and founds its own base. Empty factions disband. Check `logs/latest.log` for `faction` lines.
+
+### 32. Farming and combat
+- [ ] At a base with a farm zone (`/companion colony` lists it), give Bob wheat seeds and a hoe: "Bob, farm" tills the farm, plants, and says what it did. Without seeds, it pulls up grass for some. Without a hoe (but with seeds and grass to till), it crafts a wooden hoe first.
+- [ ] Grow wheat to ripeness (bonemeal): "Bob, harvest the wheat" harvests and replants. In free mode, with 6+ ripe crops, one companion goes farming at a time (not the whole base) and then leaves the farm alone for 3 minutes. It bakes bread with 3 wheat when short of food.
+- [ ] Flowers in the farm zone get pulled up and the ground tilled.
+- [ ] With Xaero's minimap or world map installed, companions saved in the world rejoin when it loads (they used to be dropped at once and stayed offline).
+- [ ] Give Bob a shield: it moves to the off hand within 2 seconds. Against a skeleton, Bob raises it while the skeleton draws (arrows are blocked) and walks in. Against a hissing creeper, it backs off behind the shield.
+- [ ] Fighting zombies, Bob often jumps and hits on the way down (critical hit particles). A hothead does it more often.
+
+### 33. Upkeep, farms, land, bounties and fishing (0.13)
+- [ ] **Upkeep.** Put a 3-high dirt or cobblestone pillar and a log stump (a log with no leaves) on flat ground just outside the home zone, and dig a one-block pit next to them. Within a minute `/companion colony` counts them, "tidy up the base" goes on the board, and a free companion takes the pillar and stump down and fills the pit. A pillar you put a torch or chest on top of is left alone, and so is anything you placed with a block you'd normally build with (planks, bricks...).
+- [ ] Old companion dirt that has grown grass (a bridge or pillar from an earlier session) is taken down too.
+- [ ] **Fence.** With 24+ logs in the base chests, upkeep adds fence posts round the home zone: the companion crafts fences (and gates) from the base's wood, puts them up along home's edge, and leaves gates where the paths to the farm and pen cross it and in the middle of each side. Companions walk through the gates. `fenceHome: false` stops it.
+- [ ] **Lighting.** A dark corner of a big home zone (20+ blocks from the base, up or down a slope) gets a torch.
+- [ ] **Farm water.** On a farm plot with no water within 4 blocks, give the farmer a bucket (or 3 iron in the chests): it fills the bucket at nearby water, digs out the plot's middle, pours it in, and the soil goes dark (wet). The middle is never tilled or planted, and upkeep doesn't fill it. `latest.log`: "farm: watered the plot".
+- [ ] **More plots.** With 4+ members and the first plot three-quarters planted, a few minutes later `/companion colony` lists `farm2`, a block away from the first plot on the side with the most flat soil; it gets its own water and planting. Plots stop at one plus one per four members (four at most). `expandFarms: false` stops it.
+- [ ] **Land.** Teams or dynamic mode with bases: `/companion faction info red` shows "land: 25 chunk(s)" at first and grows every minute and a half. When two factions' land first touches, `latest.log` shows "meet at the border"; already-enemies say so in chat; in dynamic mode neutral ones either declare war or agree a truce ("Truce with Blue. Stay on your side."). Factions whose land doesn't touch don't raid each other or declare war.
+- [ ] **Occupation.** At war, stand enemy companions out of a border chunk and your faction's companions in it: within a couple of minutes the chunk changes hands ("took a chunk of ... land" in the log, "That land's ours now"). The 5x5 chunks round a base never change hands.
+- [ ] **Peace terms.** When a losing faction sues for peace, the log says how many chunks it gave up (up to 3).
+- [ ] **Splits** (dynamic, territory on): a new band starts on cool terms (not at war), settles 160+ blocks away, and the fight (or truce) starts when its land reaches the old faction's.
+- [ ] **Bounties.** Kill three of a faction's companions (or let one enemy companion do it): the faction's spokesperson puts a price on the killer's head, and `/companion faction info <faction>` lists "WANTED". The faction's companions go for the wanted one on sight (from up to 32 blocks), before other enemies, as long as the two sides are enemies. When one of them kills the wanted one, it brags ("Got Red10! The bounty's mine.") and the bounty is gone. Without more kills, a bounty halves every 30 minutes and drops off the list.
+- [ ] **Fishing.** Walk a curious companion (scout, `/companion archetype Bob scout`) past a lake by day with a fishing rod (or 2 string and some sticks) on it: it remembers the water, and later goes fishing there: it walks to the shore, casts, reels in when the bobber dips, and comes back with cod or salmon. "Bob, go fishing" / "catch 5 fish" does it on request. Without a rod it crafts one first. `fishing: false` stops the free-mode fishing.
+
+### 34. Leadership, hunting, lighting, clearing and budget (0.14)
+- [ ] **Leaders.** `/companion faction teams red blue` (no ranks given): within seconds each team announces a leader ("Looks like I'm leading Red now"), and the leader names one officer per four members ("X, I want you as my officer."). `/companion faction info red` shows "(leader)" and "(officer)" next to companion names.
+- [ ] A rank given with `/companion faction member` stays put across reviews (every two minutes). Remove the leader companion (`/companion remove <name>`): the best officer takes over within two minutes.
+- [ ] **Hunting.** With herds around, "Bob, hunt 3 sheep": it finds them (look within 40 blocks, herds up to 96), and a zombie interrupting the trip doesn't make it give up or forget the herd (`latest.log`: no new "trip N/8" right after "resume task hunt"). "Couldn't find any animals" should now be rare where there are herds.
+- [ ] **Lighting.** On a fresh base with no coal, someone mines coal (or burns charcoal) and lights the base within the first in-game day, not at the end of it.
+- [ ] **Woodcutting stall.** A tall tree at home with no dirt to climb: the companion leaves the top logs ("nothing to climb with") within a few seconds instead of standing still for a minute.
+- [ ] **Clearing trees.** Found a base in the forest: "tidy up the base" includes the trees in the home zone; whoever takes it fells them all ("clearing the trees at home"), and the farm and pen zones get laid out once the ground is open (`/companion colony`).
+- [ ] **Site choice.** With the clearing and forest around it, a founder near the clearing settles in it (log: "site survey: best ... open 9x%").
+- [ ] **Getting gear back after PvP.** A companion killed by an enemy says nothing about its things at once; once the killer has left (40+ blocks from the spot), it goes back for them (log: "waiting for whoever killed me to leave", then "going back for my things").
+- [ ] **Enemy land.** Hunters and woodcutters don't search, hunt or chop on enemy land (fewer deaths on search trips than in 0.13).
+- [ ] **Colony command.** Standing on Red's land, `/companion colony` shows Red's base ("Red: base at ..."); `/companion colony of blue` shows Blue's.
+- [ ] **Owner violence.** As the owner (default `ownerAuthority: absolute`), hit a companion: it complains ("what was that for?"); kill one in front of others: they say so. `/companion standing <faction> <you>` has dropped (a kill is -60), but they still obey and never attack you, and no bounty is posted. With `/companion faction authority standing` (or `ownerAuthority: standing`) the same spree turns them hostile, they fight back, and a bounty goes up.
+- [ ] **Reaction speed.** Walk a zombie up to a group, or hit one companion: it and nearby faction-mates turn and fight (or back off) within a fraction of a second, not a second or two later.
+- [ ] **Budget.** With 20 companions, `/debug start`, wait, `/debug stop`: the server keeps up; nobody stands frozen waiting for a path while one companion runs a long search.
+
+### 35. Grace, getting on, leaders' orders, free mode, recruiting (0.14.1)
+- [ ] `/companion batch 10`, `/companion freemode on`: everyone sets off on their own at once; new spawns start free too. `/companion freemode off`: new ones follow again.
+- [ ] `/companion faction teams red blue`: chat says the teams start as strangers; `faction info` shows them at 0, not enemies; no fighting in the first 15 minutes even when they bump into each other.
+- [ ] After the grace period, a hothead near the other team quarrels now and then ("Watch where you're going, X!"); `faction info` shows the relation dropping by 8 each time, and after four or so they're enemies and fight. Calm, sociable teams instead drift friendlier.
+- [ ] With a base and open board requests, the leader orders idle members ("Bob, see to 16 logs for the base.") and they go straight to it. A poorly stocked faction hears a rallying call; a well stocked one, praise.
+- [ ] In dynamic mode, spawn one more companion with no faction: within half a minute a faction takes it in ("Welcome to Red, X."). In teams mode it goes to the smaller team.
+
+### 36. Night work and progression (0.14.2)
+- [ ] Free mode, armed companions with a base, you awake (or in creative): at dusk they come home and keep busy (chests, torches, cooking, tidy/fence/clear jobs, the farm, "mining near home"), not standing about until morning. Go to bed yourself: they go to bed too and the night skips.
+- [ ] Unarmed at home at night with planks in the chests: they make a wooden sword first.
+- [ ] Over a long run, companions keep climbing the gear ladder (`/companion why <name>` shows a "next:" target most of the time), and the base's logs, coal and iron get topped up when nothing else is pressing.
+
+### 37. Easter eggs (0.14.3)
+- [ ] `/companion spawn popbob`: no faction (`faction join` refuses). It gears up quietly first (watch `/companion why popbob`), then raids a faction base ("Thanks for the N things..."; the base's chests lose their best items), follows and pesters someone, and wrecks build blocks. Hit it once geared: it fights back. Companions only fight it once it's armed.
+- [ ] `/companion spawn Herobrine`: Herobrine's skin appears (with network); it says nothing and ignores chat; takes off any armour; at night stands 24-40 blocks from you staring; walk towards it and it vanishes. By day, blank signs turn up where it's been, and leaves go missing from trees.
+- [ ] `/companion spawn Technoblade`: Technoblade's skin; never runs from a fight (even at low health); goes for pigs first when hunting; kill it and it comes back saying "Technoblade never dies!".
+- [ ] `/companion spawn Hausemaster`: Hausemaster's skin; silent, ignores orders; `/kill Hausemaster` does nothing; attacks nobody (even with factions at war); when popbob hits it, it fights popbob back.
+- [ ] Herobrine at night among zombies and skeletons: none of them go for it, and it doesn't fight them.
+- [ ] Herobrine with factions at war around it: nobody attacks it. Walk up to it, or look straight at it for 3 seconds, or hit it: it's gone. At night it shifts to a new watching spot every half minute or so, not standing in one place.
+
+### 38. No faction means no faction (0.14.6)
+- [ ] Teams or dynamic mode with some companions left in the colony (`recruit: false`): `/companion faction` lists them as "no faction"; no faction declares war on them, raids them, borders them or posts a bounty; they don't fight faction members unless hit; and they don't fight each other as a group.
+
+### 39. Skin layers and capes (0.14.8)
+- [ ] `/companion spawn Bob <account with a hat/jacket layer and a cape>`: Bob shows the outer layers (hat, jacket, sleeves) and the cape, like the player would.
+
+### 40. Merging, and clearing a new base first (0.14.9)
+- [ ] `/companion faction merge red bluesband`: Blue's Band's companions join Red (names take Red's colour), its leader is a Red officer, its land is Red's, and the faction is gone from `/companion faction`.
+- [ ] Dynamic mode, a split that later warms back up (`/companion faction relation red band 50`) and is close: within a few checks (a day after the split) it rejoins Red ("We're with Red now. Glad to be back together."). Log: "merged into".
+- [ ] A base founded in a wood: within the first few minutes several members are "clearing the trees at home" at once, and the farm and pen get laid out soon after (`/companion colony`).
+
+### 41. Leaders' plans (0.15.0)
+- [ ] A faction with a base, idle members and free land around: within a few minutes the leader sends people out ("push our border out"); `latest.log` shows "staked a claim where X stands"; `/companion faction info` shows the land growing faster than before.
+- [ ] Every so often a curious member is sent scouting ("go and see what's out past the border"), walks 120-200 blocks out and comes home.
+- [ ] Dynamic mode, a poorly stocked faction with an aggressive leader next to a well stocked, smaller neighbour: it declares war for their stores and raids at once (log: "goes to war with ... for their stores").
+
+### 42. Farms in a wood, faction chat, respawning on the right side (0.15.1)
+- [ ] A base founded in a wood (no open 9x9 nearby): `/companion colony` shows a farm and a pen within a few minutes; their trees get felled ("clearing the trees at home"); the farm gets tilled and planted as the ground clears.
+- [ ] A new farm and nobody has seeds: the farmer pulls up grass round the farm (up to 20 blocks out) and plants what drops. Put seeds in a base chest: the farmer takes them first.
+- [ ] A base whose remaining home trees can't be reached: members don't loop "clearing the trees at home" every couple of seconds (log: at most one empty "no trees left to clear" per few minutes per base).
+- [ ] Teams mode: only leaders talk ("X, see to ..."), the member answers ("On it"), the leader checks in every ~2 minutes, the member reports back and is thanked. Other members are silent unless you talk to them. `/companion chat factions all` brings the old chatter back.
+- [ ] Move a companion from Blue to Red (`/companion faction join SomeBot red`) after it slept in a bed at Blue's base, then kill it: it comes back at Red's base, not Blue's (log: "won't respawn at its bed").
+
+### 43. Taming wolves (0.15.2)
+- [ ] `/give` a free companion 10 bones near a wolf (or put bones in its faction's chest, near the base): when it's between jobs it walks to the wolf and feeds it bones until it's tamed ("Got myself a wolf!"); the wolf then follows it. Log: "tame: tamed a wolf after N bone(s)".
+- [ ] Busy on a job (or a leader's order) with a wolf in sight: it carries on with the job; it only goes for the wolf once that's done.
+- [ ] With two wolves of its own already, it leaves wild wolves be.
+
+### 44. Parleys and ceasefires (0.15.3)
+- [ ] Dynamic mode, two evenly matched factions at war: after ~8+ minutes and a dozen deaths, log "will parley"; both leaders say "Everyone back to base", members go home and stop fighting each other, and the leaders (and officers) walk to the middle ground. Face to face, they talk ("You came...").
+- [ ] Either a hothead spoils it ("Peace? Never!", log "spoils the parley ... round N") and fighting resumes, with another parley 2 minutes later; or "agreed a ceasefire at the parley" with terms (borders frozen, maybe a chunk or two ceded). `/companion faction info` shows "(ceasefire, N min left)".
+- [ ] During the ceasefire: no fights or raids between the two, and their land doesn't grow into the gap between them. Hit the other side's members a few times: "the ceasefire's wearing thin"; keep at it after 12 minutes and it may be broken ("the deal's off").
+- [ ] `/companion faction parley red blue` starts one on demand.
 
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

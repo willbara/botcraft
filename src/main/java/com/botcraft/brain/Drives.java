@@ -54,6 +54,20 @@ public final class Drives {
 		List<MobEntity> threats = per.threats();
 		List<MobEntity> ownerThreats = c.data.defendOwner ? per.ownerThreats() : List.of();
 		if (threats.isEmpty() && ownerThreats.isEmpty()) {
+			// Players we're at odds with (enemy factions, someone who attacked us or our base).
+			List<net.minecraft.server.network.ServerPlayerEntity> enemies = per.enemyPlayers();
+			if (!enemies.isEmpty()) {
+				var enemy = enemies.get(0);
+				double d = enemy.distanceTo(p);
+				boolean armed = per.inventory().bestWeapon() >= ARMED_DAMAGE;
+				float hp = p.getHealth() / p.getMaxHealth();
+				if ((armed && hp >= b.personality().retreatHealth()) || d < 3 || EasterEggs.fearless(c)) {
+					float aggro = 0.75F + b.personality().aggression() * 0.1F;
+					out.propose(Objective.FIGHT, d < 8 ? Math.max(0.85F, aggro) : aggro,
+						String.format("%s %.1f away, %s", enemy.getGameProfile().getName(), d, armed ? "enemy" : "too close"));
+				}
+				return;
+			}
 			// The popbob easter egg: armed companions take it on; anyone it's hitting hits back.
 			var popbob = Popbob.near(c, 12);
 			if (popbob != null && !Popbob.is(c)) {
@@ -70,12 +84,18 @@ public final class Drives {
 		double d = nearest.distanceTo(p);
 		String what = nearest.getType().getUntranslatedName();
 		CreeperEntity creeper = per.nearestCreeper(7.0);
-		if (creeper != null && creeper.getFuseSpeed() > 0 && creeper.distanceTo(p) < 5.0) {
+		boolean fearless = EasterEggs.fearless(c);
+		if (creeper != null && creeper.getFuseSpeed() > 0 && creeper.distanceTo(p) < 5.0 && !fearless) {
 			out.propose(Objective.FLEE, 0.97F, "creeper about to blow");
 			return;
 		}
+		if (fearless) {
+			// Never runs: whatever it has in hand (or its fists), it goes in.
+			out.propose(Objective.FIGHT, d < 6 ? 0.92F : 0.85F, String.format("%s %.1f away, fearless", what, d));
+			return;
+		}
 		float hp = p.getHealth() / p.getMaxHealth();
-		boolean weak = hp < 0.4F - b.personality().bravery() * 0.15F;
+		boolean weak = hp < b.personality().retreatHealth() + c.mood().get(Mood.Kind.FEAR) * 0.05F;
 		if (armed && weak && d > 2.5 && com.botcraft.util.Experiments.on("lowHealthCaution")) {
 			return; // too hurt to go looking for a fight; only hit back when cornered (the health drive retreats)
 		}
@@ -100,9 +120,12 @@ public final class Drives {
 	 * hold on a little longer.
 	 */
 	static void health(Companion c, Brain b, Scores out) {
+		if (EasterEggs.fearless(c)) {
+			return; // never retreats
+		}
 		CompanionPlayer p = c.player();
 		float hp = p.getHealth() / p.getMaxHealth();
-		float threshold = 0.4F - b.personality().bravery() * 0.15F;
+		float threshold = b.personality().retreatHealth() + c.mood().get(Mood.Kind.FEAR) * 0.05F;
 		// Only for a threat inside the distance a retreat counts as done at; otherwise a mob
 		// hovering just past it starts a retreat that ends at once, over and over.
 		MobEntity near = c.perception().nearestThreat();
