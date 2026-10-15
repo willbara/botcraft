@@ -106,6 +106,12 @@ public final class FactionCommand {
 					.executes(FactionCommand::raid)))
 			.then(CommandManager.literal("ceasefire")
 				.executes(FactionCommand::ceasefire))
+			.then(CommandManager.literal("merge")
+				.then(CommandManager.argument("into", StringArgumentType.word())
+					.suggests(FACTIONS)
+					.then(CommandManager.argument("from", StringArgumentType.word())
+						.suggests(FACTIONS)
+						.executes(FactionCommand::merge))))
 			.then(CommandManager.literal("authority")
 				.executes(ctx -> authority(ctx, null))
 				.then(CommandManager.argument("mode", StringArgumentType.word())
@@ -465,6 +471,20 @@ public final class FactionCommand {
 			say(ctx, "Owner authority: absolute. Your companions always obey you and never fight you (they still remember how you treat them).",
 				Formatting.WHITE);
 		}
+		return 1;
+	}
+
+	/** /companion faction merge <into> <from>: {@code from} joins {@code into} now. */
+	private static int merge(CommandContext<ServerCommandSource> ctx) {
+		Faction into = Factions.find(StringArgumentType.getString(ctx, "into"));
+		Faction from = Factions.find(StringArgumentType.getString(ctx, "from"));
+		if (into == null || from == null || into == from || Factions.loners(into.id) || Factions.loners(from.id)) {
+			ctx.getSource().sendError(Text.literal("Name two different factions (not the factionless)"));
+			return 0;
+		}
+		String fromName = from.name;
+		com.botcraft.faction.Merger.merge(into, from, ctx.getSource().getServer().getOverworld().getTime(), "by command");
+		say(ctx, fromName + " merged into " + into.name, Formatting.WHITE);
 		return 1;
 	}
 

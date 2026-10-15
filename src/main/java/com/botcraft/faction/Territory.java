@@ -318,6 +318,25 @@ public final class Territory {
 		return given;
 	}
 
+	/** Two factions became one: the land of {@code from} is now {@code to}'s (if it's in the same dimension). */
+	public static void absorb(String from, String to) {
+		Faction f = Factions.get(from);
+		Faction t = Factions.get(to);
+		if (f == null || t == null) {
+			return;
+		}
+		if (t.claimDim.isEmpty() || t.claimDim.equals(f.claimDim)) {
+			t.claimDim = t.claimDim.isEmpty() ? f.claimDim : t.claimDim;
+			for (long c : f.claims) {
+				if (!t.claims.contains(c)) {
+					t.claims.add(c);
+				}
+			}
+		}
+		f.claims.clear();
+		changed();
+	}
+
 	/** A faction is gone (or lost its base): its land is free again. */
 	public static void release(String faction) {
 		Faction f = Factions.get(faction);
