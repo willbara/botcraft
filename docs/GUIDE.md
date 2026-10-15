@@ -702,7 +702,7 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `pathNodesPerTick` / `pathPrimaryNodes` / `maxPathNodes` | 600 / 20000 / 80000 | A* nodes per companion per tick; where a search stops once it has a partial path worth taking; where it stops in any case. |
 | `chatEnabled` | true | Replies and unprompted remarks. |
 | `factionChat` | leader | `leader`: in a faction only the one in charge talks, and members answer its orders and players; `all`: everyone. `/companion chat factions leader\|all` sets it in game. |
-| `chatVerbosity` | all | `all`, or `quiet`: only answers and acknowledgements, what a companion starts on its own and what failed. `/companion chat all\|quiet\|off` sets it in game. |
+| `chatVerbosity` | all | `all`, or `quiet`: only answers and acknowledgements, what a companion starts on its own, what failed, and a faction's business (orders and check-ins, wars, truces, parleys, bounties; who says them follows `factionChat`). `/companion chat all\|quiet\|off` sets it in game. |
 | `griefing` | false | When off, navigation only breaks natural terrain and companions' own throwaway blocks, and only natural trees are chopped. Containers and block entities are never broken either way. |
 | `allowBridging` | true | May place dirt or cobblestone to cross gaps. |
 | `followDistance` | 3.5 | Comfortable distance from the owner. |
