@@ -330,7 +330,8 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] `/companion spawn popbob`: no faction (`faction join` refuses). It gears up quietly first (watch `/companion why popbob`), then raids a faction base ("Thanks for the N things..."; the base's chests lose their best items), follows and pesters someone, and wrecks build blocks. Hit it once geared: it fights back. Companions only fight it once it's armed.
 - [ ] `/companion spawn Herobrine`: Herobrine's skin appears (with network); it says nothing and ignores chat; takes off any armour; at night stands 24-40 blocks from you staring; walk towards it and it vanishes. By day, blank signs turn up where it's been, and leaves go missing from trees.
 - [ ] `/companion spawn Technoblade`: Technoblade's skin; never runs from a fight (even at low health); goes for pigs first when hunting; kill it and it comes back saying "Technoblade never dies!".
-- [ ] `/companion spawn Hausemaster`: Hausemaster's skin; silent, ignores orders; `/kill Hausemaster` does nothing; with popbob nearby it teleports away.
+- [ ] `/companion spawn Hausemaster`: Hausemaster's skin; silent, ignores orders; `/kill Hausemaster` does nothing; attacks nobody (even with factions at war); when popbob hits it, it fights popbob back.
+- [ ] Herobrine with factions at war around it: nobody attacks it. Walk up to it, or look straight at it for 3 seconds, or hit it: it's gone. At night it shifts to a new watching spot every half minute or so, not standing in one place.
 
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

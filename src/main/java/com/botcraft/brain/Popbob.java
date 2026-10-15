@@ -57,7 +57,7 @@ public final class Popbob implements Persona {
 	}
 
 	/** Armed and armoured enough to start trouble: an iron sword, or a stone one and some armour. */
-	public static boolean geared(CompanionPlayer p) {
+	public static boolean geared(PlayerEntity p) {
 		double weapon = Inventories.bestWeaponDamage(p.getInventory());
 		return weapon >= 6.0 || (weapon >= 5.0 && p.getArmor() >= 6);
 	}

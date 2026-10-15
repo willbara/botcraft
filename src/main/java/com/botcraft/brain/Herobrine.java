@@ -50,6 +50,11 @@ public final class Herobrine implements Persona {
 	private BlockPos leaves;
 	private int leafTicks;
 	private BlockPos going = BlockPos.ORIGIN;
+	private long nextSpot;
+	/** Checks in a row (every 5 ticks) a player has been looking straight at it. */
+	private int stared;
+	/** Looked at this long (3 seconds) and it's gone. */
+	private static final int STARE_CHECKS = 12;
 
 	/** Its own plans, always: no farming or tidying for Herobrine. (Jobs and drives still run.) */
 	@Override
@@ -57,7 +62,10 @@ public final class Herobrine implements Persona {
 		return true;
 	}
 
-	/** Who it's watching, and the vanishing act (whatever else is going on). */
+	/**
+	 * Who it's watching (real players first), and the vanishing act, whatever else is going on:
+	 * anyone comes close, or a player looks straight at it for a few seconds.
+	 */
 	@Override
 	public void always(Companion c, long now) {
 		CompanionPlayer p = c.player();
@@ -65,14 +73,42 @@ public final class Herobrine implements Persona {
 			return;
 		}
 		if (target == null || !target.isAlive() || target.isSpectator() || target.getWorld() != p.getWorld() || now % 400 == 0) {
-			target = EasterEggs.nearestOther(c, 96, EasterEggs.Kind.HEROBRINE);
+			target = pickTarget(c, p);
 		}
-		// Approached: gone.
-		if (target != null && target.distanceTo(p) < TOO_CLOSE && now >= nextVanish) {
-			nextVanish = now + 20 * 10;
-			if (EasterEggs.vanish(c, target.getPos(), 60, 110)) {
-				c.brain().clearAll(); // whatever it was in the middle of, it isn't now
+		if (now < nextVanish || now % 5 != 0) {
+			return;
+		}
+		ServerPlayerEntity spotter = null;
+		boolean looked = false;
+		for (ServerPlayerEntity o : p.getServerWorld().getPlayers()) {
+			if (o == p || !o.isAlive() || o.isSpectator()) {
+				continue;
 			}
+			double d = o.distanceTo(p);
+			boolean real = !(o instanceof CompanionPlayer);
+			if (d < (real ? TOO_CLOSE : TOO_CLOSE - 3)) {
+				spotter = o; // walked right up to it
+				break;
+			}
+			if (real && d < 48 && lookingAt(o, p)) {
+				looked = true;
+				if (++stared >= STARE_CHECKS) {
+					spotter = o; // looked at it too long
+					break;
+				}
+			}
+		}
+		if (spotter == null) {
+			if (!looked) {
+				stared = 0; // looked away: the count starts again
+			}
+			return;
+		}
+		stared = 0;
+		nextVanish = now + 20 * 8;
+		if (EasterEggs.vanish(c, spotter.getPos(), 60, 110)) {
+			c.brain().clearAll(); // whatever it was in the middle of, it isn't now
+			AiLog.log(c.name(), "herobrine: seen by {}, gone", spotter.getGameProfile().getName());
 		}
 	}
 
@@ -84,10 +120,11 @@ public final class Herobrine implements Persona {
 		}
 		boolean night = c.perception().isNight();
 		if (target != null && night) {
-			stalk(c, p, target, target.distanceTo(p), WATCH_NEAR, WATCH_FAR, true);
+			// Watch from the edge of sight, moving to a new spot every half a minute or so.
+			watch(c, p, target, now, WATCH_NEAR, WATCH_FAR, true);
 			return;
 		}
-		// By day: signs, leaves, and following at a distance.
+		// By day: signs, leaves, and keeping its distance while circling round.
 		if (signs(c, p, now)) {
 			return;
 		}
@@ -95,30 +132,60 @@ public final class Herobrine implements Persona {
 			return;
 		}
 		if (target != null) {
-			stalk(c, p, target, target.distanceTo(p), WATCH_FAR, WATCH_FAR + 24, false);
+			watch(c, p, target, now, WATCH_FAR, WATCH_FAR + 24, false);
+		} else if (!c.nav().isBusy() && now >= nextSpot) {
+			nextSpot = now + 20 * (15 + random.nextInt(20));
+			BlockPos to = p.getBlockPos().add(random.nextInt(41) - 20, 0, random.nextInt(41) - 20);
+			c.nav().moveTo(Goal.near(to, 3), false);
 		}
 	}
 
-	/** Keep between {@code near} and {@code far} of the target; in the band, stand still (and stare, at night). */
-	private void stalk(Companion c, CompanionPlayer p, ServerPlayerEntity t, double d, double near, double far, boolean stare) {
-		if (d > far || d < near) {
-			// To a spot the right distance from them, on our side of them.
-			Vec3d away = p.getPos().subtract(t.getPos());
-			if (away.lengthSquared() < 1) {
-				away = new Vec3d(1, 0, 0);
-			}
-			Vec3d spot = t.getPos().add(away.normalize().multiply((near + far) / 2));
-			BlockPos to = BlockPos.ofFloored(spot);
-			if (!c.nav().isBusy() || to.getSquaredDistance(going) > 36) {
-				going = to;
-				c.nav().moveTo(Goal.near(to, 3), false);
-			}
+	/**
+	 * Stay between {@code near} and {@code far} of the target, at a spot round them that changes
+	 * every so often; there, stand still and (at night) stare.
+	 */
+	private void watch(Companion c, CompanionPlayer p, ServerPlayerEntity t, long now, double near, double far, boolean stare) {
+		double d = t.distanceTo(p);
+		if (now >= nextSpot || d > far + 8 || d < near - 4) {
+			nextSpot = now + 20 * (20 + random.nextInt(25));
+			// Somewhere else round them, on the side we're on more or less.
+			double base = Math.atan2(p.getZ() - t.getZ(), p.getX() - t.getX());
+			double angle = base + (random.nextDouble() - 0.5) * Math.PI;
+			double r = near + random.nextDouble() * (far - near);
+			going = BlockPos.ofFloored(t.getX() + Math.cos(angle) * r, t.getY(), t.getZ() + Math.sin(angle) * r);
+			c.nav().moveTo(Goal.near(going, 3), false);
 			return;
 		}
-		c.nav().stop();
+		if (c.nav().isBusy()) {
+			return;
+		}
 		if (stare || random.nextInt(4) == 0) {
 			c.actions().lookAt(t.getEyePos());
 		}
+	}
+
+	/** Real players before companions, nearest first, within 96 blocks. */
+	@Nullable
+	private static ServerPlayerEntity pickTarget(Companion c, CompanionPlayer p) {
+		ServerPlayerEntity best = null;
+		double bestD = Double.MAX_VALUE;
+		for (ServerPlayerEntity o : p.getServerWorld().getPlayers()) {
+			if (o == p || !o.isAlive() || o.isSpectator()) {
+				continue;
+			}
+			double d = o.squaredDistanceTo(p) + (o instanceof CompanionPlayer ? 64 * 64 : 0);
+			if (o.squaredDistanceTo(p) < 96 * 96 && d < bestD) {
+				bestD = d;
+				best = o;
+			}
+		}
+		return best;
+	}
+
+	/** {@code o} is looking more or less straight at {@code at}. */
+	private static boolean lookingAt(ServerPlayerEntity o, CompanionPlayer at) {
+		Vec3d to = at.getEyePos().subtract(o.getEyePos()).normalize();
+		return o.getRotationVec(1.0F).dotProduct(to) > 0.985 && o.canSee(at);
 	}
 
 	/** Leave a blank sign somewhere it'll be found; make some first if there are none. */

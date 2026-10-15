@@ -67,9 +67,10 @@ public class CompanionPlayer extends ServerPlayerEntity {
 		var m = com.botcraft.CompanionManager.get();
 		var self = m == null ? null : m.byPlayer(this);
 		if (self != null && com.botcraft.brain.EasterEggs.unkillable(self)) {
-			// Hausemaster can't be hurt; if it's popbob having a go, Hausemaster isn't staying around.
-			if (source.getAttacker() instanceof CompanionPlayer cp && m.byPlayer(cp) != null && com.botcraft.brain.Popbob.is(m.byPlayer(cp))) {
-				com.botcraft.brain.EasterEggs.vanish(self, cp.getPos(), 48, 96);
+			// Hausemaster can't be hurt, but it notices who tried (and fights popbob back, see Hostility).
+			if (source.getAttacker() instanceof net.minecraft.server.network.ServerPlayerEntity attacker && attacker != this) {
+				self.relations().note(attacker.getGameProfile().getName(), com.botcraft.brain.Relationship.Event.HIT);
+				self.alarm();
 			}
 			if (source.isOf(net.minecraft.entity.damage.DamageTypes.OUT_OF_WORLD)) {
 				com.botcraft.brain.EasterEggs.vanish(self, null, 4, 24); // fell out of the world: back on solid ground
@@ -77,6 +78,11 @@ public class CompanionPlayer extends ServerPlayerEntity {
 			return false;
 		}
 		boolean hurt = super.damage(source, amount);
+		if (hurt && self != null && com.botcraft.brain.EasterEggs.is(self, com.botcraft.brain.EasterEggs.Kind.HEROBRINE)
+			&& source.getAttacker() instanceof net.minecraft.server.network.ServerPlayerEntity attacker && isAlive()) {
+			com.botcraft.brain.EasterEggs.vanish(self, attacker.getPos(), 60, 110); // hit Herobrine and he's gone
+			self.brain().clearAll();
+		}
 		if (hurt && amount > 0) {
 			try {
 				com.botcraft.faction.Incidents.companionHurt(this, source, amount);
