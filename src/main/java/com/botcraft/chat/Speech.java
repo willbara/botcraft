@@ -84,9 +84,14 @@ public class Speech {
 	private static final java.util.Set<String> QUIET_KEEPS = java.util.Set.of("event.initiative", "board.take", "event.task_failed",
 		"event.plan_failed");
 
-	/** Quiet chat (/companion chat quiet): only replies and {@link #QUIET_KEEPS} get said. */
+	/**
+	 * Quiet chat (/companion chat quiet): only replies, {@link #QUIET_KEEPS}, and a faction's
+	 * business (orders, check-ins and their answers, wars, truces, parleys, bounties: who may say
+	 * those is up to {@link #factionHushed}) get said.
+	 */
 	private boolean quietSkips(String key) {
-		return "quiet".equals(CompanionConfig.get().chatVerbosity) && !replying && !QUIET_KEEPS.contains(key);
+		return "quiet".equals(CompanionConfig.get().chatVerbosity) && !replying && !QUIET_KEEPS.contains(key)
+			&& !key.startsWith("faction.") && !key.startsWith("bounty.");
 	}
 
 	/** What a member still says when only the leader talks (see {@link #factionHushed}): answering its orders. */
@@ -149,7 +154,11 @@ public class Speech {
 
 	/** Say something after {@code delay} ticks (plus typing time): used for back-and-forth banter. */
 	public boolean sayIn(String key, @Nullable ServerPlayerEntity to, Map<String, String> extra, int delay) {
-		if (!CompanionConfig.get().chatEnabled || queue.size() > 5 || quietSkips(key)) {
+		if (!CompanionConfig.get().chatEnabled || queue.size() > 5) {
+			return false;
+		}
+		if (quietSkips(key)) {
+			AiLog.log(c.name(), "kept quiet ({}): quiet chat", key);
 			return false;
 		}
 		if (factionHushed(key)) {
