@@ -194,6 +194,9 @@ public class Life {
 		if (lastGoal != null) {
 			tree.succeeded(lastGoal);
 		}
+		if ("farm".equals(lastGoal)) {
+			tree.rest("farm", now + 20 * 60 * 3); // the crops need time to grow back
+		}
 		if ("board".equals(lastGoal)) {
 			finishBoard(true, now);
 			boardRest = true;
@@ -562,7 +565,12 @@ public class Life {
 		var needs = new com.botcraft.brain.task.FarmTask.Needs((int) seen[1], (int) seen[2], (int) seen[3], (int) seen[4]);
 		boolean seeds = com.botcraft.brain.task.FarmTask.seeds(p) > 0;
 		boolean hoe = com.botcraft.brain.task.FarmTask.hasHoe(p);
-		if (!needs.worthIt(seeds, hoe)) {
+		boolean hungry = Inventories.foodCount(inv) == 0 && p.getHungerManager().getFoodLevel() < 14;
+		if (!needs.worthIt(seeds, hoe, hungry)) {
+			return null;
+		}
+		// One farmer per base at a time (everyone else would just get in each other's way).
+		if (com.botcraft.brain.task.FarmTask.someoneElseFarming(colony.id(), c.name(), now)) {
 			return null;
 		}
 		String why = needs.ripe() > 0 ? "the crops are ripe" : seeds ? "the farm needs planting" : "I need seeds for the farm";
@@ -594,16 +602,18 @@ public class Life {
 			"we need a base (" + site.why() + ")");
 	}
 
-	/** The member of our faction who founds its base: the most ambitious one living on its own. */
+	/** The member of our faction who founds its base: its leader, else the most ambitious one living on its own. */
 	private static boolean isFounder(Companion c) {
 		Companion best = null;
 		double bestScore = -1;
-		for (Companion o : com.botcraft.faction.Factions.members(com.botcraft.faction.Factions.idOf(c))) {
+		var faction = com.botcraft.faction.Factions.of(c);
+		for (Companion o : com.botcraft.faction.Factions.members(faction.id)) {
 			if (!o.isOnline() || !"free".equals(o.data.mode)) {
 				continue;
 			}
 			Personality p = o.brain().personality();
-			double score = p.ambition() + 0.3 * p.sociability();
+			double score = p.ambition() + 0.3 * p.sociability()
+				+ (faction.rank(o.data.uuid.toString()) == com.botcraft.faction.Faction.Rank.LEADER ? 10 : 0);
 			if (best == null || score > bestScore || (score == bestScore && o.name().compareTo(best.name()) < 0)) {
 				best = o;
 				bestScore = score;

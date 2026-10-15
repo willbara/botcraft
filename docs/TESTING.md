@@ -272,11 +272,16 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] Teams with bases, armed companions: `/companion faction raid red` sends up to four red fighters ("Raid on Blue! Follow me!"). They walk to blue's base and fight. With `griefing: false` it's a skirmish and nothing is taken; with `griefing: true` they break through blue's walls (not doors, beds or gates), take diamonds, iron, gear and food from blue's chests, then go home and deposit.
 - [ ] Raiders below 40% health pull out ("Falling back!").
 - [ ] `/companion faction mode dynamic`: warfare becomes raid for every faction; raids start on their own (at most every 15 minutes per faction) when one side clearly outmatches the other.
+- [ ] Dynamic mode at war: when one side has lost 6+ members in 20 minutes (twice what it took), it calls a truce ("Truce with Blue!"), and the fighting stops. Twenty minutes or more later, a bigger, aggressive faction may declare war again. `latest.log`: "sued ... for peace", "declared war on".
+- [ ] A respawned companion doesn't go looking for enemies for a minute (it still hits back), and doesn't walk back to where an enemy killed it.
+- [ ] `/companion faction member <faction> <companion> leader`: the companion joins that faction (its name takes the colour), says it's in charge, and founds the base if the faction has none (once in free mode).
 - [ ] Dynamic mode with 8+ companions over a long run: unhappy companions grumble ("Nobody around here listens to me."); eventually a group splits off as "<Name>'s Band", hostile to the old faction, and founds its own base. Empty factions disband. Check `logs/latest.log` for `faction` lines.
 
 ### 32. Farming and combat
 - [ ] At a base with a farm zone (`/companion colony` lists it), give Bob wheat seeds and a hoe: "Bob, farm" tills the farm, plants, and says what it did. Without seeds, it pulls up grass for some. Without a hoe (but with seeds and grass to till), it crafts a wooden hoe first.
-- [ ] Grow wheat to ripeness (bonemeal): "Bob, harvest the wheat" harvests and replants. In free mode with ripe crops, Bob goes farming by itself, and bakes bread with 3 wheat when short of food.
+- [ ] Grow wheat to ripeness (bonemeal): "Bob, harvest the wheat" harvests and replants. In free mode, with 6+ ripe crops, one companion goes farming at a time (not the whole base) and then leaves the farm alone for 3 minutes. It bakes bread with 3 wheat when short of food.
+- [ ] Flowers in the farm zone get pulled up and the ground tilled.
+- [ ] With Xaero's minimap or world map installed, companions saved in the world rejoin when it loads (they used to be dropped at once and stayed offline).
 - [ ] Give Bob a shield: it moves to the off hand within 2 seconds. Against a skeleton, Bob raises it while the skeleton draws (arrows are blocked) and walks in. Against a hissing creeper, it backs off behind the shield.
 - [ ] Fighting zombies, Bob often jumps and hits on the way down (critical hit particles). A hothead does it more often.
 

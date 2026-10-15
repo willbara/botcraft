@@ -120,7 +120,7 @@ public final class Fracture {
 			return; // nobody would be left: not a split, a move
 		}
 		String base = leader.name().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_]", "");
-		base = base.substring(0, Math.min(8, base.length()));
+		base = base.substring(0, Math.min(10, base.length()));
 		String id = base;
 		for (int i = 2; Factions.get(id) != null; i++) {
 			id = base + i;
@@ -130,12 +130,14 @@ public final class Fracture {
 			return;
 		}
 		for (Companion c : leaving) {
+			from.members.remove(c.data.uuid.toString());
 			c.data.faction = nf.id;
 			c.data.mode = "free";
 			c.jobs().clear();
 			c.brain().reconsider();
 			STREAK.remove(c.name());
 		}
+		nf.members.put(leader.data.uuid.toString(), Faction.Rank.LEADER);
 		// Splits are bitter: they start out as enemies.
 		Factions.setRelation(from.id, nf.id, -45);
 		LAST_SPLIT.put(from.id, now);

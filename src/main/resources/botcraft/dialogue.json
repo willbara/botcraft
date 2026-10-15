@@ -167,5 +167,8 @@
   "raid.loot": ["Got {count} things from {faction}'s chests. Back home!", "That'll teach {faction}. Heading back with the loot.", "Loot's in my pockets. Let's get out of here!"],
   "raid.retreat": ["I'm hurt, pulling back!", "Too hot here, I'm out!", "Falling back!"],
   "faction.grumble": ["Nobody around here listens to me.", "I'm not sure I belong in {faction}.", "Some days I think I'd do better on my own.", "I do all the work and for what?", "This place is getting crowded."],
-  "faction.split": ["That's it, I'm done with {old}. Who's with me? We're {faction} now!", "{old} can manage without us. {faction}, let's go!", "We're leaving {old}. {faction} will find its own home."]
+  "faction.split": ["That's it, I'm done with {old}. Who's with me? We're {faction} now!", "{old} can manage without us. {faction}, let's go!", "We're leaving {old}. {faction} will find its own home."],
+  "faction.truce": ["Enough fighting. We want peace with {faction}.", "We've lost too many. Truce with {faction}!", "Let's call it off with {faction}. Nobody's winning this.", "{faction}, we're done fighting. Peace?"],
+  "faction.war": ["{faction} has had it coming. We're at war!", "Everyone, we're going to war with {faction}!", "Peace is over. {faction} is our enemy now.", "Time to show {faction} who's in charge. War!"],
+  "faction.joined_rank": ["Leading {faction}? I won't let you down.", "{faction}, follow me!", "Right, I'm in charge of {faction} now."]
 }

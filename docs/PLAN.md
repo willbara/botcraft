@@ -40,7 +40,7 @@ The plan for Botcraft's next major line of work, written against v0.11.2. Each s
 | 9 | Modes single, teams, dynamic | **Done.** |
 | 10 | Dynamic bases | **Founding: done** (`SiteSurvey`, `FoundTask`). Growing zones, outposts and relocation: not yet. |
 | 11 | Fracture, merging, leadership | **Fracture and disbanding: done** (simple unhappiness). Merging, elections and dividing the chests: not yet. |
-| 12 | Diplomacy | **By command only;** clashes and raids push factions apart. Leader-run war, peace and alliances: not yet. |
+| 12 | Diplomacy | **War weariness and declarations of war: done** (dynamic mode), plus commands. Alliances, gifts and envoys: not yet. |
 | 13 | Warfare | **off, defend, pvp and raid: done.** Raids go, fight, break in with griefing on, loot and return. Raid formations and a block cap: not yet. |
 | 14 | English understanding | **Partly:** stack amounts, follow-ups, teaching words and routines, trust questions. The tagger, chunker and frames pipeline: not yet. |
 | 15 | Conversation and context | **Partly:** last-order follow-ups. Coreference ("it", "there") and pending questions: not yet. |

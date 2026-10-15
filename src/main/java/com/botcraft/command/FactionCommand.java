@@ -277,6 +277,11 @@ public final class FactionCommand {
 		Faction f = Factions.find(StringArgumentType.getString(ctx, "faction"));
 		String playerName = StringArgumentType.getString(ctx, "player");
 		String rank = StringArgumentType.getString(ctx, "rank").toLowerCase(Locale.ROOT);
+		CompanionManager m = CompanionManager.get();
+		Companion companion = m == null ? null : m.byName(playerName);
+		if (f != null && companion != null) {
+			return companionMember(ctx, f, companion, rank);
+		}
 		ServerPlayerEntity player = ctx.getSource().getServer().getPlayerManager().getPlayer(playerName);
 		if (f == null || player == null) {
 			ctx.getSource().sendError(Text.literal(f == null ? "No such faction" : "No player " + playerName + " online"));
@@ -303,6 +308,39 @@ public final class FactionCommand {
 		Factions.markDirty();
 		Factions.syncTeams();
 		say(ctx, playerName + (rank.equals("remove") ? " left " : " is now " + rank + " of ") + f.name, Formatting.WHITE);
+		return 1;
+	}
+
+	/** A companion given a rank: it joins the faction (a leader founds and speaks for it). */
+	private static int companionMember(CommandContext<ServerCommandSource> ctx, Faction f, Companion c, String rank) {
+		String uuid = c.data.uuid.toString();
+		if (rank.equals("remove")) {
+			f.members.remove(uuid);
+			if (Factions.idOf(c).equals(f.id)) {
+				Factions.join(c, Factions.DEFAULT);
+			}
+			Factions.markDirty();
+			say(ctx, c.name() + " left " + f.name + " (back in the colony)", Formatting.WHITE);
+			return 1;
+		}
+		Faction.Rank r;
+		try {
+			r = Faction.Rank.valueOf(rank.toUpperCase(Locale.ROOT));
+		} catch (IllegalArgumentException e) {
+			ctx.getSource().sendError(Text.literal("Ranks are member, officer and leader (or remove)"));
+			return 0;
+		}
+		Factions.join(c, f.id);
+		f.members.put(uuid, r);
+		if (r == Faction.Rank.LEADER) {
+			// One leader at a time.
+			f.members.entrySet().removeIf(e -> e.getValue() == Faction.Rank.LEADER && !e.getKey().equals(uuid));
+			f.members.put(uuid, r);
+			c.speech().event("faction.joined_rank", Map.of("faction", f.name), 0, 1.0F);
+		}
+		Factions.markDirty();
+		say(ctx, c.name() + " is now " + rank + " of " + f.name + (Factions.enabled() ? "" : " (takes effect outside single mode)")
+			+ ("free".equals(c.data.mode) ? "" : "; it's still following its owner (\"do your own thing\" lets it live with its faction)"), Formatting.WHITE);
 		return 1;
 	}
 
