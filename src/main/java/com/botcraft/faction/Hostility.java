@@ -100,6 +100,12 @@ public final class Hostility {
 		return player != null && player.getUuid().equals(c.data.owner) && !"standing".equals(CompanionConfig.get().ownerAuthority);
 	}
 
+	/** This block is on the land of a faction ours is at war with. */
+	public static boolean hostileLand(Companion c, net.minecraft.server.world.ServerWorld w, net.minecraft.util.math.BlockPos pos) {
+		String owner = Territory.owner(w, pos);
+		return owner != null && Factions.hostile(Factions.idOf(c), owner);
+	}
+
 	/** On the faction's land ({@link Territory}), or close to its base. */
 	public static boolean inTerritory(Faction f, ServerPlayerEntity other) {
 		Colony colony = Colony.of(f.id);

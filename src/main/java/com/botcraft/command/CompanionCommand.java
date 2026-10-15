@@ -84,22 +84,27 @@ public final class CompanionCommand {
 			.then(CommandManager.literal("list")
 				.executes(CompanionCommand::list))
 			.then(CommandManager.literal("colony")
-				.executes(CompanionCommand::colony)
+				.executes(ctx -> inFaction(ctx, null, CompanionCommand::colony))
+				.then(CommandManager.literal("of")
+					.then(CommandManager.argument("faction", StringArgumentType.word())
+						.suggests((ctx, b) -> CommandSource.suggestMatching(com.botcraft.faction.Factions.ids(), b))
+						.executes(ctx -> inFaction(ctx, StringArgumentType.getString(ctx, "faction"), CompanionCommand::colony))))
 				.then(CommandManager.literal("want")
 					.then(CommandManager.argument("item", StringArgumentType.word())
 						.suggests((ctx, b) -> CommandSource.suggestMatching(com.botcraft.colony.StockTargets.DEFAULTS.stream()
 							.map(com.botcraft.colony.StockTargets.StockTarget::key), b))
 						.then(CommandManager.argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 100000))
-							.executes(CompanionCommand::colonyWant))))
+							.executes(ctx -> inFaction(ctx, null, CompanionCommand::colonyWant)))))
 				.then(CommandManager.literal("zone")
 					.then(CommandManager.argument("kind", StringArgumentType.word())
 						.suggests((ctx, b) -> CommandSource.suggestMatching(com.botcraft.colony.Zones.KINDS, b))
 						.then(CommandManager.literal("here")
-							.executes(ctx -> colonyZone(ctx, -1))
+							.executes(ctx -> inFaction(ctx, null, c -> colonyZone(c, -1)))
 							.then(CommandManager.argument("size", com.mojang.brigadier.arguments.IntegerArgumentType.integer(3, 129))
-								.executes(ctx -> colonyZone(ctx, com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "size")))))
+								.executes(ctx -> inFaction(ctx, null,
+									c -> colonyZone(c, com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(c, "size"))))))
 						.then(CommandManager.literal("clear")
-							.executes(CompanionCommand::colonyZoneClear)))))
+							.executes(ctx -> inFaction(ctx, null, CompanionCommand::colonyZoneClear))))))
 			.then(CommandManager.literal("why")
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
@@ -352,15 +357,76 @@ public final class CompanionCommand {
 		return 1;
 	}
 
-	/** The shared base: where it is, its chests, and what's stored. */
+	/**
+	 * Run a colony command for a faction's base: the one named, else (outside single mode) the
+	 * one whose land or base the player is at, else the nearest base. In single mode, the colony.
+	 */
+	private static int inFaction(CommandContext<ServerCommandSource> ctx, @org.jetbrains.annotations.Nullable String name,
+		com.mojang.brigadier.Command<ServerCommandSource> body) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		String id;
+		if (name != null) {
+			var f = com.botcraft.faction.Factions.find(name);
+			if (f == null) {
+				ctx.getSource().sendError(Text.literal("No such faction"));
+				return 0;
+			}
+			id = f.id;
+		} else {
+			id = contextFaction(ctx.getSource());
+		}
+		String prev = com.botcraft.faction.Scope.enter(id);
+		try {
+			return body.run(ctx);
+		} finally {
+			com.botcraft.faction.Scope.exit(prev);
+		}
+	}
+
+	/** The faction a colony command means: whose land we stand on, else whose base is nearest. */
+	private static String contextFaction(ServerCommandSource src) {
+		if (!com.botcraft.faction.Factions.enabled()) {
+			return com.botcraft.faction.Factions.DEFAULT;
+		}
+		var world = src.getWorld();
+		var at = net.minecraft.util.math.BlockPos.ofFloored(src.getPosition());
+		String owner = com.botcraft.faction.Territory.owner(world, at);
+		if (owner != null) {
+			return owner;
+		}
+		String best = null;
+		double bestD = Double.MAX_VALUE;
+		for (var colony : com.botcraft.colony.Colony.all()) {
+			if (colony.hasBase() && colony.world() == world) {
+				double d = colony.base().getSquaredDistance(at);
+				if (d < bestD) {
+					bestD = d;
+					best = colony.id();
+				}
+			}
+		}
+		if (best != null) {
+			return best;
+		}
+		for (String id : com.botcraft.faction.Factions.ids()) {
+			if (!com.botcraft.faction.Factions.members(id).isEmpty()) {
+				return id;
+			}
+		}
+		return com.botcraft.faction.Factions.DEFAULT;
+	}
+
+	/** A faction's base (see {@link #inFaction}): where it is, its chests, zones, upkeep and stock. */
 	private static int colony(CommandContext<ServerCommandSource> ctx) {
 		var colony = com.botcraft.colony.Colony.get();
+		var faction = com.botcraft.faction.Factions.get(com.botcraft.faction.Scope.current());
+		String whose = !com.botcraft.faction.Factions.enabled() || faction == null ? "" : faction.name + ": ";
 		if (colony == null || !colony.hasBase()) {
-			ctx.getSource().sendFeedback(() -> Text.literal("No base yet. Stand somewhere and say \"everyone, this is home\"."), false);
+			ctx.getSource().sendFeedback(() -> Text.literal(whose + "no base yet. " + (whose.isEmpty() ? "Stand somewhere and say \"everyone, this is home\"."
+				: "Its founder picks a spot by day, or tell a member \"this is home\". Another faction: /companion colony of <faction>.")), false);
 			return 0;
 		}
 		var base = colony.base();
-		ctx.getSource().sendFeedback(() -> Text.literal("Base at " + base.toShortString() + ", " + colony.chests().size() + " chest(s)")
+		ctx.getSource().sendFeedback(() -> Text.literal(whose + "base at " + base.toShortString() + ", " + colony.chests().size() + " chest(s)")
 			.formatted(Formatting.AQUA), false);
 		for (String line : colony.describeChests()) {
 			ctx.getSource().sendFeedback(() -> Text.literal("  chest " + line).formatted(Formatting.GRAY), false);

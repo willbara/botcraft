@@ -195,18 +195,23 @@ public final class Diplomacy {
 	static Companion spokesperson(String faction) {
 		Faction f = Factions.get(faction);
 		Companion best = null;
+		Companion officer = null;
 		for (Companion c : Factions.members(faction)) {
 			if (!c.isOnline()) {
 				continue;
 			}
-			if (f != null && f.rank(c.data.uuid.toString()) == Faction.Rank.LEADER) {
+			Faction.Rank r = f == null ? null : f.rank(c.data.uuid.toString());
+			if (r == Faction.Rank.LEADER) {
 				return c;
+			}
+			if (r == Faction.Rank.OFFICER && officer == null) {
+				officer = c;
 			}
 			if (best == null || c.brain().personality().ambition() > best.brain().personality().ambition()) {
 				best = c;
 			}
 		}
-		return best;
+		return officer != null ? officer : best;
 	}
 
 	/** Peace: stop the fights already under way between the two. */

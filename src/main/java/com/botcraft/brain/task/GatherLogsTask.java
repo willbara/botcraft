@@ -80,6 +80,8 @@ public class GatherLogsTask extends Task {
 	private static final int MAX_CLIMB = 24;
 	private int dirtTrips;
 	private int dirtNeeded;
+	/** Looked for dirt to climb with and found none (nothing to tower up on for this task). */
+	private boolean noDirt;
 	private final java.util.Set<BlockPos> badDirt = new HashSet<>();
 	private int approachRetries;
 	@Nullable
@@ -87,9 +89,18 @@ public class GatherLogsTask extends Task {
 	@Nullable
 	private BlockPos chopping;
 
+	/** Clearing an area (the trees at home): only trees standing in it, and done when there are none left. */
+	@Nullable
+	private final com.botcraft.colony.Colony.Zone area;
+
 	public GatherLogsTask(Companion c, int count) {
+		this(c, count, null);
+	}
+
+	public GatherLogsTask(Companion c, int count, @Nullable com.botcraft.colony.Colony.Zone area) {
 		super(c);
 		this.wanted = Math.max(1, count);
+		this.area = area;
 	}
 
 	@Override
@@ -99,7 +110,7 @@ public class GatherLogsTask extends Task {
 
 	@Override
 	public String describe() {
-		return "chopping wood (" + gathered + "/" + wanted + ")";
+		return area != null ? "clearing the trees at home (" + gathered + " logs)" : "chopping wood (" + gathered + "/" + wanted + ")";
 	}
 
 	public int gathered() {
@@ -118,7 +129,7 @@ public class GatherLogsTask extends Task {
 	@Override
 	protected void onStop() {
 		com.botcraft.brain.Claims.release(c);
-		search.cancel(c);
+		search.suspend(c);
 		super.onStop();
 	}
 
@@ -177,6 +188,13 @@ public class GatherLogsTask extends Task {
 		};
 	}
 
+	/** Far enough to see every corner of the area from where we stand. */
+	private int areaRadius(CompanionPlayer p) {
+		int dx = Math.max(Math.abs(area.x1 - p.getBlockX()), Math.abs(area.x2 - p.getBlockX()));
+		int dz = Math.max(Math.abs(area.z1 - p.getBlockZ()), Math.abs(area.z2 - p.getBlockZ()));
+		return Math.min(64, Math.max(dx, dz) + 4);
+	}
+
 	/** Logs gained since we started count toward the goal (we don't count logs we already had). */
 	private void countProgress(CompanionPlayer p) {
 		int now = Inventories.count(p.getInventory(), Inventories::isLog);
@@ -193,7 +211,7 @@ public class GatherLogsTask extends Task {
 	private Status scan(CompanionPlayer p) {
 		var scanner = c.perception().blocks();
 		if (phaseTicks == 1) {
-			scanner.start(s -> s.isIn(BlockTags.LOGS), CompanionConfig.get().treeSearchRadius, 8, 20);
+			scanner.start(s -> s.isIn(BlockTags.LOGS), area == null ? CompanionConfig.get().treeSearchRadius : areaRadius(p), 8, 20);
 		}
 		if (!scanner.tick(ticks())) {
 			if (phaseTicks > 200) {
@@ -203,6 +221,11 @@ public class GatherLogsTask extends Task {
 		}
 		List<BlockPos> trees = pickTrees(p.getServerWorld(), scanner.results(), p.getBlockPos());
 		treeBase = trees.isEmpty() ? null : trees.get(0);
+		if (treeBase == null && area != null) {
+			// Clearing: nothing left standing in the area (that we can get at) means done.
+			AiLog.log(c.name(), "gather: no trees left to clear ({} logs)", gathered);
+			return gathered > 0 ? Status.SUCCESS : quietSuccess();
+		}
 		if (treeBase == null) {
 			if (++emptyScans < 2) {
 				setPhase(Phase.SCAN);
@@ -339,7 +362,16 @@ public class GatherLogsTask extends Task {
 	private Status reachNextLog(CompanionPlayer p) {
 		BlockPos target = logs.peekFirst();
 		boolean high = target.getY() + 0.5 > p.getEyeY() + ActionController.BLOCK_REACH - 1;
-		if (high && Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0 && dirtTrips < 3) {
+		boolean nothingToClimb = Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0;
+		if (high && nothingToClimb && noDirt) {
+			// No blocks and no dirt to dig: the path finder can't tower up either, and searching for a
+			// way up costs tens of seconds. Leave the top of this tree.
+			AiLog.log(c.name(), "gather: nothing to climb with, leaving the {} log(s) out of reach", logs.size());
+			c.nav().stop();
+			logs.clear();
+			return Status.RUNNING;
+		}
+		if (high && nothingToClimb && dirtTrips < 3) {
 			dirtTrips++;
 			c.nav().stop();
 			startDirtRun(p);
@@ -432,6 +464,7 @@ public class GatherLogsTask extends Task {
 			if (dirtTarget == null) {
 				AiLog.log(c.name(), "gather: no diggable dirt nearby");
 				dirtNeeded = 0; // nothing suitable around: carry on with what we have
+				noDirt = Inventories.count(p.getInventory(), Inventories::isThrowaway) == 0;
 				return Status.RUNNING;
 			}
 		}
@@ -460,7 +493,16 @@ public class GatherLogsTask extends Task {
 		var colony = com.botcraft.colony.Colony.get();
 		return world.getBlockState(pos).isIn(BlockTags.DIRT) && world.getBlockState(pos.up()).isAir()
 			&& !(pos.getX() == treeBase.getX() && pos.getZ() == treeBase.getZ()) && !com.botcraft.colony.Builds.recorded(world, pos)
-			&& (colony == null || !colony.protectsGround(world, pos));
+			&& (colony == null || !colony.protectsGround(world, pos) || climbable(colony, pos));
+	}
+
+	/**
+	 * Home ground we may still dig to climb a tree: outside the zones and paths, at ground level
+	 * (upkeep fills the hole back in afterwards, see Upkeep.breaking).
+	 */
+	private static boolean climbable(com.botcraft.colony.Colony colony, BlockPos pos) {
+		return com.botcraft.util.Experiments.on("upkeep") && com.botcraft.colony.Zones.at(colony, pos.getX(), pos.getZ()) == null
+			&& !com.botcraft.colony.Zones.onPath(colony, pos.getX(), pos.getZ());
 	}
 
 	/** Exposed natural dirt/grass near us, not the block we stand on and not under the tree. */
@@ -542,6 +584,9 @@ public class GatherLogsTask extends Task {
 		java.util.Map<BlockPos, Double> score = new java.util.HashMap<>();
 		int checked = 0;
 		for (BlockPos log : found) {
+			if (area != null && !area.contains(log)) {
+				continue;
+			}
 			if (++checked > 200 || bases.size() >= 10) {
 				break;
 			}
@@ -549,8 +594,9 @@ public class GatherLogsTask extends Task {
 			while (world.getBlockState(base.down()).isIn(BlockTags.LOGS) && from.getY() - base.getY() < 12) {
 				base = base.down();
 			}
-			if (!seenBases.add(base) || blacklist.containsKey(base) || claimedByOther(base)) {
-				continue;
+			if (!seenBases.add(base) || blacklist.containsKey(base) || claimedByOther(base)
+				|| com.botcraft.faction.Hostility.hostileLand(c, world, base)) {
+				continue; // (not in enemy land: that's where woodcutters get killed)
 			}
 			if (!new Terrain(world).support(base.down())) {
 				continue; // floating log / branch, not a trunk we can stand next to

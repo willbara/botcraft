@@ -36,6 +36,8 @@ public final class Faction {
 	/** Chunks it holds ({@link net.minecraft.util.math.ChunkPos#toLong}), in {@link #claimDim}. See {@link Territory}. */
 	public java.util.List<Long> claims = new java.util.ArrayList<>();
 	public String claimDim = "";
+	/** UUIDs whose rank was given by command: automatic leadership never takes it away. */
+	public java.util.List<String> manual = new java.util.ArrayList<>();
 	/** Factions whose land it has bordered (first contact happened). */
 	public java.util.List<String> met = new java.util.ArrayList<>();
 	/** Killer name -> bounty (see {@link Bounties}). */
@@ -107,6 +109,9 @@ public final class Faction {
 		}
 		if (met == null) {
 			met = new java.util.ArrayList<>();
+		}
+		if (manual == null) {
+			manual = new java.util.ArrayList<>();
 		}
 		if (bounties == null) {
 			bounties = new LinkedHashMap<>();

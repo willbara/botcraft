@@ -177,5 +177,7 @@
   "faction.took_land": ["That land's ours now, {faction}!", "We pushed {faction} back. This ground is ours.", "Another piece of {faction}'s land, taken."],
   "bounty.posted": ["{target} has killed {kills} of us. There's a price on their head now.", "Whoever brings down {target} has my thanks. {kills} of ours, gone because of them.", "{target} is wanted. Get them on sight!"],
   "bounty.raised": ["{target} again! That's {kills} of us. Double the bounty!", "{target} won't stop. Everyone, hunt them down.", "{kills} kills, {target}. You're our most wanted."],
-  "bounty.collected": ["Got {target}! The bounty's mine.", "{target} won't be killing any more of us.", "That's {target} dealt with. Justice!"]
+  "bounty.collected": ["Got {target}! The bounty's mine.", "{target} won't be killing any more of us.", "That's {target} dealt with. Justice!"],
+  "faction.leader_chosen": ["Looks like I'm leading {faction} now. Stick with me.", "{faction}, you've chosen me. I won't let you down.", "Right, {faction}: I'm in charge. Let's get to work."],
+  "faction.officer_named": ["{name}, I want you as my officer.", "{name}, you're an officer of {faction} now. I trust you.", "{name} is my second from now on."]
 }

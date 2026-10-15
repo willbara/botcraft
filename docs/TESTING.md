@@ -299,5 +299,18 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] **Bounties.** Kill three of a faction's companions (or let one enemy companion do it): the faction's spokesperson puts a price on the killer's head, and `/companion faction info <faction>` lists "WANTED". The faction's companions go for the wanted one on sight (from up to 32 blocks), before other enemies, as long as the two sides are enemies. When one of them kills the wanted one, it brags ("Got Red10! The bounty's mine.") and the bounty is gone. Without more kills, a bounty halves every 30 minutes and drops off the list.
 - [ ] **Fishing.** Walk a curious companion (scout, `/companion archetype Bob scout`) past a lake by day with a fishing rod (or 2 string and some sticks) on it: it remembers the water, and later goes fishing there: it walks to the shore, casts, reels in when the bobber dips, and comes back with cod or salmon. "Bob, go fishing" / "catch 5 fish" does it on request. Without a rod it crafts one first. `fishing: false` stops the free-mode fishing.
 
+### 34. Leadership, hunting, lighting, clearing and budget (0.14)
+- [ ] **Leaders.** `/companion faction teams red blue` (no ranks given): within seconds each team announces a leader ("Looks like I'm leading Red now"), and the leader names one officer per four members ("X, I want you as my officer."). `/companion faction info red` shows "(leader)" and "(officer)" next to companion names.
+- [ ] A rank given with `/companion faction member` stays put across reviews (every two minutes). Remove the leader companion (`/companion remove <name>`): the best officer takes over within two minutes.
+- [ ] **Hunting.** With herds around, "Bob, hunt 3 sheep": it finds them (look within 40 blocks, herds up to 96), and a zombie interrupting the trip doesn't make it give up or forget the herd (`latest.log`: no new "trip N/8" right after "resume task hunt"). "Couldn't find any animals" should now be rare where there are herds.
+- [ ] **Lighting.** On a fresh base with no coal, someone mines coal (or burns charcoal) and lights the base within the first in-game day, not at the end of it.
+- [ ] **Woodcutting stall.** A tall tree at home with no dirt to climb: the companion leaves the top logs ("nothing to climb with") within a few seconds instead of standing still for a minute.
+- [ ] **Clearing trees.** Found a base in the forest: "tidy up the base" includes the trees in the home zone; whoever takes it fells them all ("clearing the trees at home"), and the farm and pen zones get laid out once the ground is open (`/companion colony`).
+- [ ] **Site choice.** With the clearing and forest around it, a founder near the clearing settles in it (log: "site survey: best ... open 9x%").
+- [ ] **Getting gear back after PvP.** A companion killed by an enemy says nothing about its things at once; once the killer has left (40+ blocks from the spot), it goes back for them (log: "waiting for whoever killed me to leave", then "going back for my things").
+- [ ] **Enemy land.** Hunters and woodcutters don't search, hunt or chop on enemy land (fewer deaths on search trips than in 0.13).
+- [ ] **Colony command.** Standing on Red's land, `/companion colony` shows Red's base ("Red: base at ..."); `/companion colony of blue` shows Blue's.
+- [ ] **Budget.** With 20 companions, `/debug start`, wait, `/debug stop`: the server keeps up; nobody stands frozen waiting for a path while one companion runs a long search.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

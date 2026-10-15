@@ -144,7 +144,7 @@ With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinF
 
 ### Moving around
 
-- **Pathfinding (ported from Baritone).** A* is weighted in game-tick costs, with Baritone's move set, costs and heuristic, and spread over ticks within a time budget, which grows when the server has time to spare. The moves are:
+- **Pathfinding (ported from Baritone).** A* is weighted in game-tick costs, with Baritone's move set, costs and heuristic, and spread over ticks within a time budget: each companion has its own share every tick (saved up while it's idle, for a long search), and borrows from a shared pool that grows when the server has time to spare, so one companion's hard search can't starve the others. The moves are:
   - walk, mining up to two blocks in the way;
   - diagonal step through open space, or past one blocked corner, sliding round it;
   - jump up one block, mining the head room, or placing the step first if there is none;
@@ -227,9 +227,9 @@ While mining:
 ### Hunting and food
 
 - **Fair game only:** adult, unnamed, unleashed animals that aren't penned in, and never the last two of a species nearby. A starving companion (hunger 3 drumsticks or less) with nothing to eat may take one of a pair, but never the last one.
-- **Noticing animals.** While doing anything else, a companion notices groups of three or more food animals within 48 blocks and remembers where the herd is (the middle of the densest bunch). Remembered spots it can see that turn out empty are forgotten. Up to 12 herds are remembered.
+- **Noticing animals.** While doing anything else, a companion notices groups of three or more food animals within 64 blocks and remembers where the herd is (the middle of the densest bunch). Remembered spots it can see that turn out empty are forgotten. Up to 12 herds are remembered.
 - **Chasing.** Up close it runs straight at the animal, but never off a ledge; it paths around instead.
-- **Searching.** It looks within 32 blocks, then for herds up to 96 blocks away (48 up or down), then at remembered herd spots. Only then does it walk off in a direction, up to 5 trips. Search trips stay inside the world border.
+- **Searching.** It looks within 40 blocks (and chases up to 56), then for herds up to 96 blocks away (48 up or down), then at remembered herd spots. Only then does it walk off in a direction, up to 8 trips of 48 blocks. Search trips stay inside the world border and out of enemy land (no herds, trees or searching there). A fight or a meal on the way pauses the trip, which then carries on: it doesn't use up a trip or the herd it was heading for.
 - **Weapons.** It never hunts bare-handed: with nothing better than a fist, it makes a wooden sword first.
 - **Keeping food:**
   - **Free mode** keeps a reserve: with fewer than 6 food items it hunts and cooks when it knows where animals are, before getting hungry.
@@ -283,7 +283,7 @@ While mining:
 ### Death, rejoining and getting lost
 
 - **Respawning.** A companion that dies comes back after `respawnDelayTicks`. It returns at its bed, else home, else (when following you) next to you if you're standing somewhere safe, else world spawn, always on dry, solid ground. It never reappears looking dead.
-- **Getting its things back.** After respawning it goes back for what it dropped, and keeps looking for as long as the items last (5 minutes from the death), unless it died in lava, fire, the void or by drowning, or that spot has already killed it twice in 10 minutes. A death also counts as a failed goal, so free mode puts that goal aside for a while.
+- **Getting its things back.** After respawning it goes back for what it dropped, and keeps looking for as long as the items last (5 minutes from the death), unless it died in lava, fire, the void or by drowning, or that spot has already killed it twice in 10 minutes. Killed by a player or another faction's companion, it waits until the killer has moved off (more than 40 blocks from the spot, dead or gone), checking every few seconds, then goes. A death also counts as a failed goal, so free mode puts that goal aside for a while.
 - **Unsafe saves.** A companion saved somewhere deadly (under water, in lava, inside a block) is moved to the nearest safe spot when the world loads.
 - **Not getting lost.**
   - **Nobody to follow:** in follow mode with you offline, spectating or in another dimension, a companion that's finished or whose job failed heads home if it's more than 24 blocks away.
@@ -316,7 +316,7 @@ While mining:
   - **paths** from the core to the farm and the pen;
   - **home:** the base and all the zones above, plus 3 blocks, and at least 16 blocks each way from the home spot (33x33). It grows when a zone is added.
 
-  Nothing but what a zone is for gets put down on the bed row, the farm, the pen or a path. `/companion colony` lists the zones. `/companion colony zone <kind> here [size]` sets one by hand, centred where you stand (the bed row runs along the way you face); planning never replaces it. `/companion colony zone <kind> clear` hands it back to the planner. Moving the base plans the zones again (except hand-set ones).
+  Nothing but what a zone is for gets put down on the bed row, the farm, the pen or a path. `/companion colony` lists the zones (outside single mode, of the faction whose land or base you're at; `/companion colony of <faction>` for another; the zone commands work the same way). `/companion colony zone <kind> here [size]` sets one by hand, centred where you stand (the bed row runs along the way you face); planning never replaces it. `/companion colony zone <kind> clear` hands it back to the planner. Moving the base plans the zones again (except hand-set ones).
 - **Blocks companions put down to get around** (bridges, pillars, shelter roofs, the tower for chopping a tall tree) are remembered in `colony.json` as litter. Navigation may break those again, so nobody gets walled in by a roof or pillar another companion left behind.
 - **Natural or built.** Companions tell what nature made from what someone built, and only take resources from natural blocks:
   - every block a player places is recorded, and so are base blocks companions place (chests, furnaces, tables, beds, torches), in `<world>/botcraft/built.dat`; breaking a block takes it off the record;
@@ -331,6 +331,7 @@ While mining:
   - **upkeep:** every few seconds the base looks over home and 12 blocks round it for:
     - litter companions left (taken down, unless it fills a hole in the ground or holds something up); dirt a companion put down that has since grown grass still counts;
     - pillars and lone blocks of dirt, grass or cobblestone standing up out of flat ground (older litter nobody recorded), and stumps (logs with no leaves on them, what a felled tree leaves); nothing a player built, and nothing holding up a torch, chest or the like;
+    - natural trees standing in the home zone (`clearTrees`): felled, all of them, by whoever takes the job (it needs nothing to climb with: home's open ground may be dug for dirt to tower up on, and upkeep fills the holes back in afterwards). On a base founded in a wood, that's what makes room for the farm and pen;
     - one-block pits in flat ground, and ground a companion dug out at home (filled back in; holes players dig in the zones are left alone);
     - bumps or dips up to 3 blocks deep in the core, bed row, farm plots and pen (levelled to the zone's ground; never built blocks, trees, water or ground under furniture);
     - a fence round home (`fenceHome`), once the chests hold 24 logs: fence posts along the home zone's edge, with gates where the paths cross it and in the middle of each side. Fences and gates are made from the base's wood.
@@ -341,6 +342,7 @@ While mining:
 ### Torches
 
 - **In caves and tunnels.** Underground with torches on hand, a companion puts one on the floor beside it whenever its spot gets dark (block light below 6), so the places it mines and explores end up lit every six or seven blocks. It waits until it isn't mid-swing or fighting.
+- **No coal yet?** On a new base, free mode doesn't wait for coal to turn up: with a pickaxe it goes and mines 4 coal, otherwise it burns 6 logs into charcoal, then makes the torches.
 - **At the base.** Monsters spawn on pitch-dark ground. When home has any (out to the corners of the home zone, up to 32 blocks from the base: within 12 blocks at about the base's level, roofs and all, and further out the open ground, uphill and down), free mode lights it up: torches it carries, or torches it crafts from coal and sticks (taken from the chests if need be). It's also a night chore at the base, and an order ("light up the base").
 - `placeTorches` in the config turns all of this off.
 
@@ -406,7 +408,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - **teams:** fixed teams. `/companion faction teams red blue` splits the companions evenly between new teams Red and Blue (`... red blue owner` keeps each owner's companions together; any number of teams). Teams start as enemies.
   - **dynamic:** factions form and split on their own, and fight and raid each other.
 - **A faction has its own everything:** its own base (the default colony keeps `colony.json`; others are `colonies/<id>.json`), its own base map, zones, upkeep and request board, and its own stock. Companions only bid on, share with and ask for help from their own faction (or allies). Names show in the faction's colour (a vanilla scoreboard team), and members can't hurt each other.
-- **Bases found themselves** (outside single mode, `dynamicBases`): a faction without a base sends its most ambitious member, by day, to the best spot nearby: flat ground, water and trees close, no lava, not the sea, not on someone's buildings, at least 160 blocks from another faction's base and 3 chunks from its land (the further the better). If nowhere in sight will do, it walks on, away from the nearest other base, and looks again. It founds the base there (every member's home), and the zones are laid out as usual. Zones set by hand are never moved. In single mode, you still say "this is home".
+- **Bases found themselves** (outside single mode, `dynamicBases`): a faction without a base sends its most ambitious member, by day, to the best spot nearby: flat ground, water and trees close, no lava, not the sea, not on someone's buildings, at least 160 blocks from another faction's base and 3 chunks from its land (the further the better). Open ground on the site counts most (a clearing beats the middle of a wood, which has to be felled first), with water and woods a short walk away (up to 38 blocks out). If nowhere in sight will do, it walks on, away from the nearest other base, and looks again. It founds the base there (every member's home), and the zones are laid out as usual. Zones set by hand are never moved. In single mode, you still say "this is home".
 - **Land** (`territory`, teams and dynamic mode). A faction holds the chunks round its base (5x5 chunks to start, never lost) and spreads out every minute and a half into unclaimed chunks on its frontier, nearest the base first: one chunk a time plus one for every four members, up to 25 + 8 per member, and no further than 14 chunks from the base. `/companion faction info` shows how much it holds and whose land borders it.
   - **Borders.** When two factions' land first touches, they meet. Enemies already at war say so, and the fighting starts at the border. In dynamic mode, neutral ones size each other up: an aggressive leader, and lopsided numbers, make war likely ("We're going to war with Red!"); a sociable other side makes a truce likelier ("Truce with Blue. Stay on your side."), which guarantees 20 minutes of peace.
   - **Only neighbours fight wars.** Raids, and declarations of war, only happen between factions whose land touches (a raid ordered with `/companion faction raid` goes anyway). Enemies on a faction's land count as intruders (see warfare below).
@@ -447,13 +449,18 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - **War:** after that, a bigger faction with an aggressive member may declare war on a neutral neighbour with a base ("We're going to war with Red!"). Aggressive factions, and lopsided ones, do it more.
 
   So wars come and go instead of lasting forever.
+- **Leaders and officers** (teams and dynamic mode). Every two minutes, and as soon as teams are made or a faction splits:
+  - **A faction without a leader picks one:** the member the others would follow. Ambition counts most of its traits, then bravery, loyalty, sociability and diligence, but what the others think of it (liking and trust) counts more than any of them. A player who leads a faction keeps leading it.
+  - **The leader picks its officers:** one for every four members (none under three members, three at most), the ones it likes and trusts most, weighed with their loyalty, diligence, bravery and weapon. An officer is only replaced by someone clearly better (0.15 on the leader's scale), and steps down if the faction shrinks.
+  - **Succession:** if the leader leaves the faction or is removed, its best officer takes over, else a new pick.
+  - The leader speaks for the faction (officers when it's away), founds its base and gets the founder's pick. `/companion faction info` shows the ranks.
 - **Diplomacy by command:** `/companion faction relation <a> <b> <allied|neutral|hostile|number>`. Enemies are -30 or less; allies are 60 or more both ways. Hits and raids between factions push them apart. `/companion faction ceasefire` makes everyone neutral at once.
 - **Respawn grace:** for a minute after respawning, a companion only hits back and doesn't go looking for enemies. A companion killed by a player or an enemy doesn't go back to where it died for its things.
 - **Commands:** `/companion faction` lists factions. The subcommands are:
   - `mode`, `warfare`, `teams`;
   - `create <id> [colour]`, `remove <id>`;
   - `join <companion> <faction>`;
-  - `member <faction> <player or companion> <member|officer|leader|remove>`: a companion given a rank also joins the faction. Its leader founds the faction's base and speaks for it (truces, declarations of war). A companion still following you stays with you; say "do your own thing" to let it live with its faction;
+  - `member <faction> <player or companion> <member|officer|leader|remove>`: a companion given a rank also joins the faction. Its leader founds the faction's base and speaks for it (truces, declarations of war). Ranks given this way are never changed by the automatic leadership below. A companion still following you stays with you; say "do your own thing" to let it live with its faction;
   - `relation`, `raid`, `ceasefire`;
   - `info <faction>`.
 
@@ -619,7 +626,9 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 |---|---|---|
 | `maxCompanions` | 0 | Server-wide limit (0 = unlimited). |
 | `aiTickInterval` | 5 | Drives are re-scored every N ticks (body control runs every tick). |
-| `tickBudgetMs` | 2.0 | AI time per server tick that is always available, shared by all companions. |
+| `companionBudgetMs` | 0.5 | AI time each companion has of its own per server tick, for heavy work (path search, block scans); halved while the server is falling behind (a tick over 40 ms), quartered over 50 ms. |
+| `companionBurstMs` | 5.0 | Unused time a companion saves up, for one long search, up to this. |
+| `tickBudgetMs` | 2.0 | AI time per server tick shared by all companions, on top of their own: borrowed once a companion's own is spent. Whatever companions have saved, AI work stops for the tick once a whole tick would go over 35 ms. |
 | `maxTickBudgetMs` | 8.0 | When the rest of the server leaves room (a whole tick under 35 ms), the AI budget grows up to this. |
 | `pathNodesPerTick` / `pathPrimaryNodes` / `maxPathNodes` | 600 / 20000 / 80000 | A* nodes per companion per tick; where a search stops once it has a partial path worth taking; where it stops in any case. |
 | `chatEnabled` | true | Replies and unprompted remarks. |
@@ -638,6 +647,7 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `commandPermissionLevel` | 2 | Permission level for `/companion`. |
 | `placeTorches` | true | Put torches down in dark caves and around a dark base. |
 | `farming` | true | Free mode tends the base's farm zone. Asking a companion to farm works either way. |
+| `clearTrees` | true | Upkeep fells the trees standing in the home zone. |
 | `expandFarms` | true | Farmers add plots next to the farm as the base grows, and water each plot from a hole in its middle. |
 | `fenceHome` | true | Upkeep puts a fence round the home zone (gates on the paths) once the base has wood to spare. |
 | `fishing` | true | Curious or hungry companions who know of water make a rod and fish. |

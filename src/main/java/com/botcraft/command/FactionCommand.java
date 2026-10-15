@@ -290,6 +290,7 @@ public final class FactionCommand {
 		String uuid = player.getUuidAsString();
 		if (rank.equals("remove")) {
 			f.members.remove(uuid);
+			f.manual.remove(uuid);
 		} else {
 			Faction.Rank r;
 			try {
@@ -301,8 +302,13 @@ public final class FactionCommand {
 			// One faction at a time.
 			for (Faction o : Factions.all()) {
 				o.members.remove(uuid);
+				o.manual.remove(uuid);
+			}
+			if (r == Faction.Rank.LEADER) {
+				f.members.entrySet().removeIf(e -> e.getValue() == Faction.Rank.LEADER);
 			}
 			f.members.put(uuid, r);
+			f.manual.add(uuid);
 			Factions.standing(f, player).set(Math.max(Factions.standing(f, player).value, CompanionConfig.get().orderStanding), Factions.thresholds());
 		}
 		Factions.markDirty();
@@ -316,6 +322,7 @@ public final class FactionCommand {
 		String uuid = c.data.uuid.toString();
 		if (rank.equals("remove")) {
 			f.members.remove(uuid);
+			f.manual.remove(uuid);
 			if (Factions.idOf(c).equals(f.id)) {
 				Factions.join(c, Factions.DEFAULT);
 			}
@@ -332,6 +339,9 @@ public final class FactionCommand {
 		}
 		Factions.join(c, f.id);
 		f.members.put(uuid, r);
+		if (!f.manual.contains(uuid)) {
+			f.manual.add(uuid);
+		}
 		if (r == Faction.Rank.LEADER) {
 			// One leader at a time.
 			f.members.entrySet().removeIf(e -> e.getValue() == Faction.Rank.LEADER && !e.getKey().equals(uuid));
@@ -414,14 +424,20 @@ public final class FactionCommand {
 			return 0;
 		}
 		say(ctx, f.name + " (" + f.id + ", " + f.color + "), warfare " + Factions.warfare(f), Formatting.AQUA);
-		List<String> names = Factions.members(f.id).stream().map(Companion::name).toList();
+		List<String> names = new ArrayList<>();
+		for (Companion c : Factions.members(f.id)) {
+			Faction.Rank r = f.rank(c.data.uuid.toString());
+			names.add(c.name() + (r == null || r == Faction.Rank.MEMBER ? "" : " (" + r.word() + ")"));
+		}
 		say(ctx, "  companions: " + (names.isEmpty() ? "none" : String.join(", ", names)), Formatting.GRAY);
-		if (!f.members.isEmpty()) {
-			List<String> ps = new ArrayList<>();
-			for (Map.Entry<String, Faction.Rank> e : f.members.entrySet()) {
-				Standing s = f.players.get(e.getKey());
-				ps.add((s == null ? e.getKey().substring(0, 8) : s.name) + " (" + e.getValue().word() + ")");
+		List<String> ps = new ArrayList<>();
+		for (Map.Entry<String, Faction.Rank> e : f.members.entrySet()) {
+			Standing s = f.players.get(e.getKey());
+			if (s != null) {
+				ps.add(s.name + " (" + e.getValue().word() + ")");
 			}
+		}
+		if (!ps.isEmpty()) {
 			say(ctx, "  players: " + String.join(", ", ps), Formatting.GRAY);
 		}
 		Colony colony = Colony.of(f.id);

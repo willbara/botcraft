@@ -96,6 +96,12 @@ public class Companion {
 	public long spawnedAt = -1_000_000L;
 	/** Killed by a player or another faction's companion last time (no going back for the things). */
 	private boolean lastKilledInFight;
+	/** Who killed us last (a player or another faction's companion), and whether a trip back waits on them leaving. */
+	@Nullable
+	private java.util.UUID lastKiller;
+	private boolean recoveryWaiting;
+	/** AI time (ms) this companion has saved up for heavy work (see TickBudget). */
+	double budgetCredit;
 
 	/** Server tick at which a dead/kicked companion should rejoin; -1 = not scheduled. */
 	long respawnAtTick = -1;
@@ -206,6 +212,9 @@ public class Companion {
 		}
 		if (serverTick % 100 == 0) {
 			headBackIfLost("idle");
+		}
+		if (recoveryWaiting && serverTick % 100 == 50 && perception.enemyPlayers().isEmpty()) {
+			planRecovery(); // killed in a fight: see whether the killer has gone yet
 		}
 		if (serverTick % 40 == 0 && watchdog.check(this, serverTick)) {
 			onStalled();
@@ -366,9 +375,21 @@ public class Companion {
 			return;
 		}
 		long age = player.getWorld().getTime() - death.time;
-		if (age > 20 * 60 * 4 || lastDeathUnrecoverable || lastKilledInFight) {
-			AiLog.log(name(), "not going back for my things ({})", lastDeathUnrecoverable ? "nothing to recover there"
-				: lastKilledInFight ? "whoever killed me is still there" : "too long ago");
+		boolean wasWaiting = recoveryWaiting;
+		recoveryWaiting = false;
+		if (age > 20 * 60 * 4 || lastDeathUnrecoverable) {
+			if (!wasWaiting) {
+				AiLog.log(name(), "not going back for my things ({})", lastDeathUnrecoverable ? "nothing to recover there" : "too long ago");
+			}
+			return;
+		}
+		// Killed in a fight: only once the killer has moved off (or died, or left), like a player
+		// waiting for the coast to clear. Checked again every few seconds until the items are gone.
+		if (lastKilledInFight && killerNear(death.pos())) {
+			if (!wasWaiting) {
+				AiLog.log(name(), "waiting for whoever killed me to leave before going back for my things");
+			}
+			recoveryWaiting = true;
 			return;
 		}
 		int nearby = 0;
@@ -387,6 +408,15 @@ public class Companion {
 		jobs.pushFront(List.of("goto " + at.getX() + " " + at.getY() + " " + at.getZ() + " " + RECOVERY));
 		AiLog.log(name(), "going back for my things at {}", at.toShortString());
 		speech.event("event.recover", Map.of(), 0, 0.8F);
+	}
+
+	/** Our last killer is alive within 40 blocks of where we died. */
+	private boolean killerNear(BlockPos at) {
+		if (lastKiller == null) {
+			return false;
+		}
+		ServerPlayerEntity k = server.getPlayerManager().getPlayer(lastKiller);
+		return k != null && k.isAlive() && k.getWorld() == player.getWorld() && k.getBlockPos().getSquaredDistance(at) < 40 * 40;
 	}
 
 	/** The label of the trip back to where we died (it's in the job spec). */
@@ -487,6 +517,8 @@ public class Companion {
 		String cause = source == null ? "unknown" : source.getName();
 		com.botcraft.faction.Incidents.companionKilled(this, source);
 		lastKilledInFight = source != null && source.getAttacker() instanceof ServerPlayerEntity;
+		lastKiller = lastKilledInFight ? source.getAttacker().getUuid() : null;
+		recoveryWaiting = false;
 		lastDeathUnrecoverable = source != null && (source.isIn(net.minecraft.registry.tag.DamageTypeTags.IS_FIRE)
 			|| source.isOf(net.minecraft.entity.damage.DamageTypes.LAVA) || source.isOf(net.minecraft.entity.damage.DamageTypes.DROWN)
 			|| source.isOf(net.minecraft.entity.damage.DamageTypes.OUT_OF_WORLD));

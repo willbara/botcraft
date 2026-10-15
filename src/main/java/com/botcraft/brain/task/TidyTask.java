@@ -97,6 +97,7 @@ public class TidyTask extends Task {
 			return Status.RUNNING;
 		}
 		return switch (current.kind()) {
+			case FELL -> deferTo(List.of("gather logs 256 home")); // the woodcutter fells them all, then back to tidying
 			case FILL -> fill(colony, p);
 			case FENCE, GATE -> fence(colony, p);
 			default -> dig(p);
@@ -118,7 +119,7 @@ public class TidyTask extends Task {
 	private Work pick(Colony colony, CompanionPlayer p, List<Work> work) {
 		ServerWorld w = p.getServerWorld();
 		List<Work> todo = work.stream().filter(k -> !skipped.contains(k) && !(k.kind() == Kind.FILL && noBlocks)
-			&& !(fencing(k) && noFence) && needed(colony, w, k)).toList();
+			&& !(fencing(k) && noFence) && !(k.kind() == Kind.FELL && fellingTried()) && needed(colony, w, k)).toList();
 		Set<Long> breaking = new HashSet<>();
 		Set<Long> filling = new HashSet<>();
 		for (Work k : todo) {
@@ -133,6 +134,7 @@ public class TidyTask extends Task {
 		BlockState s = w.getBlockState(k.pos());
 		return switch (k.kind()) {
 			case LITTER -> BreakPolicy.placedByCompanion(w, k.pos(), s);
+			case FELL -> s.isIn(net.minecraft.registry.tag.BlockTags.LOGS);
 			case CLEAR -> !Builds.recorded(w, k.pos()) && (Upkeep.throwaway(s) || Upkeep.stump(w, k.pos(), s)) && !colony.isBaseChest(k.pos().up());
 			case FENCE, GATE -> Upkeep.fenceSpot(w, k.pos());
 			case DIG -> BreakPolicy.isNaturalTerrain(s) && Builds.isNatural(w, k.pos(), s) && !colony.isBaseChest(k.pos().up());
@@ -180,6 +182,11 @@ public class TidyTask extends Task {
 			skip("couldn't place a block there (" + c.actions().lastPlaceProblem() + ")");
 		}
 		return Status.RUNNING;
+	}
+
+	/** We've had the trees felled once this request: what's left standing is out of reach, leave it. */
+	private boolean fellingTried() {
+		return com.botcraft.brain.Jobs.attempt(spec() != null ? spec() : name()) > 0;
 	}
 
 	private static boolean fencing(Work k) {
