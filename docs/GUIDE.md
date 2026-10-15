@@ -571,6 +571,7 @@ Underneath, each is an ordinary companion with its own touches on top: it still 
 
 **Herobrine**:
 - Silent: never says a word, ignores chat. Wears no armour (takes it off). Belongs to no faction.
+- Monsters leave it alone (none will target it) and it leaves them alone.
 - Never fights people, and nobody counts it an enemy (not even a faction at war with the colony) unless it's attacked them, which it doesn't.
 - Picks someone to stalk within 96 blocks, real players before companions. At night it stands at the edge of sight (24-40 blocks) and stares, moving to a new spot every half a minute or so; by day it keeps further off, circling round. It's gone (60-110 blocks away) the moment anyone comes within 10 blocks (7 for companions), a player looks straight at it for 3 seconds, or someone hits it.
 - By day it makes signs (gathering wood if it has none) and leaves them about, blank, and now and then strips the leaves off a tree.

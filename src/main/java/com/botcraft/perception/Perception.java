@@ -282,8 +282,11 @@ public class Perception {
 		}
 		ServerPlayerEntity owner = owner();
 		Box box = p.getBoundingBox().expand(THREAT_RADIUS, 6.0, THREAT_RADIUS);
+		// Herobrine and the monsters leave each other be (see mixin.MobTargetMixin): only one that's
+		// somehow after him counts.
+		boolean herobrine = com.botcraft.brain.EasterEggs.is(companion, com.botcraft.brain.EasterEggs.Kind.HEROBRINE);
 		List<MobEntity> list = new ArrayList<>(p.getServerWorld().getEntitiesByClass(MobEntity.class, box,
-			m -> m.isAlive() && m instanceof Monster && isHostileTo(m, p, owner)));
+			m -> m.isAlive() && m instanceof Monster && (herobrine ? m.getTarget() == p : isHostileTo(m, p, owner))));
 		list.sort(Comparator.comparingDouble(m -> m.squaredDistanceTo(p)));
 		return list;
 	}
