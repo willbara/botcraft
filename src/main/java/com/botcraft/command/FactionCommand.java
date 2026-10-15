@@ -106,6 +106,11 @@ public final class FactionCommand {
 					.executes(FactionCommand::raid)))
 			.then(CommandManager.literal("ceasefire")
 				.executes(FactionCommand::ceasefire))
+			.then(CommandManager.literal("authority")
+				.executes(ctx -> authority(ctx, null))
+				.then(CommandManager.argument("mode", StringArgumentType.word())
+					.suggests((ctx, b) -> CommandSource.suggestMatching(List.of("absolute", "standing"), b))
+					.executes(ctx -> authority(ctx, StringArgumentType.getString(ctx, "mode")))))
 			.then(CommandManager.literal("info")
 				.then(CommandManager.argument("faction", StringArgumentType.word())
 					.suggests(FACTIONS)
@@ -414,6 +419,35 @@ public final class FactionCommand {
 			}
 		}
 		say(ctx, "Ceasefire: every faction and player is back to neutral", Formatting.WHITE);
+		return 1;
+	}
+
+	/**
+	 * Owner authority (saved in the config): "absolute", owners are always obeyed and never fought;
+	 * "standing", owners are judged by how they treat their companions, like anyone else.
+	 */
+	private static int authority(CommandContext<ServerCommandSource> ctx, String mode) {
+		CompanionConfig cfg = CompanionConfig.get();
+		if (mode == null) {
+			say(ctx, "Owner authority: " + cfg.ownerAuthority + ("standing".equals(cfg.ownerAuthority)
+				? " (owners are judged by how they treat their companions, like anyone else)"
+				: " (owners are always obeyed and never fought)"), Formatting.AQUA);
+			return 1;
+		}
+		if (!mode.equals("absolute") && !mode.equals("standing")) {
+			ctx.getSource().sendError(Text.literal("Owner authority is absolute or standing"));
+			return 0;
+		}
+		cfg.ownerAuthority = mode;
+		CompanionConfig.save();
+		if (mode.equals("standing")) {
+			say(ctx, "Owner authority: standing. Owners now earn their companions' obedience like anyone else: trusted (60+) may give orders, "
+				+ "friendly (20+) ask favours; hurt them and they stop listening, fight back and may put a price on your head. "
+				+ "See /companion standing <faction> <you> (and set it to start afresh).", Formatting.WHITE);
+		} else {
+			say(ctx, "Owner authority: absolute. Your companions always obey you and never fight you (they still remember how you treat them).",
+				Formatting.WHITE);
+		}
 		return 1;
 	}
 
