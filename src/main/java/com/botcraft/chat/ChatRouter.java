@@ -563,6 +563,7 @@ public final class ChatRouter {
 						jobs.add(intent.count() > 0 ? "farm " + intent.count() : "farm");
 					}
 				}
+				case FISH -> jobs.add(intent.count() > 0 ? "fish " + intent.count() : "fish");
 				case HUNT -> {
 					String what = intent.item();
 					int n = intent.count() < 0 ? 3 : intent.count();

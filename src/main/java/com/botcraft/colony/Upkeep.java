@@ -25,10 +25,23 @@ import java.util.List;
  *   <li><b>Level ground:</b> the core, bed row, farm and pen are kept at their ground height:
  *       natural bumps up to {@link #MAX_STEP} blocks high are dug away, dips that deep filled.
  *       Never a built block, a tree, water, or anything under the base's furniture.</li>
+ *   <li><b>Clear ground</b> around home (the home zone and {@link #MARGIN} blocks past it):
+ *       pillars and lone blocks of cobblestone or dirt sticking up out of flat ground, from
+ *       before litter was recorded (or recorded dirt that has since grown grass), and the
+ *       stumps a felled tree leaves (logs with no leaves on them) are taken down; one-block pits
+ *       are filled. Nothing a player built is touched.</li>
+ *   <li><b>Fences</b> ({@code fenceHome}, once the base has wood to spare): a fence round the
+ *       home zone, with gates where the paths cross it and in the middle of each side.</li>
  * </ul>
  */
 public final class Upkeep {
-	public enum Kind { LITTER, DIG, FILL }
+	/** In the order they get done: clearing first, fences last. */
+	public enum Kind { LITTER, CLEAR, DIG, FILL, FENCE, GATE }
+
+	/** Clear ground this far past the home zone. */
+	public static final int MARGIN = 12;
+	/** Pillars and stumps up to this tall are cleared (towers for felling a tree are about this). */
+	private static final int MAX_PILLAR = 6;
 
 	public record Work(Kind kind, BlockPos pos) {
 	}
@@ -75,13 +88,20 @@ public final class Upkeep {
 		}
 		String dim = w.getRegistryKey().getValue().toString();
 		List<Work> out = new ArrayList<>();
-		litter(colony, w, map, home, dim, out);
+		Zone area = tidyArea(home, map);
+		litter(colony, w, map, area, dim, out);
 		holes(colony, w, home, dim, out);
 		for (String kind : Zones.AREAS) {
 			Zone z = colony.zone(kind);
 			if (z != null) {
-				level(w, map, z, out);
+				level(colony, w, map, z, out);
 			}
+		}
+		if (Experiments.on("clearGround")) {
+			clearGround(colony, w, map, area, out);
+		}
+		if (com.botcraft.config.CompanionConfig.get().fenceHome && Experiments.on("fenceHome") && woodToSpare(colony)) {
+			fences(colony, w, map, home, out);
 		}
 		BlockPos base = colony.base();
 		// Litter and bumps from the top down, holes from the bottom up; nearest the base first.
@@ -89,6 +109,122 @@ public final class Upkeep {
 			.thenComparingInt(k -> k.kind() == Kind.FILL ? k.pos().getY() : -k.pos().getY())
 			.thenComparingDouble(k -> base == null ? 0 : k.pos().getSquaredDistance(base)));
 		return out.size() > MAX_WORK ? List.copyOf(out.subList(0, MAX_WORK)) : out;
+	}
+
+	/** The home zone and a margin round it, inside what the base map covers. */
+	static Zone tidyArea(Zone home, BaseMap map) {
+		BlockPos c = map.center();
+		int r = BaseMap.RADIUS - 1;
+		return new Zone(Zones.HOME, Math.max(home.x1 - MARGIN, c.getX() - r), Math.max(home.z1 - MARGIN, c.getZ() - r),
+			Math.min(home.x2 + MARGIN, c.getX() + r), Math.min(home.z2 + MARGIN, c.getZ() + r), home.y, false);
+	}
+
+	/** A block a companion would have put down: a throwaway block, or its dirt grown over with grass. */
+	public static boolean throwaway(BlockState s) {
+		return s.isOf(net.minecraft.block.Blocks.GRASS_BLOCK)
+			|| com.botcraft.action.Inventories.isThrowaway(new net.minecraft.item.ItemStack(s.getBlock().asItem()));
+	}
+
+	/** A log that's no longer part of a tree (what a felled tree leaves behind). */
+	public static boolean stump(ServerWorld w, BlockPos p, BlockState s) {
+		return s.isIn(net.minecraft.registry.tag.BlockTags.LOGS) && !Builds.recorded(w, p) && !Builds.partOfTree(w, p);
+	}
+
+	/**
+	 * Unrecorded litter round home: columns standing up out of flat ground (higher than all four
+	 * neighbours, which are within a block of each other) made of throwaway blocks, or a stump.
+	 * Taken down to the neighbours' height. And one-block pits in otherwise flat ground, filled.
+	 */
+	private static void clearGround(Colony colony, ServerWorld w, BaseMap map, Zone area, List<Work> out) {
+		BlockPos.Mutable m = new BlockPos.Mutable();
+		for (int x = area.x1; x <= area.x2; x++) {
+			for (int z = area.z1; z <= area.z2; z++) {
+				BaseMap.Ground g = map.ground(x, z);
+				if (g == BaseMap.Ground.UNKNOWN || g == BaseMap.Ground.WATER || g == BaseMap.Ground.LAVA || !w.isChunkLoaded(m.set(x, 0, z))) {
+					continue;
+				}
+				int gy = map.groundY(x, z);
+				int lo = Integer.MAX_VALUE;
+				int hi = Integer.MIN_VALUE;
+				boolean known = true;
+				for (int[] d : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+					BaseMap.Ground ng = map.ground(x + d[0], z + d[1]);
+					if (ng == BaseMap.Ground.UNKNOWN || ng == BaseMap.Ground.WATER) {
+						known = false;
+						break;
+					}
+					int ny = map.groundY(x + d[0], z + d[1]);
+					lo = Math.min(lo, ny);
+					hi = Math.max(hi, ny);
+				}
+				if (!known || hi - lo > 1) {
+					continue; // a slope or the water's edge: leave it be
+				}
+				if (gy > hi && gy - hi <= MAX_PILLAR) {
+					// Standing up out of flat ground: take it down while it's throwaway blocks or stump.
+					for (int y = gy; y > hi; y--) {
+						BlockPos p = new BlockPos(x, y, z);
+						BlockState s = w.getBlockState(p);
+						if (Builds.recorded(w, p) || !(throwaway(s) || stump(w, p, s)) || Upkeep.holdsUpAnything(w, p)) {
+							break;
+						}
+						out.add(new Work(Kind.CLEAR, p));
+					}
+				} else if (gy == lo - 1 && Zones.at(colony, x, z) == null) {
+					// A one-block pit (not in a zone: zones are levelled on their own).
+					BlockPos p = new BlockPos(x, gy + 1, z);
+					BlockState s = w.getBlockState(p);
+					if (s.isReplaceable() && s.getFluidState().isEmpty()) {
+						out.add(new Work(Kind.FILL, p));
+					}
+				}
+			}
+		}
+	}
+
+	private static boolean holdsUpAnything(ServerWorld w, BlockPos p) {
+		BlockState up = w.getBlockState(p.up());
+		return holdsUp(w, p) || up.hasBlockEntity() || up.isOf(net.minecraft.block.Blocks.TORCH);
+	}
+
+	/** Enough wood in the chests for fences (a fence round home takes a few stacks of planks). */
+	private static boolean woodToSpare(Colony colony) {
+		return colony.count(com.botcraft.action.Inventories::isLog) >= 24;
+	}
+
+	/** Fence posts round the home zone (gates where paths cross it and mid-side), where the ground is open. */
+	private static void fences(Colony colony, ServerWorld w, BaseMap map, Zone home, List<Work> out) {
+		int midX = (home.x1 + home.x2) / 2;
+		int midZ = (home.z1 + home.z2) / 2;
+		List<int[]> ring = new ArrayList<>();
+		for (int x = home.x1; x <= home.x2; x++) {
+			ring.add(new int[]{x, home.z1});
+			ring.add(new int[]{x, home.z2});
+		}
+		for (int z = home.z1 + 1; z < home.z2; z++) {
+			ring.add(new int[]{home.x1, z});
+			ring.add(new int[]{home.x2, z});
+		}
+		for (int[] xz : ring) {
+			int x = xz[0];
+			int z = xz[1];
+			BaseMap.Ground g = map.ground(x, z);
+			if (g == BaseMap.Ground.UNKNOWN || g == BaseMap.Ground.WATER || g == BaseMap.Ground.LAVA || g == BaseMap.Ground.TREE) {
+				continue;
+			}
+			BlockPos p = new BlockPos(x, map.groundY(x, z) + 1, z);
+			if (!fenceSpot(w, p)) {
+				continue;
+			}
+			boolean gate = Zones.onPath(colony, x, z) || x == midX || z == midZ;
+			out.add(new Work(gate ? Kind.GATE : Kind.FENCE, p));
+		}
+	}
+
+	/** Open ground for a fence post or gate: room, no fluid, something solid under it. */
+	public static boolean fenceSpot(ServerWorld w, BlockPos p) {
+		BlockState s = w.getBlockState(p);
+		return s.isReplaceable() && s.getFluidState().isEmpty() && w.getBlockState(p.down()).isSideSolidFullSquare(w, p.down(), net.minecraft.util.math.Direction.UP);
 	}
 
 	private static void litter(Colony colony, ServerWorld w, BaseMap map, Zone home, String dim, List<Work> out) {
@@ -130,8 +266,8 @@ public final class Upkeep {
 				continue;
 			}
 			BlockState s = w.getBlockState(p);
-			if (!home.contains(p) || !s.isReplaceable()) {
-				colony.forgetDug(dim, p); // filled (or home moved)
+			if (!home.contains(p) || !s.isReplaceable() || Zones.isWaterSpot(colony, p.getX(), p.getZ())) {
+				colony.forgetDug(dim, p); // filled (or home moved, or it's for a farm's water)
 				continue;
 			}
 			if (s.getFluidState().isEmpty()) {
@@ -140,14 +276,14 @@ public final class Upkeep {
 		}
 	}
 
-	private static void level(ServerWorld w, BaseMap map, Zone z, List<Work> out) {
+	private static void level(Colony colony, ServerWorld w, BaseMap map, Zone z, List<Work> out) {
 		int level = z.y - 1;
 		BlockPos.Mutable m = new BlockPos.Mutable();
 		for (int x = z.x1; x <= z.x2; x++) {
 			for (int zz = z.z1; zz <= z.z2; zz++) {
 				BaseMap.Ground g = map.ground(x, zz);
 				if (g == BaseMap.Ground.UNKNOWN || g == BaseMap.Ground.WATER || g == BaseMap.Ground.LAVA || g == BaseMap.Ground.TREE
-					|| g == BaseMap.Ground.BUILT || !w.isChunkLoaded(m.set(x, level, zz))) {
+					|| g == BaseMap.Ground.BUILT || !w.isChunkLoaded(m.set(x, level, zz)) || Zones.isWaterSpot(colony, x, zz)) {
 					continue;
 				}
 				int gy = map.groundY(x, zz);
@@ -212,14 +348,17 @@ public final class Upkeep {
 		int litter = 0;
 		int dig = 0;
 		int fill = 0;
+		int fence = 0;
 		for (Work k : latest) {
 			switch (k.kind()) {
-				case LITTER -> litter++;
+				case LITTER, CLEAR -> litter++;
 				case DIG -> dig++;
 				case FILL -> fill++;
+				case FENCE, GATE -> fence++;
 			}
 		}
-		return litter + " litter block(s) to take down, " + dig + " bump block(s) to level, " + fill + " hole(s) to fill";
+		return litter + " litter block(s) to take down, " + dig + " bump block(s) to level, " + fill + " hole(s) to fill"
+			+ (fence > 0 ? ", " + fence + " fence post(s) to put up" : "");
 	}
 
 	/** For tests. */

@@ -59,7 +59,7 @@ public final class Raids {
 		if (home == null || !home.hasBase()) {
 			return "no base to raid from";
 		}
-		Faction target = target(f, home);
+		Faction target = target(f, home, force);
 		if (target == null) {
 			return "no enemy base known";
 		}
@@ -108,20 +108,21 @@ public final class Raids {
 		return "sent " + String.join(", ", names) + " to raid " + target.name;
 	}
 
-	/** The nearest enemy faction with a base in the same world. */
+	/** The nearest enemy faction with a base in the same world, whose land borders ours (any, when the raid is ordered). */
 	@Nullable
-	private static Faction target(Faction f, Colony home) {
+	private static Faction target(Faction f, Colony home, boolean force) {
 		Faction best = null;
 		double bestD = Double.MAX_VALUE;
 		for (Faction o : Factions.all()) {
-			if (o == f || !Factions.hostile(f.id, o.id)) {
+			if (o == f || !Factions.hostile(f.id, o.id) || !force && !Territory.neighbours(f.id, o.id)) {
 				continue;
 			}
 			Colony them = Colony.of(o.id);
 			if (them == null || !them.hasBase() || them.world() != home.world()) {
 				continue;
 			}
-			double d = them.base().getSquaredDistance(home.base());
+			// The nearest, but a faction harbouring the wanted is worth going further for.
+			double d = them.base().getSquaredDistance(home.base()) / (1.0 + 0.25 * Bounties.against(f, o.id, home.world().getTime()));
 			if (d < bestD) {
 				bestD = d;
 				best = o;

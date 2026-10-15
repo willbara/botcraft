@@ -1,6 +1,6 @@
 # Botcraft feature plan
 
-The plan for Botcraft's next major line of work, written against v0.11.2. Each section is one feature: **what it is**, **how to implement it**, **what it touches**, and **when it's done**. The status table below says how far 0.12.0 got.
+The plan for Botcraft's next major line of work, written against v0.11.2. Each section is one feature: **what it is**, **how to implement it**, **what it touches**, and **when it's done**. The status table below says how far 0.13.0 got.
 
 ## Ground rules
 
@@ -25,7 +25,7 @@ The plan for Botcraft's next major line of work, written against v0.11.2. Each s
 
 ---
 
-## Status in 0.12.0
+## Status in 0.13.0
 
 | § | Feature | Status |
 |---|---|---|
@@ -38,16 +38,16 @@ The plan for Botcraft's next major line of work, written against v0.11.2. Each s
 | 7 | Player standing and authority | **Done.** Witnesses react at once; faction-wide gossip is the victim's chat call-out plus the shared standing. |
 | 8 | Factions core | **Done.** |
 | 9 | Modes single, teams, dynamic | **Done.** |
-| 10 | Dynamic bases | **Founding: done** (`SiteSurvey`, `FoundTask`). Growing zones, outposts and relocation: not yet. |
+| 10 | Dynamic bases | **Founding: done** (`SiteSurvey`, `FoundTask`), well apart (160 blocks, scouting further when needed). **Territory: done** (`faction/Territory`): chunk claims that grow over time, borders, first contact, occupation at war, land ceded for peace. **Growing zones: farm plots** (up to four, watered). Outposts and relocation: not yet. |
 | 11 | Fracture, merging, leadership | **Fracture and disbanding: done** (simple unhappiness). Merging, elections and dividing the chests: not yet. |
-| 12 | Diplomacy | **War weariness and declarations of war: done** (dynamic mode), plus commands. Alliances, gifts and envoys: not yet. |
+| 12 | Diplomacy | **War weariness, declarations of war and first contact at the border: done** (dynamic mode), plus commands. **Bounties** (`faction/Bounties`): done. Alliances, gifts and envoys: not yet. |
 | 13 | Warfare | **off, defend, pvp and raid: done.** Raids go, fight, break in with griefing on, loot and return. Raid formations and a block cap: not yet. |
 | 14 | English understanding | **Partly:** stack amounts, follow-ups, teaching words and routines, trust questions. The tagger, chunker and frames pipeline: not yet. |
 | 15 | Conversation and context | **Partly:** last-order follow-ups. Coreference ("it", "there") and pending questions: not yet. |
 | 16 | Responses | **Partly:** mood variants, refusals with reasons. Content planner and realiser: not yet. |
 | 17 | Message bus | Not yet. |
 | 18 | Roles | Not yet. Archetypes bias the same weights. |
-| 19 | Jobs | **Farmer** (`FarmTask`) and **founding** done. Others not yet. |
+| 19 | Jobs | **Farmer** (`FarmTask`, with plots and water), **fisher** (`FishTask`), **founding** and **upkeep** (clearing, levelling, lighting, fencing) done. Others not yet. |
 | 20 | Combat | **Crits and shield: done.** Bows, buckets, potions and more: not yet. |
 | 21 | Squads | Not yet. Raids send up to four together. |
 | 22 | Machine learning | **Thompson sampling: done.** The rest not yet. |

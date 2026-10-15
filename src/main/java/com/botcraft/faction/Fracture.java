@@ -24,8 +24,9 @@ import java.util.Map;
  * </ul>
  * Members unhappy twice in a row grumble; when enough of them are (at least three, and a quarter
  * of the faction) the most ambitious one leaves with them and whoever likes it more than the
- * rest, and founds a new faction, at odds with the old one. They found a base of their own
- * (see Life's founding goal) and the raids begin. Empty factions are disbanded.
+ * rest, and founds a new faction, at odds with the old one. They found a base of their own, well
+ * away (see Life's founding goal), and when their land meets the old faction's, it's war or a
+ * truce ({@link Territory}). Empty factions are disbanded.
  */
 public final class Fracture {
 	private static final long CHECK_TICKS = 20 * 60 * 4;
@@ -138,8 +139,9 @@ public final class Fracture {
 			STREAK.remove(c.name());
 		}
 		nf.members.put(leader.data.uuid.toString(), Faction.Rank.LEADER);
-		// Splits are bitter: they start out as enemies.
-		Factions.setRelation(from.id, nf.id, -45);
+		// Splits are bitter: with land to fight over they start cool and settle far apart (the fight
+		// starts when their borders meet); without, they start out as enemies.
+		Factions.setRelation(from.id, nf.id, Territory.on() ? -15 : -45);
 		LAST_SPLIT.put(from.id, now);
 		LAST_SPLIT.put(nf.id, now);
 		Factions.markDirty();

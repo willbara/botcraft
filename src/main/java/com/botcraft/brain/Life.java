@@ -416,6 +416,10 @@ public class Life {
 		if (coal > 0 && Inventories.count(inv, s -> s.isOf(Items.TORCH)) < 16) {
 			goals.add(new Goal("torches", List.of("craft torch 8"), "torches for the dark"));
 		}
+		Goal fish = fishGoal(c, inv, food + raw, now);
+		if (fish != null) {
+			goals.add(fish);
+		}
 		// Everything that makes sense now goes on offer, in the old order of importance; the tree
 		// weighs them with this companion's character (and sticks with what it's already doing).
 		java.util.Set<String> seen = new java.util.HashSet<>();
@@ -520,7 +524,7 @@ public class Life {
 		if (now - dark[0] > 20 * 30) { // shared by everyone at this base, refreshed every 30 s
 			dark[0] = now;
 			dark[1] = com.botcraft.brain.Lighting.darkSpots(colony.world(), colony.base(),
-				com.botcraft.brain.task.LightHomeTask.RADIUS).size();
+				com.botcraft.brain.task.LightHomeTask.radius(colony)).size();
 		}
 		if (dark[1] == 0) {
 			return null;
@@ -549,31 +553,32 @@ public class Life {
 			|| !colony.near(p.getServerWorld(), p.getBlockPos(), 64)) {
 			return null;
 		}
-		var zone = colony.zone(com.botcraft.colony.Zones.FARM);
-		if (zone == null) {
+		if (colony.zone(com.botcraft.colony.Zones.FARM) == null) {
 			return null;
 		}
-		long[] seen = FARM_SEEN.computeIfAbsent(colony.id(), k -> new long[]{-10_000, 0, 0, 0, 0});
+		long[] seen = FARM_SEEN.computeIfAbsent(colony.id(), k -> new long[]{-10_000, 0, 0, 0, 0, 0});
 		if (now - seen[0] > 20 * 20) { // shared by everyone at this base, refreshed every 20 s
-			var n = com.botcraft.brain.task.FarmTask.needs(p.getServerWorld(), zone);
+			var n = com.botcraft.brain.task.FarmTask.needs(p.getServerWorld(), colony);
 			seen[0] = now;
 			seen[1] = n.ripe();
 			seen[2] = n.empty();
 			seen[3] = n.tillable();
 			seen[4] = n.grass();
+			seen[5] = n.dry();
 		}
-		var needs = new com.botcraft.brain.task.FarmTask.Needs((int) seen[1], (int) seen[2], (int) seen[3], (int) seen[4]);
+		var needs = new com.botcraft.brain.task.FarmTask.Needs((int) seen[1], (int) seen[2], (int) seen[3], (int) seen[4], (int) seen[5]);
 		boolean seeds = com.botcraft.brain.task.FarmTask.seeds(p) > 0;
 		boolean hoe = com.botcraft.brain.task.FarmTask.hasHoe(p);
 		boolean hungry = Inventories.foodCount(inv) == 0 && p.getHungerManager().getFoodLevel() < 14;
-		if (!needs.worthIt(seeds, hoe, hungry)) {
+		boolean water = needs.dry() > 0 && com.botcraft.brain.task.FarmTask.hasBucket(p);
+		if (!needs.worthIt(seeds, hoe, hungry) && !water) {
 			return null;
 		}
 		// One farmer per base at a time (everyone else would just get in each other's way).
 		if (com.botcraft.brain.task.FarmTask.someoneElseFarming(colony.id(), c.name(), now)) {
 			return null;
 		}
-		String why = needs.ripe() > 0 ? "the crops are ripe" : seeds ? "the farm needs planting" : "I need seeds for the farm";
+		String why = needs.ripe() > 0 ? "the crops are ripe" : water ? "the farm needs water" : seeds ? "the farm needs planting" : "I need seeds for the farm";
 		return new Goal("farm", List.of("farm"), why);
 	}
 
@@ -594,8 +599,16 @@ public class Life {
 		}
 		var site = com.botcraft.colony.SiteSurvey.choose(c);
 		if (site == null) {
-			tree.rest("found_base", now + 20 * 60); // nowhere good around here; look again in a minute
-			return null;
+			// Nowhere good around here (too near the others, or poor ground): head off away from the
+			// nearest base and look again there.
+			var p = c.player();
+			if (p == null) {
+				return null;
+			}
+			BlockPos to = com.botcraft.colony.SiteSurvey.scoutFrom(p.getServerWorld(), p.getBlockPos(), com.botcraft.faction.Factions.idOf(c), 96,
+				new java.util.Random(now ^ c.data.uuid.getLeastSignificantBits()));
+			return new Goal("found_base", List.of("goto " + to.getX() + " " + to.getY() + " " + to.getZ() + " to look for a place to settle"),
+				"we need a base, somewhere with room");
 		}
 		BlockPos s = site.pos();
 		return new Goal("found_base", List.of("goto " + s.getX() + " " + s.getY() + " " + s.getZ() + " to our new home", "found"),
@@ -620,6 +633,35 @@ public class Life {
 			}
 		}
 		return best == c;
+	}
+
+	/**
+	 * Go fishing: we know of water near here, we've a rod or the makings of one (three sticks, or
+	 * wood, and two string), and either food is short or we're the curious sort (explorers and
+	 * scouts like a quiet hour by the water). In daylight.
+	 */
+	@Nullable
+	private Goal fishGoal(Companion c, PlayerInventory inv, int food, long now) {
+		var p = c.player();
+		if (!CompanionConfig.get().fishing || !com.botcraft.util.Experiments.on("fishing") || !allowed("fish", now)
+			|| !p.getWorld().isDay() || c.data.curiosity < 0.35F && food >= 6) {
+			return null;
+		}
+		var water = c.memory().sightings("water", p.getBlockPos(), c.dimension(), 64);
+		if (water.isEmpty()) {
+			return null;
+		}
+		boolean rod = Inventories.count(inv, s -> s.isOf(Items.FISHING_ROD)) > 0;
+		if (!rod) {
+			var colony = com.botcraft.colony.Colony.get();
+			int string = Inventories.count(inv, s -> s.isOf(Items.STRING)) + (colony == null ? 0 : colony.count(s -> s.isOf(Items.STRING)));
+			boolean wood = Inventories.count(inv, s -> s.isOf(Items.STICK) || s.isIn(ItemTags.PLANKS) || s.isIn(ItemTags.LOGS)) > 0;
+			if (string < 2 || !wood) {
+				return null;
+			}
+		}
+		int n = food < 6 ? 6 : 3 + Math.round(c.data.curiosity * 4);
+		return new Goal("fish", List.of("fish " + n), food < 6 ? "there's fish in that water, and we're short of food" : "I know a good spot for fishing");
 	}
 
 	/** Per base: when the farm was last looked at, and ripe/empty/tillable/grass counts. */

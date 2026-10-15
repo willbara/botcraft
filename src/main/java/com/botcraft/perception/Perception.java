@@ -28,6 +28,8 @@ import java.util.List;
  */
 public class Perception {
 	public static final double THREAT_RADIUS = 16.0;
+	/** Someone with a price on their head is spotted (and gone after) from this far. */
+	public static final double WANTED_RADIUS = 32.0;
 	private static final int THREAT_TTL = 5;
 	private static final int INVENTORY_TTL = 20;
 
@@ -55,10 +57,52 @@ public class Perception {
 			if ((serverTick + Math.floorMod(companion.name().hashCode(), 100)) % 100 == 0) {
 				watchHerds();
 			}
+			if ((serverTick + Math.floorMod(companion.name().hashCode(), 200)) % 200 == 100) {
+				watchWater();
+			}
 		}
 	}
 
 	private static final int MAX_HERDS = 12;
+	/** Water this big (columns of the sparse look below) counts as a body of water worth fishing. */
+	private static final int WATER_BODY = 5;
+
+	/**
+	 * Notice open water (a lake, a river, the sea) while about: a sparse look at the surface round
+	 * us, and if enough of it is water, the nearest bit is remembered as a "water" sighting (for
+	 * fishing, see FishTask).
+	 */
+	private void watchWater() {
+		var p = companion.player();
+		var world = p.getServerWorld();
+		BlockPos at = p.getBlockPos();
+		BlockPos nearest = null;
+		double bestD = Double.MAX_VALUE;
+		int count = 0;
+		BlockPos.Mutable m = new BlockPos.Mutable();
+		for (int dx = -24; dx <= 24; dx += 4) {
+			for (int dz = -24; dz <= 24; dz += 4) {
+				int x = at.getX() + dx;
+				int z = at.getZ() + dz;
+				if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+					continue;
+				}
+				int top = world.getTopY(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+				var f = world.getFluidState(m.set(x, top, z));
+				if (f.isIn(net.minecraft.registry.tag.FluidTags.WATER) && f.isStill() && Math.abs(top - at.getY()) < 12) {
+					count++;
+					double d = m.getSquaredDistance(at);
+					if (d < bestD) {
+						bestD = d;
+						nearest = m.toImmutable();
+					}
+				}
+			}
+		}
+		if (count >= WATER_BODY && nearest != null) {
+			companion.memory().sight("water", nearest, companion.dimension(), now);
+		}
+	}
 
 	/**
 	 * Notice animals while doing other things, like a player does: groups of three or more food
@@ -157,12 +201,22 @@ public class Perception {
 			return List.of();
 		}
 		List<ServerPlayerEntity> list = new ArrayList<>();
+		java.util.Map<ServerPlayerEntity, Double> bounty = new java.util.HashMap<>();
+		var faction = com.botcraft.faction.Factions.of(companion);
 		for (ServerPlayerEntity o : p.getServerWorld().getPlayers()) {
-			if (o != p && o.squaredDistanceTo(p) < THREAT_RADIUS * THREAT_RADIUS && com.botcraft.faction.Hostility.isEnemy(companion, o)) {
+			double d2 = o.squaredDistanceTo(p);
+			if (o == p || d2 >= WANTED_RADIUS * WANTED_RADIUS) {
+				continue;
+			}
+			// Someone with a price on their head is worth going further for, and comes first.
+			double b = com.botcraft.faction.Bounties.value(faction, o.getGameProfile().getName(), now);
+			boolean wanted = b >= com.botcraft.faction.Bounties.WANTED && p.canSee(o);
+			if ((d2 < THREAT_RADIUS * THREAT_RADIUS || wanted) && com.botcraft.faction.Hostility.isEnemy(companion, o)) {
 				list.add(o);
+				bounty.put(o, b);
 			}
 		}
-		list.sort(Comparator.comparingDouble(o -> o.squaredDistanceTo(p)));
+		list.sort(Comparator.comparingDouble(o -> o.squaredDistanceTo(p) / (1.0 + bounty.getOrDefault(o, 0.0))));
 		return list;
 	}
 
