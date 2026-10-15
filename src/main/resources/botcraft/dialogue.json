@@ -192,5 +192,7 @@
   "popbob.bother": ["Boop. Hi, {player}.", "What're you doing, {player}? Can I help? No.", "Tag, {player}, you're it.", "{player}, you dropped this. Just kidding."],
   "popbob.steal": ["Thanks for the {count} things, {faction}!", "{faction} should really lock their chests.", "Finders keepers, {faction}."],
   "popbob.robbed": ["Popbob's been in our chests!", "Hey! Popbob, that's ours!", "Somebody stop popbob, he's robbing us!"],
-  "egg.technoblade": ["Technoblade never dies!"]
+  "egg.technoblade": ["Technoblade never dies!"],
+  "faction.merge": ["Welcome, {faction}. We're one people now.", "{faction} joins us. Stronger together!", "From today, {faction} and us are one."],
+  "faction.merge_join": ["We're with {faction} now. Glad to be back together.", "{faction} it is. No point standing apart.", "Joining {faction}. Let's make it work."]
 }

@@ -63,6 +63,26 @@ public final class Upkeep {
 	private Upkeep() {
 	}
 
+	/** How many jobs of this kind are waiting at this colony's home (as last found). */
+	public static int count(Colony colony, Kind kind) {
+		int n = 0;
+		for (Work w : LATEST.getOrDefault(colony.id(), List.of())) {
+			if (w.kind() == kind) {
+				n++;
+			}
+		}
+		return n;
+	}
+
+	/**
+	 * A base that doesn't look the part yet: trees still standing in the home zone, or no farm or
+	 * pen laid out (they need the open ground). Clearing comes first at a base like this.
+	 */
+	public static boolean unsettled(Colony colony) {
+		return colony != null && colony.hasBase()
+			&& (count(colony, Kind.FELL) > 0 || colony.zone(Zones.FARM) == null || colony.zone(Zones.PEN) == null);
+	}
+
 	/** What needs doing at home, as last found. */
 	public static List<Work> latest() {
 		return LATEST.getOrDefault(com.botcraft.faction.Scope.current(), List.of());

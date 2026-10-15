@@ -208,6 +208,8 @@ public final class Board {
 
 	/** Under the stock requests in importance: a tidy base matters, but less than food or tools. */
 	private static final double UPKEEP_PRIORITY = 0.4;
+	/** Clearing a base that doesn't look the part yet: before anything else on the board. */
+	private static final double UNSETTLED_PRIORITY = 1.5;
 	private static final String UPKEEP_KEY = "upkeep";
 
 	/** Post (or update, or close) the "tidy up the base" request from what {@link Upkeep} finds. */
@@ -220,14 +222,18 @@ public final class Board {
 			}
 			return;
 		}
+		// A base that doesn't look the part yet (trees in the way, no farm or pen) puts clearing
+		// first, ahead of stocking up: that's what makes it a home.
+		double priority = Upkeep.unsettled(colony) ? UNSETTLED_PRIORITY : UPKEEP_PRIORITY;
 		if (r == null) {
-			r = new Request(nextId++, Kind.UPKEEP, UPKEEP_KEY, "tidy up the base", work.size(), null, now, UPKEEP_PRIORITY);
+			r = new Request(nextId++, Kind.UPKEEP, UPKEEP_KEY, "tidy up the base", work.size(), null, now, priority);
 			REQUESTS.add(r);
 			AiLog.log("board", "posted #{}: {} ({})", r.id, r.describe(), Upkeep.summary());
 			com.botcraft.ops.SoakStats.board("posted " + r.key);
 		} else if (r.state == State.OPEN) {
 			r.count = work.size();
 		}
+		r.priority = priority;
 	}
 
 	/** Give back a taken request whose holder is gone, ordered elsewhere, or stopped working on it. */

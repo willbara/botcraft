@@ -340,5 +340,10 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 ### 39. Skin layers and capes (0.14.8)
 - [ ] `/companion spawn Bob <account with a hat/jacket layer and a cape>`: Bob shows the outer layers (hat, jacket, sleeves) and the cape, like the player would.
 
+### 40. Merging, and clearing a new base first (0.14.9)
+- [ ] `/companion faction merge red bluesband`: Blue's Band's companions join Red (names take Red's colour), its leader is a Red officer, its land is Red's, and the faction is gone from `/companion faction`.
+- [ ] Dynamic mode, a split that later warms back up (`/companion faction relation red band 50`) and is close: within a few checks (a day after the split) it rejoins Red ("We're with Red now. Glad to be back together."). Log: "merged into".
+- [ ] A base founded in a wood: within the first few minutes several members are "clearing the trees at home" at once, and the farm and pen get laid out soon after (`/companion colony`).
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

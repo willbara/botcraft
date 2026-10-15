@@ -352,6 +352,15 @@ public class Life {
 		if (store != null) {
 			goals.add(store);
 		}
+		// A new base in a wood: clear it first, all hands (the trees are spread between whoever
+		// comes; the logs go in the chests). That's what makes room for the farm and pen and makes
+		// it look like a home.
+		var baseC = com.botcraft.colony.Colony.get();
+		if (baseC != null && com.botcraft.colony.Upkeep.unsettled(baseC) && allowed("clear_home", now)
+			&& com.botcraft.colony.Upkeep.count(baseC, com.botcraft.colony.Upkeep.Kind.FELL) > 0
+			&& baseC.world() == p.getServerWorld() && baseC.near(p.getServerWorld(), p.getBlockPos(), 96)) {
+			goals.add(new Goal("clear_home", List.of("gather logs 64 home", "home", "deposit"), "the base needs clearing"));
+		}
 		// Light up the base if it's dark (monsters spawn on dark ground).
 		Goal light = lightGoal(c, inv, now);
 		if (light != null) {
