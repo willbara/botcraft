@@ -113,6 +113,11 @@ public class GatherLogsTask extends Task {
 		return area != null ? "clearing the trees at home (" + gathered + " logs)" : "chopping wood (" + gathered + "/" + wanted + ")";
 	}
 
+	/** Clearing the trees at home (not off to a wood). */
+	public boolean clearingHome() {
+		return area != null;
+	}
+
 	public int gathered() {
 		return gathered;
 	}

@@ -82,7 +82,7 @@ public class Life {
 		if (!free && !"follow".equals(c.data.mode)) {
 			return;
 		}
-		if (free && c.perception().isNight() && (outdoorErrand(c.brain().job()) || leavingBaseToMine(c))) {
+		if (free && c.perception().isNight() && (outdoorErrand(c.brain().job()) || (leavingBaseToMine(c) && !"night_mine".equals(lastGoal)))) {
 			// Our own errand outdoors and it's getting dark: head in (bed, guard home or dig in),
 			// carry on in the morning.
 			AiLog.log(c.name(), "life: getting dark, dropping {} for the night", c.brain().jobName());
@@ -254,7 +254,10 @@ public class Life {
 		Mood m = c.mood();
 		Map<com.botcraft.brain.goal.GoalTree.Root, Float> w = new java.util.EnumMap<>(com.botcraft.brain.goal.GoalTree.Root.class);
 		w.put(com.botcraft.brain.goal.GoalTree.Root.SURVIVE, 1.0F + 0.1F * p.caution());
-		w.put(com.botcraft.brain.goal.GoalTree.Root.PROGRESS, 0.92F + 0.16F * p.ambition() - 0.1F * m.get(Mood.Kind.FATIGUE));
+		// Poorly armed (less than an iron sword, or no armour to speak of), getting armed matters more.
+		var cp = c.player();
+		boolean underArmed = cp != null && (Inventories.bestWeaponDamage(cp.getInventory()) < 6.0 || cp.getArmor() < 8);
+		w.put(com.botcraft.brain.goal.GoalTree.Root.PROGRESS, 0.92F + 0.16F * p.ambition() - 0.1F * m.get(Mood.Kind.FATIGUE) + (underArmed ? 0.1F : 0.0F));
 		w.put(com.botcraft.brain.goal.GoalTree.Root.FACTION, 0.92F + 0.08F * p.helpfulness() + 0.08F * p.loyalty());
 		w.put(com.botcraft.brain.goal.GoalTree.Root.CURIOSITY, 0.85F + 0.25F * p.curiosity() + 0.15F * m.get(Mood.Kind.BOREDOM));
 		w.put(com.botcraft.brain.goal.GoalTree.Root.REST, 1.0F);
@@ -288,9 +291,12 @@ public class Life {
 		String h = home.getX() + " " + home.getY() + " " + home.getZ();
 		double fromHome = Math.sqrt(p.getBlockPos().getSquaredDistance(home));
 
-		// 1. Night: bed, else home (armed) or a dug-in shelter.
+		// 1. Night: sleep if that skips the night (someone else is sleeping, or there's nobody else
+		// to wait for); otherwise carry on with work close to home, carefully: the base's upkeep,
+		// the farm, the night chores, mining from home. Unarmed, arm up or dig in.
 		if (c.perception().isNight()) {
-			if (allowed("sleep", now)) {
+			boolean rest = restTonight(c);
+			if (rest && allowed("sleep", now)) {
 				if (bedNear(c, home)) {
 					return new Goal("sleep", List.of("sleep"), "it's late");
 				}
@@ -310,8 +316,25 @@ public class Life {
 				if (fromHome > 8 && allowed("home", now)) {
 					return new Goal("home", List.of("home"), "it's getting dark");
 				}
-				// Home for the night: do the chores that need nothing from outside.
-				return nightChores(c, inv, now);
+				// Home for the night: the chores that need nothing from outside, then work close by.
+				Goal chores = nightChores(c, inv, now);
+				if (chores != null) {
+					return chores;
+				}
+				Goal work = nightWork(c, inv, now);
+				if (work != null) {
+					return work;
+				}
+				if (!rest && allowed("sleep", now) && bedNear(c, home)) {
+					return new Goal("sleep", List.of("sleep"), "nothing left to do tonight");
+				}
+				return null;
+			}
+			// Unarmed at home with wood in reach: a sword first (that's what keeps us working at night).
+			var base = com.botcraft.colony.Colony.get();
+			if (base != null && base.hasBase() && base.near(p.getServerWorld(), p.getBlockPos(), com.botcraft.colony.Colony.BASE_RADIUS)
+				&& allowed("sword", now) && planksAvailable(c, inv) >= 3) {
+				return new Goal("sword", List.of("craft wooden_sword 1"), "I need a weapon before I go out in the dark");
 			}
 			if (allowed("shelter", now)) {
 				return new Goal("shelter", List.of("shelter"), "I'm not facing the night without a sword");
@@ -409,8 +432,10 @@ public class Life {
 		// Progression: the next target on the ladder (iron tools, iron armour, diamonds...), got
 		// whichever way the planner finds cheapest right now.
 		// (Planned only when nothing more urgent is waiting: planning isn't free.)
-		if (stonePick && goals.stream().noneMatch(g -> allowed(g.key(), now))) {
-			Goal target = targetGoal(c, now);
+		// (Always on offer, so getting armed never waits for a quiet moment that doesn't come;
+		// re-planned at most every 30 seconds, since planning isn't free.)
+		if (stonePick) {
+			Goal target = cachedTarget(c, now);
 			if (target != null) {
 				goals.add(target);
 			}
@@ -439,6 +464,23 @@ public class Life {
 		}
 		if (coal > 0 && Inventories.count(inv, s -> s.isOf(Items.TORCH)) < 16) {
 			goals.add(new Goal("torches", List.of("craft torch 8"), "torches for the dark"));
+		}
+		// Keeping the base supplied when nothing else is pressing: wood, coal and iron are what
+		// everything else is made of. (Last on offer, so they fill gaps rather than crowd out.)
+		var stockC = com.botcraft.colony.Colony.get();
+		if (stockC != null && stockC.hasBase()) {
+			int logs = stockC.count(Inventories::isLog) + Inventories.count(inv, Inventories::isLog);
+			int coalAll = stockC.count(s -> s.isOf(Items.COAL) || s.isOf(Items.CHARCOAL)) + coal;
+			int ironAll = stockC.count(s -> s.isOf(Items.IRON_INGOT) || s.isOf(Items.RAW_IRON)) + iron;
+			if (logs < 64) {
+				goals.add(new Goal("stock_logs", List.of("gather logs 16", "home", "deposit"), "the base could use more wood"));
+			}
+			if (stonePick && coalAll < 32) {
+				goals.add(new Goal("stock_coal", List.of("mine coal 8", "home", "deposit"), "the base is low on coal"));
+			}
+			if (stonePick && ironAll < 24) {
+				goals.add(new Goal("stock_iron", List.of("mine iron 6", "home", "deposit"), "we need iron to get properly armed"));
+			}
 		}
 		Goal fish = fishGoal(c, inv, food + raw, now);
 		if (fish != null) {
@@ -782,6 +824,67 @@ public class Life {
 		return null;
 	}
 
+	/**
+	 * Sleep tonight? Only when that gets the night skipped: a real player is in bed (or there's no
+	 * real player here to wait for), or night work is turned off. Otherwise lying in bed is just
+	 * lying there until morning.
+	 */
+	private static boolean restTonight(Companion c) {
+		if (!CompanionConfig.get().nightWork) {
+			return true;
+		}
+		boolean anyone = false;
+		for (var o : c.player().getServerWorld().getPlayers()) {
+			if (o instanceof com.botcraft.entity.CompanionPlayer || o.isSpectator()) {
+				continue;
+			}
+			anyone = true;
+			if (o.isSleeping()) {
+				return true;
+			}
+		}
+		return !anyone;
+	}
+
+	/**
+	 * Work at night, close to home (armed, careful, among the others): the base's upkeep from the
+	 * board (clearing, levelling, filling, fencing), the farm, and mining from home for what the
+	 * base is short of.
+	 */
+	@Nullable
+	private Goal nightWork(Companion c, PlayerInventory inv, long now) {
+		var colony = com.botcraft.colony.Colony.get();
+		var p = c.player();
+		if (!CompanionConfig.get().nightWork || colony == null || !colony.hasBase()
+			|| !colony.near(p.getServerWorld(), p.getBlockPos(), com.botcraft.colony.Colony.BASE_RADIUS)) {
+			return null;
+		}
+		if (!boardRest) {
+			Board.Assignment a = Board.takeAtNight(c, now);
+			if (a != null) {
+				boardRequest = a.request().id;
+				boardHolder = c.name();
+				return new Goal("board", a.steps(), a.reason());
+			}
+		}
+		Goal farm = farmGoal(c, inv, now);
+		if (farm != null) {
+			return farm;
+		}
+		boolean stonePick = has(inv, s -> s.getItem() instanceof PickaxeItem && !s.isOf(Items.WOODEN_PICKAXE) && !s.isOf(Items.GOLDEN_PICKAXE));
+		if (stonePick && allowed("night_mine", now)) {
+			int coal = colony.count(s -> s.isOf(Items.COAL) || s.isOf(Items.CHARCOAL)) + Inventories.count(inv, s -> s.isOf(Items.COAL));
+			int iron = colony.count(s -> s.isOf(Items.IRON_INGOT) || s.isOf(Items.RAW_IRON))
+				+ Inventories.count(inv, s -> s.isOf(Items.IRON_INGOT) || s.isOf(Items.RAW_IRON));
+			int stone = colony.count(s -> s.isOf(Items.COBBLESTONE));
+			String job = coal < 32 ? "mine coal 8" : iron < 32 ? "mine iron 6" : stone < 64 ? "mine stone 16" : null;
+			if (job != null) {
+				return new Goal("night_mine", List.of(job, "home", "deposit"), "a good night for some mining near home");
+			}
+		}
+		return null;
+	}
+
 	private static boolean wearing(com.botcraft.entity.CompanionPlayer p, net.minecraft.item.Item item) {
 		for (var s : p.getArmorItems()) {
 			if (s.isOf(item)) {
@@ -799,8 +902,10 @@ public class Life {
 
 	/** Self-chosen jobs that keep a companion outdoors and away from home after dark. */
 	private static boolean outdoorErrand(@Nullable Task job) {
-		return job instanceof com.botcraft.brain.task.HuntTask || job instanceof com.botcraft.brain.task.GatherLogsTask
-			|| job instanceof com.botcraft.brain.task.FarmTask
+		// (The farm and clearing home's trees are at home: fine at night.)
+		return job instanceof com.botcraft.brain.task.HuntTask
+			|| (job instanceof com.botcraft.brain.task.GatherLogsTask gl && !gl.clearingHome())
+			|| job instanceof com.botcraft.brain.task.FishTask
 			|| (job instanceof com.botcraft.brain.task.GoToTask g && g.label().equals("exploring"));
 	}
 
@@ -840,6 +945,20 @@ public class Life {
 			Math.round(decision.chosen().cost()), decision.chosen().steps(), decision.considered().stream()
 				.filter(o -> o != decision.chosen()).map(o -> o.method() + " " + (o.possible() ? Math.round(o.cost()) + "s" : "no")).toList());
 		return new Goal(key, decision.chosen().steps(), target.tier() + " next: " + target.name());
+	}
+
+	@Nullable
+	private Goal targetCache;
+	private long targetAt = -10_000;
+
+	/** {@link #targetGoal}, planned again at most every 30 seconds (or once the last one is done or put aside). */
+	@Nullable
+	private Goal cachedTarget(Companion c, long now) {
+		if (targetCache == null || now - targetAt > 20 * 30 || !allowed(targetCache.key(), now)) {
+			targetCache = targetGoal(c, now);
+			targetAt = now;
+		}
+		return targetCache;
 	}
 
 	/** Hungry with nothing to eat while following: cook what we have, else hunt nearby. */

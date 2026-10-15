@@ -321,5 +321,10 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] With a base and open board requests, the leader orders idle members ("Bob, see to 16 logs for the base.") and they go straight to it. A poorly stocked faction hears a rallying call; a well stocked one, praise.
 - [ ] In dynamic mode, spawn one more companion with no faction: within half a minute a faction takes it in ("Welcome to Red, X."). In teams mode it goes to the smaller team.
 
+### 36. Night work and progression (0.14.2)
+- [ ] Free mode, armed companions with a base, you awake (or in creative): at dusk they come home and keep busy (chests, torches, cooking, tidy/fence/clear jobs, the farm, "mining near home"), not standing about until morning. Go to bed yourself: they go to bed too and the night skips.
+- [ ] Unarmed at home at night with planks in the chests: they make a wooden sword first.
+- [ ] Over a long run, companions keep climbing the gear ladder (`/companion why <name>` shows a "next:" target most of the time), and the base's logs, coal and iron get topped up when nothing else is pressing.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.
