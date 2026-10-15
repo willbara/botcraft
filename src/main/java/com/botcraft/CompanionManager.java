@@ -344,14 +344,19 @@ public final class CompanionManager {
 			com.botcraft.faction.Factions.syncTeams();
 		}
 		double budget = budgetMs();
-		TickBudget.begin(budget);
+		TickBudget.begin(budget, ceilingMs());
 		// Rotate the starting companion so a shared, exhausted budget doesn't always starve the same one.
 		List<Companion> order = new ArrayList<>(companions.values());
 		if (!order.isEmpty()) {
 			java.util.Collections.rotate(order, (int) (tickCount % order.size()));
 		}
 		long started = System.nanoTime();
+		double slice = sliceMs();
+		double burst = CompanionConfig.get().companionBurstMs;
 		for (Companion c : order) {
+			// Its own allowance: this tick's slice plus what it saved on quiet ticks, up to a burst.
+			c.budgetCredit = Math.min(burst, c.budgetCredit + slice);
+			TickBudget.beginCompanion(c.budgetCredit);
 			// Everything a companion does is for its own faction (its colony, its board).
 			String prev = com.botcraft.faction.Scope.enter(com.botcraft.faction.Factions.idOf(c));
 			try {
@@ -360,6 +365,7 @@ public final class CompanionManager {
 				Botcraft.LOG.error("Error ticking companion {}", c.name(), e);
 			} finally {
 				com.botcraft.faction.Scope.exit(prev);
+				c.budgetCredit = Math.max(0, c.budgetCredit - TickBudget.endCompanion());
 			}
 		}
 		for (var colony : com.botcraft.colony.Colony.all()) {
@@ -381,12 +387,13 @@ public final class CompanionManager {
 			com.botcraft.faction.Fracture.tick(this, tickCount);
 			com.botcraft.faction.Diplomacy.tick(this, tickCount);
 			com.botcraft.faction.Territory.tick(this, tickCount);
+			com.botcraft.faction.Leadership.tick(this, tickCount);
 		} catch (RuntimeException e) {
 			Botcraft.LOG.error("Error updating factions", e);
 		}
 		long took = System.nanoTime() - started;
 		aiMs = aiMs * 0.8 + took / 1e6 * 0.2;
-		com.botcraft.ops.SoakStats.tickTime(took, budget);
+		com.botcraft.ops.SoakStats.tickTime(took, budget + slice * order.size());
 		com.botcraft.ops.SoakStats.serverTick(server.getTickTime());
 		com.botcraft.ops.Soak.tick(server);
 		com.botcraft.ops.Bench.tick(server);
@@ -414,6 +421,23 @@ public final class CompanionManager {
 	 * the server leaves spare under {@link #TARGET_TICK_MS}, up to maxTickBudgetMs. A quiet
 	 * server gets quick path finding; a busy one is never slowed down by it.
 	 */
+	/**
+	 * Each companion's own time per tick: {@code companionBudgetMs}, cut back while the server is
+	 * falling behind (a whole tick over 40 ms), so many companions never add up to a lagging server.
+	 */
+	private double sliceMs() {
+		CompanionConfig cfg = CompanionConfig.get();
+		double tick = server.getTickTime();
+		double scale = tick > 50 ? 0.25 : tick > 40 ? 0.5 : 1.0;
+		return cfg.companionBudgetMs * scale;
+	}
+
+	/** All the AI time a tick can take, whatever companions have saved: what the rest of the server leaves under 35 ms. */
+	private double ceilingMs() {
+		double others = Math.max(0, server.getTickTime() - aiMs);
+		return Math.max(CompanionConfig.get().tickBudgetMs, TARGET_TICK_MS - others);
+	}
+
 	private double budgetMs() {
 		CompanionConfig cfg = CompanionConfig.get();
 		if (!com.botcraft.util.Experiments.on("adaptiveBudget")) {

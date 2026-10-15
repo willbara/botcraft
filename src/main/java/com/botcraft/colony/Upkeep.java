@@ -36,7 +36,7 @@ import java.util.List;
  */
 public final class Upkeep {
 	/** In the order they get done: clearing first, fences last. */
-	public enum Kind { LITTER, CLEAR, DIG, FILL, FENCE, GATE }
+	public enum Kind { LITTER, FELL, CLEAR, DIG, FILL, FENCE, GATE }
 
 	/** Clear ground this far past the home zone. */
 	public static final int MARGIN = 12;
@@ -99,6 +99,9 @@ public final class Upkeep {
 		}
 		if (Experiments.on("clearGround")) {
 			clearGround(colony, w, map, area, out);
+		}
+		if (com.botcraft.config.CompanionConfig.get().clearTrees && Experiments.on("clearTrees")) {
+			trees(w, map, home, out);
 		}
 		if (com.botcraft.config.CompanionConfig.get().fenceHome && Experiments.on("fenceHome") && woodToSpare(colony)) {
 			fences(colony, w, map, home, out);
@@ -186,6 +189,37 @@ public final class Upkeep {
 		BlockState up = w.getBlockState(p.up());
 		return holdsUp(w, p) || up.hasBlockEntity() || up.isOf(net.minecraft.block.Blocks.TORCH);
 	}
+
+	/**
+	 * Natural trees standing in the home zone (their trunks' lowest logs): they take the room the
+	 * zones need and hide the ground monsters spawn on. Felled with the tidying.
+	 */
+	private static void trees(ServerWorld w, BaseMap map, Zone home, List<Work> out) {
+		java.util.Set<BlockPos> bases = new java.util.HashSet<>();
+		BlockPos.Mutable m = new BlockPos.Mutable();
+		for (int x = home.x1; x <= home.x2; x++) {
+			for (int z = home.z1; z <= home.z2; z++) {
+				if (map.ground(x, z) != BaseMap.Ground.TREE || !w.isChunkLoaded(m.set(x, 0, z))) {
+					continue;
+				}
+				int y = map.groundY(x, z);
+				m.set(x, y, z);
+				if (!w.getBlockState(m).isIn(net.minecraft.registry.tag.BlockTags.LOGS)) {
+					continue; // already felled since the map looked
+				}
+				for (int i = 0; i < 32 && w.getBlockState(m.down()).isIn(net.minecraft.registry.tag.BlockTags.LOGS); i++) {
+					m.move(0, -1, 0);
+				}
+				BlockPos base = m.toImmutable();
+				if (bases.size() < MAX_TREES && !Builds.recorded(w, base) && Builds.partOfTree(w, base) && bases.add(base)) {
+					out.add(new Work(Kind.FELL, base));
+				}
+			}
+		}
+	}
+
+	/** Trees listed at once (the felling job clears them all anyway). */
+	private static final int MAX_TREES = 16;
 
 	/** Enough wood in the chests for fences (a fence round home takes a few stacks of planks). */
 	private static boolean woodToSpare(Colony colony) {
@@ -351,7 +385,7 @@ public final class Upkeep {
 		int fence = 0;
 		for (Work k : latest) {
 			switch (k.kind()) {
-				case LITTER, CLEAR -> litter++;
+				case LITTER, CLEAR, FELL -> litter++;
 				case DIG -> dig++;
 				case FILL -> fill++;
 				case FENCE, GATE -> fence++;

@@ -538,6 +538,17 @@ public class Life {
 		if (com.botcraft.knowledge.CraftPlanner.plan(c.server, have, Items.TORCH, 16).ready()) {
 			return new Goal("light_home", List.of("craft torch 16", "light"), "it's dark around the base, I'll make torches");
 		}
+		// No coal yet (a new base): dig some up if we can, else burn logs into charcoal. A dark base
+		// is where the night's monsters come from, so this comes early, not after the iron.
+		boolean pickaxe = has(inv, s -> s.getItem() instanceof PickaxeItem);
+		int logs = have.entrySet().stream().filter(e -> new net.minecraft.item.ItemStack(e.getKey()).isIn(ItemTags.LOGS))
+			.mapToInt(Map.Entry::getValue).sum();
+		if (pickaxe) {
+			return new Goal("light_home", List.of("mine coal 4", "craft torch 16", "light"), "it's dark around the base, I'll get coal for torches");
+		}
+		if (logs >= 6) {
+			return new Goal("light_home", List.of("smelt charcoal 4", "craft torch 16", "light"), "it's dark around the base, I'll burn some charcoal for torches");
+		}
 		return null;
 	}
 

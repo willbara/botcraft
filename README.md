@@ -54,7 +54,7 @@ All commands need permission level 2 by default (`commandPermissionLevel`).
 | `/companion removeall` | Dismisses every companion and forgets them, like `/companion remove` for each. Their playerdata files are kept. |
 | `/companion chat [all\|quiet\|off]` | How much companions say. `quiet` keeps answers and acknowledgements when spoken to, what they start on their own and what failed, and drops small talk, banter and remarks. Saved in the config (`chatVerbosity`). |
 | `/companion list` | Name, owner, position, health, food and current activity of every companion. |
-| `/companion colony` | The shared base: its chests, what's stored, the stock targets, and the request board with each request's top bids. |
+| `/companion colony [of <faction>]` | A base: its chests, zones, upkeep, what's stored, the stock targets, and the request board with each request's top bids. Outside single mode it's the base of the faction whose land you're on (or the nearest). |
 | `/companion colony want <item> <count>` | How many of something the base should keep (`0` stops collecting it). |
 | `/companion why <name>` | Its reasoning: current activity and queue, its board request, its progression target, the chosen plan with its cost, and the alternatives. |
 | `/companion goals <name>` | Its goal tree: what free mode is choosing between, the scores, what's put aside after failing and for how long. |

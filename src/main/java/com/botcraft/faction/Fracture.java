@@ -146,6 +146,7 @@ public final class Fracture {
 		LAST_SPLIT.put(nf.id, now);
 		Factions.markDirty();
 		Factions.syncTeams();
+		Leadership.reviewAll(); // the old faction may have lost its leader; the band names officers
 		leader.speech().event("faction.split", Map.of("faction", nf.name, "old", from.name), 0, 1.0F);
 		AiLog.log("faction", "{} split from {}: {}", nf.id, from.id, leaving.stream().map(Companion::name).toList());
 	}

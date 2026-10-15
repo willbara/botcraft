@@ -503,6 +503,7 @@ public final class Factions {
 		}
 		dirty = true;
 		syncTeams();
+		Leadership.reviewAll(); // each team picks its leader, and the leader its officers
 		return ids;
 	}
 }

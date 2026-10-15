@@ -119,9 +119,15 @@ public final class SiteSurvey {
 		}
 		double flatness = flat / (double) columns;
 		double waterShare = water / (double) columns;
-		double score = 0.55 * flatness
-			+ 0.15 * Math.min(1.0, water / 4.0) - (waterShare > 0.3 ? 0.4 : 0.0)
-			+ 0.15 * Math.min(1.0, trees / 8.0) - (trees / (double) columns > 0.6 ? 0.2 : 0.0)
+		// Open ground on the site itself (the zones need it; trees there have to be felled first),
+		// with water and woods close by but not on it: a clearing by a lake beats the middle of a wood.
+		double open = (columns - water - trees) / (double) columns;
+		int[] around = surroundings(w, center);
+		int waterNear = water + around[0];
+		int treesNear = around[1];
+		double score = 0.45 * flatness + 0.25 * open
+			+ 0.15 * Math.min(1.0, waterNear / 4.0) - (waterShare > 0.3 ? 0.4 : 0.0)
+			+ 0.15 * Math.min(1.0, (trees + treesNear) / 8.0)
 			- 0.6 * built / (double) columns
 			- 0.002 * Math.sqrt(center.getSquaredDistance(from));
 		// Room from other factions' bases.
@@ -138,10 +144,39 @@ public final class SiteSurvey {
 			score += 0.2 * Math.min(1.0, nearest / ROOM);
 		}
 		BlockPos at = new BlockPos(center.getX(), median + 1, center.getZ());
-		String why = String.format(java.util.Locale.ROOT, "flat %.0f%%, water %d, trees %d, built %d%s", flatness * 100, water, trees, built,
+		String why = String.format(java.util.Locale.ROOT, "flat %.0f%%, open %.0f%%, water %d (+%d near), trees %d (+%d near), built %d%s",
+			flatness * 100, open * 100, water, around[0], trees, around[1], built,
 			nearest < Double.MAX_VALUE ? String.format(java.util.Locale.ROOT, ", %.0f from the nearest base", nearest) : "");
 		return new Site(at, score, why);
 	}
+
+	/** Water and tree columns in a ring just outside the site (a lake or a wood a short walk away). */
+	private static int[] surroundings(ServerWorld w, BlockPos center) {
+		int water = 0;
+		int trees = 0;
+		for (int dx = -RING; dx <= RING; dx += 6) {
+			for (int dz = -RING; dz <= RING; dz += 6) {
+				if (Math.abs(dx) <= RADIUS && Math.abs(dz) <= RADIUS) {
+					continue;
+				}
+				int x = center.getX() + dx;
+				int z = center.getZ() + dz;
+				if (!w.isChunkLoaded(x >> 4, z >> 4)) {
+					continue;
+				}
+				BlockState s = w.getBlockState(new BlockPos(x, w.getTopY(Heightmap.Type.MOTION_BLOCKING, x, z) - 1, z));
+				if (s.getFluidState().isIn(FluidTags.WATER)) {
+					water++;
+				} else if (s.isIn(BlockTags.LEAVES) || s.isIn(BlockTags.LOGS)) {
+					trees++;
+				}
+			}
+		}
+		return new int[]{water, trees};
+	}
+
+	/** How far out the ring looked at for water and woods reaches. */
+	private static final int RING = 38;
 
 	/** Another faction holds land within {@link #LAND_GAP} chunks of here. */
 	private static boolean nearLand(ServerWorld w, BlockPos center, String faction) {
