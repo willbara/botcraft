@@ -27,6 +27,8 @@ The plan for Botcraft's next major line of work, written against v0.11.2. Each s
 
 ## Status in 0.14.0
 
+Easter eggs (popbob, Herobrine, Technoblade, Hausemaster) are ordinary companions plus a `Persona` (`brain/Persona.java`) and a few flags (`brain/EasterEggs.java`): improvements to tasks, drives, combat and free mode reach them without changes. New egg tricks should queue ordinary jobs where they can.
+
 | § | Feature | Status |
 |---|---|---|
 | 1 | Scoped world state | **Done** in an ambient form: `faction/Scope`. The manager enters each companion's faction around its tick, and `Colony.get()`, `BaseMap`, `Upkeep` and the `Board` resolve per faction. Explicit context objects are still to do. |
