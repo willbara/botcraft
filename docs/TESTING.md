@@ -337,5 +337,8 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 ### 38. No faction means no faction (0.14.6)
 - [ ] Teams or dynamic mode with some companions left in the colony (`recruit: false`): `/companion faction` lists them as "no faction"; no faction declares war on them, raids them, borders them or posts a bounty; they don't fight faction members unless hit; and they don't fight each other as a group.
 
+### 39. Skin layers and capes (0.14.8)
+- [ ] `/companion spawn Bob <account with a hat/jacket layer and a cape>`: Bob shows the outer layers (hat, jacket, sleeves) and the cape, like the player would.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

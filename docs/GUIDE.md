@@ -130,6 +130,8 @@ A skin argument is resolved in this order:
 
 With no skin argument, the skin is whatever the UUID hash gives. With `autoSkinFromName: true`, the companion's own name is tried as an account first.
 
+Companions show every layer of their skin (hat, jacket, sleeves, trouser legs) and the account's cape if it has one (Mojang capes come with the skin; mod capes such as OptiFine's are up to the client). Companions spawned before 0.14.8 pick this up the next time they join (a restart, a respawn, or a skin change).
+
 ---
 
 ## What companions can do
