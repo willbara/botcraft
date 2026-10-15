@@ -43,7 +43,7 @@ public final class Leadership {
 			} catch (RuntimeException e) {
 				com.botcraft.Botcraft.LOG.error("Error recruiting", e);
 			}
-			for (Faction f : new ArrayList<>(Factions.all())) {
+			for (Faction f : Factions.groups()) {
 				String prev = Scope.enter(f.id);
 				try {
 					direct(f, now);
@@ -57,7 +57,7 @@ public final class Leadership {
 		if (now % CHECK_TICKS != 89 || !Factions.enabled()) {
 			return;
 		}
-		for (Faction f : new ArrayList<>(Factions.all())) {
+		for (Faction f : Factions.groups()) {
 			try {
 				review(f, m);
 			} catch (RuntimeException e) {
@@ -72,7 +72,7 @@ public final class Leadership {
 		if (m == null || !Factions.enabled()) {
 			return;
 		}
-		for (Faction f : new ArrayList<>(Factions.all())) {
+		for (Faction f : Factions.groups()) {
 			review(f, m);
 		}
 	}
@@ -337,17 +337,17 @@ public final class Leadership {
 	// ---- recruiting ------------------------------------------------------------------------------------
 
 	/**
-	 * Companions in no faction of their own (the default colony, outside single mode, while it has
-	 * no base and fewer than three members: just spawned, or left over) are taken in. Teams: the
-	 * smallest team, to keep them even. Dynamic: the faction it likes best, nearer ones first.
+	 * Companions in no faction (outside single mode: just spawned, left over, or never placed) are
+	 * taken in. Teams: the smallest team, to keep them even. Dynamic: the faction it likes best,
+	 * nearer ones first.
 	 */
 	static void recruit(CompanionManager m) {
 		if (!com.botcraft.config.CompanionConfig.get().recruit) {
 			return;
 		}
+		// The factionless are individuals (see Factions.loners), each free to be taken in.
 		List<Companion> loose = Factions.members(Factions.DEFAULT);
-		com.botcraft.colony.Colony home = com.botcraft.colony.Colony.of(Factions.DEFAULT);
-		if (loose.isEmpty() || loose.size() >= 3 || (home != null && home.hasBase())) {
+		if (loose.isEmpty()) {
 			return;
 		}
 		List<Faction> open = new ArrayList<>();

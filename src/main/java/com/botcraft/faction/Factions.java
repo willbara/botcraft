@@ -294,9 +294,29 @@ public final class Factions {
 
 	// ---- between factions -----------------------------------------------------------------------
 
+	/**
+	 * The default colony outside single mode: not a group at all, just the companions with no
+	 * faction, each one for itself. It has no relations, wars, land, raids, leaders or bounties of
+	 * its own; how others get on with each of them is personal (grudges, see Hostility).
+	 */
+	public static boolean loners(String id) {
+		return enabled() && DEFAULT.equals(id);
+	}
+
+	/** The factions that are groups (outside single mode, everything but the factionless). */
+	public static List<Faction> groups() {
+		List<Faction> out = new ArrayList<>();
+		for (Faction f : FACTIONS.values()) {
+			if (!loners(f.id)) {
+				out.add(f);
+			}
+		}
+		return out;
+	}
+
 	/** Enemies: different factions whose standing with each other is hostile. */
 	public static boolean hostile(String a, String b) {
-		if (!enabled() || a.equals(b)) {
+		if (!enabled() || a.equals(b) || loners(a) || loners(b)) {
 			return false;
 		}
 		Faction fa = FACTIONS.get(a);
@@ -310,6 +330,9 @@ public final class Factions {
 
 	/** Same faction, or allied (standing 60 or more both ways). */
 	public static boolean friendly(String a, String b) {
+		if (loners(a) || loners(b)) {
+			return false; // the factionless aren't on anyone's side, not even each other's
+		}
 		if (a.equals(b)) {
 			return true;
 		}
@@ -325,6 +348,9 @@ public final class Factions {
 
 	/** Set both factions' standing with each other. */
 	public static void setRelation(String a, String b, int value) {
+		if (loners(a) || loners(b)) {
+			return;
+		}
 		Faction fa = FACTIONS.get(a);
 		Faction fb = FACTIONS.get(b);
 		if (fa != null && fb != null && !a.equals(b)) {
@@ -339,6 +365,9 @@ public final class Factions {
 	 * grace period it can sour to cool, never to war.
 	 */
 	public static void clash(String a, String b, int by) {
+		if (loners(a) || loners(b)) {
+			return;
+		}
 		Faction fa = FACTIONS.get(a);
 		Faction fb = FACTIONS.get(b);
 		if (fa != null && fb != null && !a.equals(b)) {

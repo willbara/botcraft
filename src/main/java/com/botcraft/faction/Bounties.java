@@ -45,8 +45,8 @@ public final class Bounties {
 
 	/** One of {@code faction}'s members was killed by {@code killer}. */
 	public static void killed(Faction faction, String killer, boolean leader, long now) {
-		if (!on() || faction == null || killer == null || killer.isEmpty()) {
-			return;
+		if (!on() || faction == null || killer == null || killer.isEmpty() || Factions.loners(faction.id)) {
+			return; // the factionless keep their own scores (grudges), not a price on anyone's head
 		}
 		Faction.Bounty b = faction.bounties.computeIfAbsent(key(killer), k -> {
 			Faction.Bounty nb = new Faction.Bounty();
