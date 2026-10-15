@@ -59,10 +59,15 @@ public final class CompanionManager {
 
 	static void onServerStarted(MinecraftServer server) {
 		LegacyNames.migrateWorld(server);
+		com.botcraft.faction.Factions.load(server);
+		com.botcraft.chat.LexiconStore.load(server);
 		com.botcraft.colony.Colony.load(server);
 		com.botcraft.colony.Builds.load(server);
 		instance = new CompanionManager(server);
-		instance.loadAndSpawnAll();
+		// Companions rejoin on the first server tick, not here: other mods finish setting up in
+		// their own "server started" handlers (Xaero's minimap threw on a join this early, and the
+		// companion was disconnected at once).
+		instance.restorePending = true;
 		com.botcraft.ops.Soak.maybeStart(server);
 		com.botcraft.ops.Bench.maybeStart(server);
 		com.botcraft.ops.NavBench.maybeStart(server);
@@ -88,12 +93,26 @@ public final class CompanionManager {
 
 	static void onServerStopped(MinecraftServer server) {
 		com.botcraft.colony.Colony.unload();
+		com.botcraft.faction.Factions.unload();
+		com.botcraft.faction.Raids.clear();
+		com.botcraft.faction.Fracture.clear();
+		com.botcraft.colony.Zones.clear();
+		com.botcraft.faction.Diplomacy.clear();
+		com.botcraft.faction.Territory.clear();
+		com.botcraft.faction.Leadership.clear();
+		com.botcraft.faction.Strategy.clear();
+		com.botcraft.faction.Ceasefire.clear();
+		com.botcraft.brain.EasterEggs.clear();
+		com.botcraft.chat.Lexicon.clear();
 		com.botcraft.colony.Builds.save(server);
 		com.botcraft.colony.Builds.unload();
 		com.botcraft.perception.Sight.clear();
 		com.botcraft.brain.Board.clear();
 		instance = null;
 	}
+
+	/** Companions from the save still to rejoin (done on the first tick). */
+	private boolean restorePending;
 
 	private void loadAndSpawnAll() {
 		List<CompanionData> list = CompanionStore.load(server);
@@ -120,10 +139,10 @@ public final class CompanionManager {
 	}
 
 	public void save() {
-		com.botcraft.colony.Colony colony = com.botcraft.colony.Colony.get();
-		if (colony != null) {
+		for (com.botcraft.colony.Colony colony : com.botcraft.colony.Colony.all()) {
 			colony.save();
 		}
+		com.botcraft.faction.Factions.save();
 		com.botcraft.colony.Builds.save(server);
 		List<CompanionData> list = new ArrayList<>();
 		for (Companion c : companions.values()) {
@@ -201,6 +220,11 @@ public final class CompanionManager {
 			return "Failed to spawn " + name + " (see log)";
 		}
 		c.respawnAtTick = -1;
+		if (existing == null && CompanionConfig.get().startFree) {
+			// Off on its own straight away (startFree), as if told "go have fun", with home where it arrived.
+			c.data.mode = "free";
+			c.memory().setPlace("home", BlockPos.ofFloored(pos), world.getRegistryKey().getValue().toString(), world.getTime());
+		}
 		companions.put(key(name), c);
 		save();
 		c.onSpawned(existing == null ? "new" : "summoned");
@@ -323,31 +347,64 @@ public final class CompanionManager {
 			return;
 		}
 		tickCount++;
+		if (restorePending) {
+			restorePending = false;
+			loadAndSpawnAll();
+			com.botcraft.faction.Factions.syncTeams();
+		}
 		double budget = budgetMs();
-		TickBudget.begin(budget);
+		TickBudget.begin(budget, ceilingMs());
 		// Rotate the starting companion so a shared, exhausted budget doesn't always starve the same one.
 		List<Companion> order = new ArrayList<>(companions.values());
 		if (!order.isEmpty()) {
 			java.util.Collections.rotate(order, (int) (tickCount % order.size()));
 		}
 		long started = System.nanoTime();
+		double slice = sliceMs();
+		double burst = CompanionConfig.get().companionBurstMs;
 		for (Companion c : order) {
+			// Its own allowance: this tick's slice plus what it saved on quiet ticks, up to a burst.
+			c.budgetCredit = Math.min(burst, c.budgetCredit + slice);
+			TickBudget.beginCompanion(c.budgetCredit);
+			// Everything a companion does is for its own faction (its colony, its board).
+			String prev = com.botcraft.faction.Scope.enter(com.botcraft.faction.Factions.idOf(c));
 			try {
 				tickCompanion(c);
 			} catch (RuntimeException e) {
 				Botcraft.LOG.error("Error ticking companion {}", c.name(), e);
+			} finally {
+				com.botcraft.faction.Scope.exit(prev);
+				c.budgetCredit = Math.max(0, c.budgetCredit - TickBudget.endCompanion());
 			}
 		}
-		var colony = com.botcraft.colony.Colony.get();
-		if (colony != null) {
-			com.botcraft.colony.BaseMap.tick(colony);
-			if (tickCount % 100 == 50) {
-				com.botcraft.colony.Zones.plan(colony, com.botcraft.colony.BaseMap.get());
+		for (var colony : com.botcraft.colony.Colony.all()) {
+			String prev = com.botcraft.faction.Scope.enter(colony.id());
+			try {
+				com.botcraft.colony.BaseMap.tick(colony);
+				if (tickCount % 100 == 50) {
+					com.botcraft.colony.Zones.plan(colony, com.botcraft.colony.BaseMap.of(colony.id()));
+				}
+			} finally {
+				com.botcraft.faction.Scope.exit(prev);
 			}
+		}
+		if (tickCount % 200 == 7) {
+			com.botcraft.faction.Factions.syncTeams(); // new companions, players who joined
+		}
+		try {
+			com.botcraft.faction.Raids.tick(this, tickCount);
+			com.botcraft.faction.Fracture.tick(this, tickCount);
+			com.botcraft.faction.Diplomacy.tick(this, tickCount);
+			com.botcraft.faction.Ceasefire.tick(this, tickCount);
+			com.botcraft.faction.Territory.tick(this, tickCount);
+			com.botcraft.faction.Leadership.tick(this, tickCount);
+			com.botcraft.faction.Merger.tick(this, tickCount);
+		} catch (RuntimeException e) {
+			Botcraft.LOG.error("Error updating factions", e);
 		}
 		long took = System.nanoTime() - started;
 		aiMs = aiMs * 0.8 + took / 1e6 * 0.2;
-		com.botcraft.ops.SoakStats.tickTime(took, budget);
+		com.botcraft.ops.SoakStats.tickTime(took, budget + slice * order.size());
 		com.botcraft.ops.SoakStats.serverTick(server.getTickTime());
 		com.botcraft.ops.Soak.tick(server);
 		com.botcraft.ops.Bench.tick(server);
@@ -375,6 +432,23 @@ public final class CompanionManager {
 	 * the server leaves spare under {@link #TARGET_TICK_MS}, up to maxTickBudgetMs. A quiet
 	 * server gets quick path finding; a busy one is never slowed down by it.
 	 */
+	/**
+	 * Each companion's own time per tick: {@code companionBudgetMs}, cut back while the server is
+	 * falling behind (a whole tick over 40 ms), so many companions never add up to a lagging server.
+	 */
+	private double sliceMs() {
+		CompanionConfig cfg = CompanionConfig.get();
+		double tick = server.getTickTime();
+		double scale = tick > 50 ? 0.25 : tick > 40 ? 0.5 : 1.0;
+		return cfg.companionBudgetMs * scale;
+	}
+
+	/** All the AI time a tick can take, whatever companions have saved: what the rest of the server leaves under 35 ms. */
+	private double ceilingMs() {
+		double others = Math.max(0, server.getTickTime() - aiMs);
+		return Math.max(CompanionConfig.get().tickBudgetMs, TARGET_TICK_MS - others);
+	}
+
 	private double budgetMs() {
 		CompanionConfig cfg = CompanionConfig.get();
 		if (!com.botcraft.util.Experiments.on("adaptiveBudget")) {
@@ -394,9 +468,17 @@ public final class CompanionManager {
 		}
 		if (p.isDisconnected()) {
 			// Kicked (/kick) or otherwise disconnected by someone else. Stays registered and
-			// comes back on the next server start or /companion spawn.
-			Botcraft.LOG.info("Companion {} was disconnected", c.name());
+			// comes back on the next server start or /companion spawn. Dropped right after
+			// joining (another mod failing on the join) it tries again, twice at most.
 			c.setPlayer(null);
+			if (p.age < 100 && c.rejoinTries < 2) {
+				c.rejoinTries++;
+				c.rejoinPending = true;
+				c.respawnAtTick = tickCount + 100;
+				Botcraft.LOG.warn("Companion {} was disconnected right after joining; trying again in 5 s", c.name());
+			} else {
+				Botcraft.LOG.info("Companion {} was disconnected", c.name());
+			}
 			return;
 		}
 		if (p.isDead()) {
@@ -420,6 +502,18 @@ public final class CompanionManager {
 
 	private void respawn(Companion c) {
 		c.respawnAtTick = -1;
+		if (c.rejoinPending) {
+			// Dropped right after joining: back where it was saved, as if the server had just started.
+			c.rejoinPending = false;
+			try {
+				c.setPlayer(FakePlayers.connect(server, c.data, null, null, 0.0F));
+				reviveIfDead(c, false);
+				c.onSpawned("restored");
+			} catch (RuntimeException e) {
+				Botcraft.LOG.error("Failed to rejoin companion {}", c.name(), e);
+			}
+			return;
+		}
 		Arrival arrival = respawnPoint(c);
 		ServerWorld world = arrival.world();
 		Vec3d pos = arrival.pos();
@@ -461,15 +555,32 @@ public final class CompanionManager {
 		BlockPos at = null;
 		// Like a player: our bed, else home, else with the owner (only if they're somewhere safe:
 		// not spectating inside a flooded cave), else world spawn. Never into water, lava or a wall.
+		// Never at another faction's base or on enemy land, though: a bed or home remembered from a
+		// faction we've left would put us among enemies, to die again and again.
+		String ours = com.botcraft.faction.Factions.idOf(c);
 		for (String placeName : new String[]{"bed", "home"}) {
 			var place = c.memory().place(placeName);
 			if (at == null && place != null) {
 				ServerWorld w = worldFor(place.dim);
+				if (w != null && com.botcraft.faction.Factions.enabled() && (com.botcraft.faction.Factions.foreignBase(ours, w, place.pos()) != null
+					|| com.botcraft.faction.Hostility.hostileLand(c, w, place.pos()))) {
+					Botcraft.LOG.info("[{}] won't respawn at its {} ({}): another faction's ground", c.name(), placeName, place.pos().toShortString());
+					continue;
+				}
 				BlockPos safe = w == null ? null : SafeSpot.near(w, place.pos(), 6);
 				if (safe != null) {
 					world = w;
 					at = safe;
 				}
+			}
+		}
+		// Else our own faction's base.
+		var colony = com.botcraft.faction.Factions.enabled() && !com.botcraft.faction.Factions.loners(ours) ? com.botcraft.colony.Colony.of(ours) : null;
+		if (at == null && colony != null && colony.hasBase() && colony.world() != null) {
+			BlockPos safe = SafeSpot.near(colony.world(), colony.base(), 6);
+			if (safe != null) {
+				world = colony.world();
+				at = safe;
 			}
 		}
 		ServerPlayerEntity owner = c.owner();

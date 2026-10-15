@@ -304,12 +304,12 @@ public final class Planner {
 	 * out on the surface at night.
 	 */
 	private double risk(String method, boolean outdoors) {
-		double r = 1.0 / Math.max(0.15, MethodStats.successRate(c, method));
+		double r = 1.0 / Math.max(0.15, MethodStats.sampledSuccessRate(c, method));
 		r *= 1.0 + 0.5 * MethodStats.deaths(c, method);
 		if (outdoors && c.perception().isNight()) {
 			r *= 2.0;
 		}
-		return r;
+		return r * c.brain().personality().riskWeight();
 	}
 
 	private double travelToBase() {

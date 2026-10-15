@@ -32,9 +32,17 @@ public final class Zones {
 	public static final String FARM = "farm";
 	public static final String PEN = "pen";
 	public static final String HOME = "home";
-	public static final List<String> KINDS = List.of(CORE, BEDS, FARM, PEN, HOME);
+	/** The farm and the plots added next to it as the base grows (see {@link #expandFarms}). */
+	public static final List<String> FARMS = List.of(FARM, "farm2", "farm3", "farm4");
+	public static final List<String> KINDS = List.of(CORE, BEDS, FARM, "farm2", "farm3", "farm4", PEN, HOME);
 	/** The zones inside home, which are kept level. */
-	public static final List<String> AREAS = List.of(CORE, BEDS, FARM, PEN);
+	public static final List<String> AREAS = List.of(CORE, BEDS, FARM, "farm2", "farm3", "farm4", PEN);
+	/** Farm plots are 9x9 so that one water block in the middle wets all of it (water reaches 4 blocks). */
+	public static final int HYDRATION = 4;
+	/** Plots this much planted (of their farmland and soil) before another is laid out. */
+	static final double FULL = 0.75;
+	private static final Map<String, Long> LAST_EXPANSION = new HashMap<>();
+	private static final long EXPANSION_TICKS = 20 * 60 * 3;
 
 	/** Home reaches at least this far from the base spot, and this far past the other zones. */
 	public static final int HOME_MIN_HALF = 16;
@@ -84,9 +92,214 @@ public final class Zones {
 				changed = true;
 			}
 		}
+		if (colony.zone(FARM) != null && com.botcraft.config.CompanionConfig.get().expandFarms && com.botcraft.util.Experiments.on("expandFarms")
+			&& expandFarms(colony, map)) {
+			Zone want = homeAround(colony, base);
+			if (colony.zone(HOME) == null || !colony.zone(HOME).manual) {
+				colony.setZone(want);
+			}
+			changed = true;
+		}
 		if (changed) {
 			Botcraft.LOG.info("Base zones planned: {}", colony.zones());
 		}
+	}
+
+	// ---- farms --------------------------------------------------------------------------------
+
+	public static boolean isFarm(String kind) {
+		return FARMS.contains(kind);
+	}
+
+	/** The base's farm plots, the first one first. */
+	public static List<Zone> farms(Colony colony) {
+		List<Zone> out = new ArrayList<>();
+		for (String kind : FARMS) {
+			Zone z = colony.zone(kind);
+			if (z != null) {
+				out.add(z);
+			}
+		}
+		return out;
+	}
+
+	/** Where a plot's water goes: the middle, at the farmland's height. */
+	public static BlockPos waterSpot(Zone farm) {
+		BlockPos c = farm.center();
+		return new BlockPos(c.getX(), farm.y - 1, c.getZ());
+	}
+
+	/** This column is the middle of a farm plot (kept for water, never tilled or filled in). */
+	public static boolean isWaterSpot(Colony colony, int x, int z) {
+		for (Zone f : farms(colony)) {
+			BlockPos w = waterSpot(f);
+			if (w.getX() == x && w.getZ() == z) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * A plot's middle wants water: it isn't water yet, and some of the plot is further than
+	 * {@link #HYDRATION} blocks from any water at the farmland's height (or one above).
+	 */
+	public static boolean needsWater(ServerWorld w, Zone farm) {
+		BlockPos spot = waterSpot(farm);
+		if (!w.isChunkLoaded(spot) || w.getFluidState(spot).isIn(net.minecraft.registry.tag.FluidTags.WATER)) {
+			return false;
+		}
+		List<BlockPos> water = new ArrayList<>();
+		BlockPos.Mutable m = new BlockPos.Mutable();
+		for (int x = farm.x1 - HYDRATION; x <= farm.x2 + HYDRATION; x++) {
+			for (int z = farm.z1 - HYDRATION; z <= farm.z2 + HYDRATION; z++) {
+				for (int y = spot.getY(); y <= spot.getY() + 1; y++) {
+					if (w.getFluidState(m.set(x, y, z)).isIn(net.minecraft.registry.tag.FluidTags.WATER)) {
+						water.add(m.toImmutable());
+					}
+				}
+			}
+		}
+		for (int x = farm.x1; x <= farm.x2; x++) {
+			for (int z = farm.z1; z <= farm.z2; z++) {
+				boolean wet = false;
+				for (BlockPos b : water) {
+					if (Math.abs(b.getX() - x) <= HYDRATION && Math.abs(b.getZ() - z) <= HYDRATION) {
+						wet = true;
+						break;
+					}
+				}
+				if (!wet) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** The first plot that wants water, or null. */
+	@Nullable
+	public static Zone dryFarm(Colony colony, ServerWorld w) {
+		for (Zone f : farms(colony)) {
+			if (needsWater(w, f)) {
+				return f;
+			}
+		}
+		return null;
+	}
+
+	/** How many farm plots a faction this size gets: one, and another for every four members (four at most). */
+	public static int farmsFor(int members) {
+		return Math.max(1, Math.min(FARMS.size(), 1 + members / 4));
+	}
+
+	/**
+	 * Lay out another plot next to one we have, once the plots we have are mostly planted and the
+	 * base is big enough for more: the best of the flat soil one plot over (a block apart, for a
+	 * path) on any side of any plot, near water and the core if it can. True if one was added.
+	 */
+	static boolean expandFarms(Colony colony, BaseMap map) {
+		long now = colony.world() == null ? 0 : colony.world().getTime();
+		if (now - LAST_EXPANSION.getOrDefault(colony.id(), -EXPANSION_TICKS) < EXPANSION_TICKS) {
+			return false;
+		}
+		LAST_EXPANSION.put(colony.id(), now);
+		List<Zone> farms = farms(colony);
+		int members = com.botcraft.faction.Factions.members(colony.id()).size();
+		if (farms.size() >= farmsFor(members) || colony.world() == null) {
+			return false;
+		}
+		for (Zone f : farms) {
+			if (planted(colony.world(), f) < FULL) {
+				return false;
+			}
+		}
+		String kind = null;
+		for (String k : FARMS) {
+			if (colony.zone(k) == null) {
+				kind = k;
+				break;
+			}
+		}
+		if (kind == null) {
+			return false;
+		}
+		BlockPos base = colony.base();
+		Zone best = null;
+		double bestScore = -1;
+		int step = FIELD + 1;
+		for (Zone f : farms) {
+			for (int[] d : new int[][]{{step, 0}, {-step, 0}, {0, step}, {0, -step}}) {
+				Zone z = new Zone(kind, f.x1 + d[0], f.z1 + d[1], f.x2 + d[0], f.z2 + d[1], f.y, false);
+				int y = levelOf(map, z.x1, z.z1, z.x2, z.z2);
+				if (y == Integer.MIN_VALUE || Math.abs(y + 1 - f.y) > 2) {
+					continue; // off the map, or up or down a hill from the plot next to it
+				}
+				z.y = y + 1;
+				boolean clash = false;
+				for (Zone o : colony.zones()) {
+					if (!o.kind.equals(HOME) && o.overlaps(z, isFarm(o.kind) ? 0 : 2)) {
+						clash = true;
+						break;
+					}
+				}
+				if (clash || (colony.zone(CORE) != null && onPathThrough(colony, z))) {
+					continue;
+				}
+				double dist = base == null ? 0 : Math.sqrt(z.center().getSquaredDistance(base.getX(), z.y, base.getZ()));
+				double score = usable(map, z, y, true) - dist / 100.0 + (waterNear(map, z) ? 0.2 : 0);
+				if (score > bestScore) {
+					bestScore = score;
+					best = z;
+				}
+			}
+		}
+		if (best == null || bestScore < 0.5) {
+			return false;
+		}
+		colony.setZone(best);
+		com.botcraft.util.AiLog.log("colony", "{}: farm grows: new plot {} ({} plot(s) for {} member(s))", colony.id(), best, farms.size() + 1, members);
+		return true;
+	}
+
+	/** A path from the core to the first farm or the pen crosses this rectangle. */
+	private static boolean onPathThrough(Colony colony, Zone z) {
+		for (int x = z.x1; x <= z.x2; x++) {
+			for (int zz = z.z1; zz <= z.z2; zz++) {
+				if (onPath(colony, x, zz)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** Share of a plot's farmland and soil that has a crop on it. */
+	static double planted(ServerWorld w, Zone farm) {
+		int crops = 0;
+		int ground = 0;
+		for (int x = farm.x1; x <= farm.x2; x++) {
+			for (int z = farm.z1; z <= farm.z2; z++) {
+				if (!w.isChunkLoaded(x >> 4, z >> 4)) {
+					return 0;
+				}
+				int top = w.getTopY(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+				var above = w.getBlockState(new BlockPos(x, top, z));
+				var below = w.getBlockState(new BlockPos(x, top - 1, z));
+				if (above.getBlock() instanceof net.minecraft.block.CropBlock || below.getBlock() instanceof net.minecraft.block.CropBlock) {
+					crops++;
+					ground++;
+				} else if (below.isOf(net.minecraft.block.Blocks.FARMLAND) || below.isOf(net.minecraft.block.Blocks.GRASS_BLOCK)
+					|| below.isOf(net.minecraft.block.Blocks.DIRT)) {
+					ground++;
+				}
+			}
+		}
+		return ground == 0 ? 0 : (double) crops / ground;
+	}
+
+	public static void clear() {
+		LAST_EXPANSION.clear();
 	}
 
 	/** The base spot and every other zone, with a margin. */
@@ -130,9 +343,20 @@ public final class Zones {
 		return bestScore > 0.5 ? best : null;
 	}
 
-	/** A flat 9x9 a short walk from the core, clear of the other zones. */
+	/**
+	 * A flat 9x9 a short walk from the core, clear of the other zones. In a wood there may be no
+	 * open ground at all: then the best plot that would do once its trees are down (and its bumps
+	 * levelled) is taken anyway. The home zone grows round it, so its trees get felled like any at
+	 * home (see Upkeep), and the farm or pen starts as the ground clears.
+	 */
 	@Nullable
 	private static Zone field(Colony colony, BaseMap map, BlockPos base, String kind) {
+		Zone open = field(colony, map, base, kind, false);
+		return open != null ? open : field(colony, map, base, kind, true);
+	}
+
+	@Nullable
+	private static Zone field(Colony colony, BaseMap map, BlockPos base, String kind, boolean rough) {
 		Zone best = null;
 		double bestScore = -1;
 		int half = FIELD / 2;
@@ -152,7 +376,7 @@ public final class Zones {
 				if (colony.zones().stream().anyMatch(o -> !o.kind.equals(HOME) && o.overlaps(z, 2))) {
 					continue;
 				}
-				double score = usable(map, z, y, kind.equals(FARM)) - dist / 100.0;
+				double score = (rough ? clearable(map, z, y) : usable(map, z, y, kind.equals(FARM))) - dist / 100.0;
 				if (kind.equals(FARM) && waterNear(map, z)) {
 					score += 0.3;
 				}
@@ -196,15 +420,47 @@ public final class Zones {
 		return all == 0 ? 0 : (double) good / all;
 	}
 
+	/**
+	 * Share of the zone that would be good ground once cleared: open ground at the height (or a
+	 * block off, which levelling fixes), and trees (they get felled). Not water, lava or buildings.
+	 */
+	static double clearable(BaseMap map, Zone z, int groundY) {
+		double good = 0;
+		int all = 0;
+		for (int x = z.x1; x <= z.x2; x++) {
+			for (int zz = z.z1; zz <= z.z2; zz++) {
+				all++;
+				BaseMap.Ground g = map.ground(x, zz);
+				int dy = Math.abs(map.groundY(x, zz) - groundY);
+				if (g == BaseMap.Ground.TREE) {
+					good += 0.8;
+				} else if ((g == BaseMap.Ground.SOIL || g == BaseMap.Ground.STONE || g == BaseMap.Ground.SAND || g == BaseMap.Ground.OTHER) && dy <= 1) {
+					good += dy == 0 ? 1.0 : 0.7;
+				}
+			}
+		}
+		for (BaseMap.Feature f : BaseMap.Feature.values()) {
+			for (BlockPos p : map.features(f)) {
+				if (f != BaseMap.Feature.TORCH && z.contains(p)) {
+					good -= 3;
+				}
+			}
+		}
+		return all == 0 ? 0 : good / all;
+	}
+
 	/** The most common ground height in a rectangle, or MIN_VALUE if the map doesn't cover it. */
 	private static int levelOf(BaseMap map, int x1, int z1, int x2, int z2) {
 		Map<Integer, Integer> counts = new HashMap<>();
 		for (int x = x1; x <= x2; x++) {
 			for (int z = z1; z <= z2; z++) {
-				if (map.ground(x, z) == BaseMap.Ground.UNKNOWN) {
+				BaseMap.Ground g = map.ground(x, z);
+				if (g == BaseMap.Ground.UNKNOWN) {
 					return Integer.MIN_VALUE;
 				}
-				counts.merge(map.groundY(x, z), 1, Integer::sum);
+				if (g != BaseMap.Ground.TREE) { // (a tree's column reads as its trunk's top)
+					counts.merge(map.groundY(x, z), 1, Integer::sum);
+				}
 			}
 		}
 		return counts.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse(Integer.MIN_VALUE);

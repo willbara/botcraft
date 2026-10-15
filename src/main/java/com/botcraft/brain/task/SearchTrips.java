@@ -50,6 +50,16 @@ final class SearchTrips {
 		return trips;
 	}
 
+	/**
+	 * Paused (a fight, a meal): stop walking but keep the trip, so it carries on where it left off
+	 * when the task resumes instead of using up another trip.
+	 */
+	void suspend(Companion c) {
+		if (goal != null || surfacing) {
+			c.nav().stop();
+		}
+	}
+
 	void cancel(Companion c) {
 		if (goal != null || surfacing) {
 			goal = null;
@@ -93,6 +103,10 @@ final class SearchTrips {
 				}
 				dir = best;
 			} else if (trips % 2 == 1) {
+				dir = dir.rotateYClockwise();
+			}
+			// Not into enemy land (that's where hunters and woodcutters get killed): turn away from it.
+			for (int turn = 0; turn < 4 && com.botcraft.faction.Hostility.hostileLand(c, world, here.offset(dir, tripLength)); turn++) {
 				dir = dir.rotateYClockwise();
 			}
 			BlockPos ahead = here.offset(dir, tripLength);

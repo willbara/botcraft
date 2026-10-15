@@ -84,9 +84,50 @@ public class Speech {
 	private static final java.util.Set<String> QUIET_KEEPS = java.util.Set.of("event.initiative", "board.take", "event.task_failed",
 		"event.plan_failed");
 
-	/** Quiet chat (/companion chat quiet): only replies and {@link #QUIET_KEEPS} get said. */
+	/**
+	 * Quiet chat (/companion chat quiet): only replies, {@link #QUIET_KEEPS}, and a faction's
+	 * business (orders, check-ins and their answers, wars, truces, parleys, bounties: who may say
+	 * those is up to {@link #factionHushed}) get said.
+	 */
 	private boolean quietSkips(String key) {
-		return "quiet".equals(CompanionConfig.get().chatVerbosity) && !replying && !QUIET_KEEPS.contains(key);
+		return "quiet".equals(CompanionConfig.get().chatVerbosity) && !replying && !QUIET_KEEPS.contains(key)
+			&& !key.startsWith("faction.") && !key.startsWith("bounty.");
+	}
+
+	/** What a member still says when only the leader talks (see {@link #factionHushed}): answering its orders. */
+	public static final java.util.Set<String> MEMBER_KEEPS = java.util.Set.of("faction.order_ack", "faction.checkin_reply",
+		"faction.order_done", "faction.order_failed", "faction.parley_hothead");
+	/** What the one in charge says when only the leader talks: the faction's business. */
+	private static final java.util.List<String> LEADER_PREFIXES = java.util.List.of("faction.", "bounty.", "standing.", "raid.",
+		"colony.", "found.", "board.");
+
+	/**
+	 * In a faction with leader-only chat (the default, /companion chat factions): the leader (or
+	 * whoever speaks for the faction while it's away) says only the faction's business (orders,
+	 * check-ins, wars, news), and members only answer its orders and check-ins. Replies to players
+	 * always get through, and so do the easter eggs' lines. The factionless and single mode talk as
+	 * they always have.
+	 */
+	private boolean factionHushed(String key) {
+		if (replying || !"leader".equals(CompanionConfig.get().factionChat) || !com.botcraft.faction.Factions.enabled()
+			|| key.startsWith("egg.")) {
+			return false;
+		}
+		String id = com.botcraft.faction.Factions.idOf(c);
+		if (com.botcraft.faction.Factions.loners(id) || com.botcraft.faction.Factions.get(id) == null) {
+			return false;
+		}
+		if (MEMBER_KEEPS.contains(key)) {
+			return false;
+		}
+		if (com.botcraft.faction.Diplomacy.spokesperson(id) == c) {
+			for (String prefix : LEADER_PREFIXES) {
+				if (key.startsWith(prefix)) {
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -113,12 +154,23 @@ public class Speech {
 
 	/** Say something after {@code delay} ticks (plus typing time): used for back-and-forth banter. */
 	public boolean sayIn(String key, @Nullable ServerPlayerEntity to, Map<String, String> extra, int delay) {
-		if (!CompanionConfig.get().chatEnabled || queue.size() > 5 || quietSkips(key)) {
+		if (!CompanionConfig.get().chatEnabled || queue.size() > 5) {
+			return false;
+		}
+		if (quietSkips(key)) {
+			AiLog.log(c.name(), "kept quiet ({}): quiet chat", key);
+			return false;
+		}
+		if (factionHushed(key)) {
+			AiLog.log(c.name(), "kept quiet ({}): the leader does the talking", key);
 			return false;
 		}
 		Map<String, String> vars = vars(to);
 		vars.putAll(extra);
-		String variant = c.data.bravery > 0.65F ? "brave" : c.data.bravery < 0.35F ? "timid" : "";
+		// The mood shows first (if there are lines for it), else the character.
+		String feeling = c.mood().variant();
+		String variant = !feeling.isEmpty() && Templates.has(key + "." + feeling) ? feeling
+			: c.data.bravery > 0.65F ? "brave" : c.data.bravery < 0.35F ? "timid" : "";
 		String raw = Templates.pick(key, variant, vars, random, recentLines::contains);
 		if (raw.isEmpty()) {
 			return false;
@@ -136,8 +188,8 @@ public class Speech {
 
 	private void broadcast(String text) {
 		CompanionPlayer p = c.player();
-		if (p == null || p.isDead()) {
-			return;
+		if (p == null || p.isDead() || com.botcraft.brain.EasterEggs.silent(c)) {
+			return; // (Herobrine and Hausemaster never say a word)
 		}
 		c.server.getPlayerManager().broadcast(Text.translatable("chat.type.text", p.getDisplayName(), Text.literal(text)), false);
 	}
@@ -162,7 +214,8 @@ public class Speech {
 			v.put("food", Integer.toString(food));
 			v.put("logs", Integer.toString(Inventories.count(p.getInventory(), Inventories::isLog)));
 			v.put("task", c.describeActivity());
-			v.put("mood", hp >= 18 && food >= 16 ? "great" : hp < 8 ? "pretty beat up" : food < 8 ? "hungry" : "okay");
+			String feeling = c.mood().describe();
+			v.put("mood", hp < 8 ? "pretty beat up" : food < 8 ? "hungry" : !feeling.isEmpty() ? feeling : hp >= 18 && food >= 16 ? "great" : "okay");
 			v.put("time_note", c.perception().isNight() ? "It's night, careful." : "");
 		}
 		return v;

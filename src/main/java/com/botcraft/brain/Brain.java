@@ -116,6 +116,11 @@ public class Brain {
 		thinkNow = true;
 	}
 
+	/** Something urgent: decide again on the next tick (keeping what we're doing unless something beats it). */
+	public void alert() {
+		thinkNow = true;
+	}
+
 	/** Re-evaluate on the next tick (mode changed etc.). Also drops the base task so it restarts fresh. */
 	public void reconsider() {
 		if (interrupts.isEmpty() && base != null) {

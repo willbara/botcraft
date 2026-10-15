@@ -587,7 +587,7 @@ public class ActionController {
 		lookAt(target);
 		if (target != lastAttackTarget) {
 			lastAttackTarget = target;
-			reactionTicks = 3 + random.nextInt(6); // ~150-400 ms human reaction
+			reactionTicks = 2 + random.nextInt(4); // ~100-250 ms: a practised player's reaction
 		}
 		if (reactionTicks > 0) {
 			return false;
@@ -626,6 +626,51 @@ public class ActionController {
 		ItemStack stack = p.getMainHandStack();
 		ActionResult r = p.interactionManager.interactItem(p, p.getWorld(), stack, Hand.MAIN_HAND);
 		return r.isAccepted() && p.isUsingItem();
+	}
+
+	/**
+	 * Right-click into the air with an item, aimed at a point (fill or pour a bucket, cast or reel
+	 * in a fishing rod): turns to look at it, and uses the item once the aim is good. Call every
+	 * tick until it returns true.
+	 */
+	public boolean useItemToward(Vec3d point, Predicate<ItemStack> which) {
+		CompanionPlayer p = player();
+		int slot = Inventories.find(p.getInventory(), which);
+		if (slot < 0) {
+			return false;
+		}
+		Inventories.select(p, slot);
+		lookAt(point);
+		if (aimError(point) > 2.5F) {
+			return false;
+		}
+		ActionResult r = p.interactionManager.interactItem(p, p.getWorld(), p.getMainHandStack(), Hand.MAIN_HAND);
+		if (r.isAccepted()) {
+			p.swingHand(Hand.MAIN_HAND);
+		}
+		return r.isAccepted();
+	}
+
+	/**
+	 * Right-click a mob with an item from the inventory (a bone for a wolf), like a player:
+	 * holds it, looks at the mob and uses it on it. False if it's out of reach or we have none.
+	 */
+	public boolean useItemOnEntity(Entity target, Predicate<ItemStack> which) {
+		CompanionPlayer p = player();
+		if (p.squaredDistanceTo(target) > ATTACK_REACH * ATTACK_REACH) {
+			return false;
+		}
+		int slot = Inventories.find(p.getInventory(), which);
+		if (slot < 0) {
+			return false;
+		}
+		Inventories.select(p, slot);
+		lookAt(target);
+		ActionResult r = p.interact(target, Hand.MAIN_HAND);
+		if (r.isAccepted()) {
+			p.swingHand(Hand.MAIN_HAND);
+		}
+		return r.isAccepted();
 	}
 
 	public boolean isUsingItem() {

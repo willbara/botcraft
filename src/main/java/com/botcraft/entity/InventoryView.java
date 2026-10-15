@@ -76,6 +76,10 @@ public final class InventoryView {
 		}
 		// A click arrives as two packets (interact-at, then interact), each per hand: open once.
 		if (hit == null && hand == Hand.MAIN_HAND) {
+			if (!com.botcraft.faction.Incidents.mayOpenInventory(c, viewer)) {
+				c.speech().reply("standing.no_inventory", viewer, new java.util.HashMap<>());
+				return ActionResult.SUCCESS;
+			}
 			open(viewer, target);
 		}
 		return ActionResult.SUCCESS;
@@ -84,7 +88,7 @@ public final class InventoryView {
 	public static void open(ServerPlayerEntity viewer, CompanionPlayer target) {
 		Mirror view = new Mirror(target);
 		viewer.openHandledScreen(new SimpleNamedScreenHandlerFactory(
-			(syncId, playerInventory, p) -> new Handler(syncId, playerInventory, view),
+			(syncId, playerInventory, p) -> new Handler(syncId, playerInventory, view, viewer),
 			Text.literal(target.getGameProfile().getName() + "'s inventory")));
 	}
 
@@ -94,10 +98,16 @@ public final class InventoryView {
 	 */
 	public static final class Handler extends ScreenHandler {
 		private final Mirror view;
+		@Nullable
+		private final ServerPlayerEntity viewer;
+		/** Item counts per item when the screen opened: what changed is a gift or a theft (see faction.Incidents). */
+		private final java.util.Map<net.minecraft.item.Item, Integer> before;
 
-		Handler(int syncId, PlayerInventory playerInventory, Mirror view) {
+		Handler(int syncId, PlayerInventory playerInventory, Mirror view, @Nullable ServerPlayerEntity viewer) {
 			super(ScreenHandlerType.GENERIC_9X5, syncId);
 			this.view = view;
+			this.viewer = viewer;
+			this.before = view.counts();
 			for (int row = 0; row < ROWS; row++) {
 				for (int col = 0; col < 9; col++) {
 					addSlot(new CompanionSlot(view, row * 9 + col, 8 + col * 18, 18 + row * 18));
@@ -117,6 +127,32 @@ public final class InventoryView {
 		@Override
 		public boolean canUse(PlayerEntity player) {
 			return view.canPlayerUse(player);
+		}
+
+		@Override
+		public void onClosed(PlayerEntity player) {
+			super.onClosed(player);
+			if (viewer == null || player != viewer) {
+				return;
+			}
+			java.util.Map<net.minecraft.item.Item, Integer> after = view.counts();
+			int given = 0;
+			int taken = 0;
+			java.util.Set<net.minecraft.item.Item> items = new java.util.HashSet<>(before.keySet());
+			items.addAll(after.keySet());
+			for (net.minecraft.item.Item it : items) {
+				int d = after.getOrDefault(it, 0) - before.getOrDefault(it, 0);
+				if (d > 0) {
+					given += d;
+				} else {
+					taken -= d;
+				}
+			}
+			CompanionManager m = CompanionManager.get();
+			Companion c = m == null ? null : m.byPlayer(view.target);
+			if (c != null && (given > 0 || taken > 0)) {
+				com.botcraft.faction.Incidents.inventoryClosed(c, viewer, given, taken);
+			}
 		}
 
 		/** Shift-click: into the companion's main inventory and hotbar (armour if nothing else fits), or back out. */
@@ -173,10 +209,23 @@ public final class InventoryView {
 
 	/** The companion's inventory in chest order. */
 	static final class Mirror implements Inventory {
-		private final CompanionPlayer target;
+		final CompanionPlayer target;
 
 		Mirror(CompanionPlayer target) {
 			this.target = target;
+		}
+
+		/** How many of each item the companion has (everything, armour included). */
+		java.util.Map<net.minecraft.item.Item, Integer> counts() {
+			java.util.Map<net.minecraft.item.Item, Integer> out = new java.util.HashMap<>();
+			PlayerInventory inv = inv();
+			for (int i = 0; i < inv.size(); i++) {
+				ItemStack s = inv.getStack(i);
+				if (!s.isEmpty()) {
+					out.merge(s.getItem(), s.getCount(), Integer::sum);
+				}
+			}
+			return out;
 		}
 
 		private PlayerInventory inv() {

@@ -85,6 +85,8 @@ public final class Board {
 		public List<Bid> bids = List.of();
 		/** Why the winner won, or how it ended. */
 		public String note = "";
+		/** The faction whose board this is on (see faction.Scope). */
+		public final String faction = com.botcraft.faction.Scope.current();
 
 		Request(int id, Kind kind, String key, String label, int count, @Nullable String forWhom, long now, double priority) {
 			this.id = id;
@@ -140,8 +142,30 @@ public final class Board {
 
 	// ---- posting and housekeeping ------------------------------------------------------------------
 
-	/** Every few seconds: post requests for what the base is short of, and tidy up. */
+	/** Requests on the board of the faction in scope. */
+	private static List<Request> mine() {
+		String faction = com.botcraft.faction.Scope.current();
+		List<Request> out = new ArrayList<>();
+		for (Request r : REQUESTS) {
+			if (r.faction.equals(faction)) {
+				out.add(r);
+			}
+		}
+		return out;
+	}
+
+	/** Every few seconds, for every faction: post requests for what its base is short of, and tidy up. */
 	public static void refresh(CompanionManager m, long now) {
+		List<String> factions = com.botcraft.faction.Factions.enabled() ? com.botcraft.faction.Factions.ids()
+			: List.of(com.botcraft.faction.Factions.DEFAULT);
+		for (String id : factions) {
+			com.botcraft.faction.Scope.run(id, () -> refreshOne(m, now));
+		}
+		REQUESTS.removeIf(r -> (r.state == State.DONE || r.state == State.FAILED) && now - r.closedAt > KEEP_CLOSED);
+		PLANS.entrySet().removeIf(e -> now - e.getValue().at() > BID_TTL);
+	}
+
+	private static void refreshOne(CompanionManager m, long now) {
 		Colony colony = Colony.get();
 		boolean base = colony != null && colony.hasBase();
 		if (base) {
@@ -172,7 +196,7 @@ public final class Board {
 		if (base) {
 			upkeep(colony, now);
 		}
-		for (Request r : new ArrayList<>(REQUESTS)) {
+		for (Request r : mine()) {
 			if (r.kind != Kind.DELIVER && r.state == State.OPEN && !base) {
 				close(r, State.DONE, "no base", now);
 			}
@@ -180,12 +204,12 @@ public final class Board {
 				release(m, r, now);
 			}
 		}
-		REQUESTS.removeIf(r -> (r.state == State.DONE || r.state == State.FAILED) && now - r.closedAt > KEEP_CLOSED);
-		PLANS.entrySet().removeIf(e -> now - e.getValue().at() > BID_TTL);
 	}
 
 	/** Under the stock requests in importance: a tidy base matters, but less than food or tools. */
 	private static final double UPKEEP_PRIORITY = 0.4;
+	/** Clearing a base that doesn't look the part yet: before anything else on the board. */
+	private static final double UNSETTLED_PRIORITY = 1.5;
 	private static final String UPKEEP_KEY = "upkeep";
 
 	/** Post (or update, or close) the "tidy up the base" request from what {@link Upkeep} finds. */
@@ -198,14 +222,18 @@ public final class Board {
 			}
 			return;
 		}
+		// A base that doesn't look the part yet (trees in the way, no farm or pen) puts clearing
+		// first, ahead of stocking up: that's what makes it a home.
+		double priority = Upkeep.unsettled(colony) ? UNSETTLED_PRIORITY : UPKEEP_PRIORITY;
 		if (r == null) {
-			r = new Request(nextId++, Kind.UPKEEP, UPKEEP_KEY, "tidy up the base", work.size(), null, now, UPKEEP_PRIORITY);
+			r = new Request(nextId++, Kind.UPKEEP, UPKEEP_KEY, "tidy up the base", work.size(), null, now, priority);
 			REQUESTS.add(r);
 			AiLog.log("board", "posted #{}: {} ({})", r.id, r.describe(), Upkeep.summary());
 			com.botcraft.ops.SoakStats.board("posted " + r.key);
 		} else if (r.state == State.OPEN) {
 			r.count = work.size();
 		}
+		r.priority = priority;
 	}
 
 	/** Give back a taken request whose holder is gone, ordered elsewhere, or stopped working on it. */
@@ -246,12 +274,37 @@ public final class Board {
 	 */
 	@Nullable
 	public static Assignment take(Companion c, long now) {
+		return takeFor(c, now, false, false);
+	}
+
+	/**
+	 * The leader's say-so: the most important open request {@code c} can do at all (not only one
+	 * it's the best bidder for), taken in its name. Null if there's nothing it can do.
+	 */
+	@Nullable
+	public static Assignment direct(Companion c, long now) {
+		return takeFor(c, now, true, false);
+	}
+
+	/** At night: only the base's own upkeep (clearing, levelling, filling, fencing), which is all at home. */
+	@Nullable
+	public static Assignment takeAtNight(Companion c, long now) {
+		return takeFor(c, now, false, true);
+	}
+
+	/** Open requests waiting for someone (for leaders judging how the faction is doing). */
+	public static int openCount() {
+		return (int) mine().stream().filter(r -> r.kind != Kind.DELIVER && r.state == State.OPEN).count();
+	}
+
+	@Nullable
+	private static Assignment takeFor(Companion c, long now, boolean ordered, boolean upkeepOnly) {
 		Colony colony = Colony.get();
 		if (colony == null || !colony.hasBase() || colony.world() != c.player().getServerWorld()
 			|| !colony.near(c.player().getServerWorld(), c.player().getBlockPos(), 256) || holding(c.name()) != null) {
 			return null;
 		}
-		List<Request> open = REQUESTS.stream().filter(r -> r.kind != Kind.DELIVER && r.state == State.OPEN)
+		List<Request> open = mine().stream().filter(r -> r.kind != Kind.DELIVER && r.state == State.OPEN && (!upkeepOnly || r.kind == Kind.UPKEEP))
 			.sorted(Comparator.comparingDouble((Request r) -> -r.priority)).toList();
 		if (open.isEmpty()) {
 			return null;
@@ -275,11 +328,12 @@ public final class Board {
 				}
 			}
 			bids.sort(Comparator.comparingDouble((Bid b) -> -b.score()));
-			if (bids.isEmpty() || !bids.get(0).who().equals(c.name())) {
+			Bid win = ordered ? bids.stream().filter(b -> b.who().equals(c.name())).findFirst().orElse(null)
+				: bids.isEmpty() || !bids.get(0).who().equals(c.name()) ? null : bids.get(0);
+			if (win == null) {
 				continue;
 			}
-			Bid win = bids.get(0);
-			String reason = reason(win, bids.size() > 1 ? bids.get(1) : null);
+			String reason = ordered ? "the leader asked me to" : reason(win, bids.size() > 1 ? bids.get(1) : null);
 			r.state = State.TAKEN;
 			r.takenBy = c.name();
 			r.takenAt = now;
@@ -303,7 +357,8 @@ public final class Board {
 			return out;
 		}
 		for (Companion o : m.all()) {
-			if (o == asker || !o.isOnline() || o.player() == null || o.player().isDead() || !"free".equals(o.data.mode) || Popbob.is(o)
+			if (o == asker || !o.isOnline() || o.player() == null || o.player().isDead() || !"free".equals(o.data.mode) || Popbob.is(o) || EasterEggs.factionless(o)
+				|| !com.botcraft.faction.Factions.idOf(o).equals(com.botcraft.faction.Factions.idOf(asker))
 				|| o.player().getServerWorld() != colony.world() || holding(o.name()) != null
 				|| !colony.near(o.player().getServerWorld(), o.player().getBlockPos(), 256)) {
 				continue;
@@ -501,7 +556,7 @@ public final class Board {
 
 	/** Everything on the board, newest first. */
 	public static List<Request> requests() {
-		List<Request> out = new ArrayList<>(REQUESTS);
+		List<Request> out = mine();
 		out.sort(Comparator.comparingInt((Request r) -> -r.id));
 		return out;
 	}
@@ -529,7 +584,7 @@ public final class Board {
 
 	@Nullable
 	private static Request live(Kind kind, String key) {
-		for (Request r : REQUESTS) {
+		for (Request r : mine()) {
 			if (r.kind == kind && r.key.equals(key) && (r.state == State.OPEN || r.state == State.TAKEN)) {
 				return r;
 			}

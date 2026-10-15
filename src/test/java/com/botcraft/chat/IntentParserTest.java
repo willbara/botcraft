@@ -365,4 +365,45 @@ class IntentParserTest {
 		var q = IntentParser.parse("bob bring me logs and coal", List.of("bob")).intents();
 		assertEquals(2, q.size(), q.toString());
 	}
+
+	@Test
+	void stacksAndHalves() {
+		assertEquals(32, IntentParser.parse("bob get half a stack of logs", List.of("bob")).intent().count());
+		assertEquals(128, IntentParser.parse("bob mine two stacks of cobblestone", List.of("bob")).intent().count());
+		assertEquals(96, IntentParser.parse("bob get a stack and a half of logs", List.of("bob")).intent().count());
+		assertEquals(160, IntentParser.parse("bob get 2 and a half stacks of logs", List.of("bob")).intent().count());
+		assertEquals("logs", IntentParser.parse("bob get half a stack of logs", List.of("bob")).intent().item());
+		assertEquals(5, IntentParser.parse("bob get 5 logs", List.of("bob")).intent().count());
+	}
+
+	@Test
+	void trustQuestions() {
+		Intent i = IntentParser.parse("bob do you trust me?", List.of("bob")).intent();
+		assertEquals(Intent.Type.TRUST, i.type());
+		assertEquals("", i.target());
+		assertEquals(Intent.Type.TRUST, IntentParser.parse("bob are we cool", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.OPINION, IntentParser.parse("bob do you like cake", List.of("bob")).intent().type());
+	}
+
+	@Test
+	void restIsWhatWasSaidWithoutTheName() {
+		assertEquals("make it 30", IntentParser.parse("bob, make it 30", List.of("bob")).rest());
+	}
+
+	@Test
+	void farming() {
+		assertEquals(Intent.Type.FARM, IntentParser.parse("bob go farm", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.FARM, IntentParser.parse("bob, harvest the wheat please", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.FARM, IntentParser.parse("bob tend the crops", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.GATHER, IntentParser.parse("bob get some wheat", List.of("bob")).intent().type());
+	}
+
+	@Test
+	void fishing() {
+		assertEquals(Intent.Type.FISH, IntentParser.parse("bob go fishing", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.FISH, IntentParser.parse("bob, catch some fish", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.FISH, IntentParser.parse("bob get us some salmon", List.of("bob")).intent().type());
+		assertEquals(Intent.Type.FISH, IntentParser.parse("bob catch 5 fish", List.of("bob")).intent().type());
+		assertEquals(5, IntentParser.parse("bob catch 5 fish", List.of("bob")).intent().count());
+	}
 }

@@ -72,9 +72,19 @@ public final class CompanionCommand {
 					.executes(CompanionCommand::remove)))
 			.then(CommandManager.literal("chat")
 				.executes(CompanionCommand::chatShow)
+				.then(CommandManager.literal("factions")
+					.executes(ctx -> factionChat(ctx, null))
+					.then(CommandManager.argument("who", StringArgumentType.word())
+						.suggests((ctx, b) -> CommandSource.suggestMatching(List.of("leader", "all"), b))
+						.executes(ctx -> factionChat(ctx, StringArgumentType.getString(ctx, "who")))))
 				.then(CommandManager.argument("level", StringArgumentType.word())
 					.suggests((ctx, b) -> CommandSource.suggestMatching(List.of("all", "quiet", "off"), b))
 					.executes(CompanionCommand::chatSet)))
+			.then(CommandManager.literal("freemode")
+				.executes(ctx -> freeMode(ctx, null))
+				.then(CommandManager.argument("state", StringArgumentType.word())
+					.suggests((ctx, b) -> CommandSource.suggestMatching(List.of("on", "off"), b))
+					.executes(ctx -> freeMode(ctx, StringArgumentType.getString(ctx, "state")))))
 			.then(CommandManager.literal("removeall")
 				.executes(CompanionCommand::removeAll))
 			.then(CommandManager.literal("info")
@@ -84,26 +94,39 @@ public final class CompanionCommand {
 			.then(CommandManager.literal("list")
 				.executes(CompanionCommand::list))
 			.then(CommandManager.literal("colony")
-				.executes(CompanionCommand::colony)
+				.executes(ctx -> inFaction(ctx, null, CompanionCommand::colony))
+				.then(CommandManager.literal("of")
+					.then(CommandManager.argument("faction", StringArgumentType.word())
+						.suggests((ctx, b) -> CommandSource.suggestMatching(com.botcraft.faction.Factions.ids(), b))
+						.executes(ctx -> inFaction(ctx, StringArgumentType.getString(ctx, "faction"), CompanionCommand::colony))))
 				.then(CommandManager.literal("want")
 					.then(CommandManager.argument("item", StringArgumentType.word())
 						.suggests((ctx, b) -> CommandSource.suggestMatching(com.botcraft.colony.StockTargets.DEFAULTS.stream()
 							.map(com.botcraft.colony.StockTargets.StockTarget::key), b))
 						.then(CommandManager.argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 100000))
-							.executes(CompanionCommand::colonyWant))))
+							.executes(ctx -> inFaction(ctx, null, CompanionCommand::colonyWant)))))
 				.then(CommandManager.literal("zone")
 					.then(CommandManager.argument("kind", StringArgumentType.word())
 						.suggests((ctx, b) -> CommandSource.suggestMatching(com.botcraft.colony.Zones.KINDS, b))
 						.then(CommandManager.literal("here")
-							.executes(ctx -> colonyZone(ctx, -1))
+							.executes(ctx -> inFaction(ctx, null, c -> colonyZone(c, -1)))
 							.then(CommandManager.argument("size", com.mojang.brigadier.arguments.IntegerArgumentType.integer(3, 129))
-								.executes(ctx -> colonyZone(ctx, com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "size")))))
+								.executes(ctx -> inFaction(ctx, null,
+									c -> colonyZone(c, com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(c, "size"))))))
 						.then(CommandManager.literal("clear")
-							.executes(CompanionCommand::colonyZoneClear)))))
+							.executes(ctx -> inFaction(ctx, null, CompanionCommand::colonyZoneClear))))))
 			.then(CommandManager.literal("why")
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
 					.executes(CompanionCommand::why)))
+			.then(CommandManager.literal("goals")
+				.then(CommandManager.argument("name", StringArgumentType.word())
+					.suggests(COMPANION_NAMES)
+					.executes(CompanionCommand::goals)))
+			.then(FactionCommand.faction())
+			.then(FactionCommand.standing())
+			.then(FactionCommand.archetype())
+			.then(FactionCommand.trait())
 			.then(CommandManager.literal("stop")
 				.then(CommandManager.argument("name", StringArgumentType.word())
 					.suggests(COMPANION_NAMES)
@@ -249,7 +272,30 @@ public final class CompanionCommand {
 	private static int chatShow(CommandContext<ServerCommandSource> ctx) {
 		CompanionConfig cfg = CompanionConfig.get();
 		String level = !cfg.chatEnabled ? "off" : cfg.chatVerbosity;
-		ctx.getSource().sendFeedback(() -> Text.literal("Companion chat: " + level + " (/companion chat all|quiet|off)"), false);
+		ctx.getSource().sendFeedback(() -> Text.literal("Companion chat: " + level + " (/companion chat all|quiet|off); in factions: "
+			+ cfg.factionChat + " (/companion chat factions leader|all)"), false);
+		return 1;
+	}
+
+	/**
+	 * /companion chat factions leader|all: in a faction, only the leader talks (orders, check-ins,
+	 * news) and members just answer it (and players); or everyone talks. Saved in the config.
+	 */
+	private static int factionChat(CommandContext<ServerCommandSource> ctx, @org.jetbrains.annotations.Nullable String who) {
+		CompanionConfig cfg = CompanionConfig.get();
+		if (who == null) {
+			ctx.getSource().sendFeedback(() -> Text.literal("Faction chat: " + cfg.factionChat + " (/companion chat factions leader|all)"), false);
+			return 1;
+		}
+		if (!who.equals("leader") && !who.equals("all")) {
+			ctx.getSource().sendError(Text.literal("Faction chat is leader or all"));
+			return 0;
+		}
+		cfg.factionChat = who;
+		CompanionConfig.save();
+		ctx.getSource().sendFeedback(() -> Text.literal(who.equals("leader")
+			? "Faction chat: leader. Only whoever's in charge talks (orders, check-ins, news); members answer it, and you."
+			: "Faction chat: all. Every member talks."), true);
 		return 1;
 	}
 
@@ -257,6 +303,47 @@ public final class CompanionCommand {
 	 * /companion chat all|quiet|off: everything; only answers, what they start and what failed;
 	 * or nothing. Saved in the config.
 	 */
+	/**
+	 * /companion freemode [on|off]: whether companions live on their own. On: every companion that
+	 * isn't told to stay goes free now, and new ones start free. Off: new ones follow whoever
+	 * spawned them (existing ones keep what they're doing; "follow me" calls them).
+	 */
+	private static int freeMode(CommandContext<ServerCommandSource> ctx, @org.jetbrains.annotations.Nullable String state) {
+		CompanionConfig cfg = CompanionConfig.get();
+		if (state == null) {
+			ctx.getSource().sendFeedback(() -> Text.literal("Free mode for new companions: " + (cfg.startFree ? "on" : "off")
+				+ " (/companion freemode on|off)").formatted(Formatting.AQUA), false);
+			return 1;
+		}
+		if (!state.equals("on") && !state.equals("off")) {
+			ctx.getSource().sendError(Text.literal("freemode on or off"));
+			return 0;
+		}
+		cfg.startFree = state.equals("on");
+		CompanionConfig.save();
+		int n = 0;
+		CompanionManager m = CompanionManager.get();
+		if (cfg.startFree && m != null) {
+			for (Companion c : m.all()) {
+				if (c.player() == null || "free".equals(c.data.mode) || "stay".equals(c.data.mode)) {
+					continue;
+				}
+				c.data.mode = "free";
+				if (c.memory().place("home") == null) {
+					c.memory().setPlace("home", c.player().getBlockPos(), c.dimension(), c.player().getWorld().getTime());
+				}
+				c.jobs().clear();
+				c.brain().reconsider();
+				n++;
+			}
+		}
+		int count = n;
+		ctx.getSource().sendFeedback(() -> Text.literal(cfg.startFree
+			? "Free mode on: " + count + " companion(s) set loose, and new ones start on their own. (\"follow me\" still calls one.)"
+			: "Free mode off: new companions follow whoever spawned them. (Free ones carry on; \"follow me\" calls them.)").formatted(Formatting.WHITE), false);
+		return 1;
+	}
+
 	private static int chatSet(CommandContext<ServerCommandSource> ctx) {
 		String level = StringArgumentType.getString(ctx, "level");
 		CompanionConfig cfg = CompanionConfig.get();
@@ -273,7 +360,7 @@ public final class CompanionCommand {
 		}
 		CompanionConfig.save();
 		String what = switch (level) {
-			case "quiet" -> "quiet: answers, what they start and what failed";
+			case "quiet" -> "quiet: answers, what they start, what failed, and faction business (orders, wars, parleys)";
 			case "off" -> "off: companions don't talk";
 			default -> "all";
 		};
@@ -344,15 +431,76 @@ public final class CompanionCommand {
 		return 1;
 	}
 
-	/** The shared base: where it is, its chests, and what's stored. */
+	/**
+	 * Run a colony command for a faction's base: the one named, else (outside single mode) the
+	 * one whose land or base the player is at, else the nearest base. In single mode, the colony.
+	 */
+	private static int inFaction(CommandContext<ServerCommandSource> ctx, @org.jetbrains.annotations.Nullable String name,
+		com.mojang.brigadier.Command<ServerCommandSource> body) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+		String id;
+		if (name != null) {
+			var f = com.botcraft.faction.Factions.find(name);
+			if (f == null) {
+				ctx.getSource().sendError(Text.literal("No such faction"));
+				return 0;
+			}
+			id = f.id;
+		} else {
+			id = contextFaction(ctx.getSource());
+		}
+		String prev = com.botcraft.faction.Scope.enter(id);
+		try {
+			return body.run(ctx);
+		} finally {
+			com.botcraft.faction.Scope.exit(prev);
+		}
+	}
+
+	/** The faction a colony command means: whose land we stand on, else whose base is nearest. */
+	private static String contextFaction(ServerCommandSource src) {
+		if (!com.botcraft.faction.Factions.enabled()) {
+			return com.botcraft.faction.Factions.DEFAULT;
+		}
+		var world = src.getWorld();
+		var at = net.minecraft.util.math.BlockPos.ofFloored(src.getPosition());
+		String owner = com.botcraft.faction.Territory.owner(world, at);
+		if (owner != null) {
+			return owner;
+		}
+		String best = null;
+		double bestD = Double.MAX_VALUE;
+		for (var colony : com.botcraft.colony.Colony.all()) {
+			if (colony.hasBase() && colony.world() == world) {
+				double d = colony.base().getSquaredDistance(at);
+				if (d < bestD) {
+					bestD = d;
+					best = colony.id();
+				}
+			}
+		}
+		if (best != null) {
+			return best;
+		}
+		for (String id : com.botcraft.faction.Factions.ids()) {
+			if (!com.botcraft.faction.Factions.members(id).isEmpty()) {
+				return id;
+			}
+		}
+		return com.botcraft.faction.Factions.DEFAULT;
+	}
+
+	/** A faction's base (see {@link #inFaction}): where it is, its chests, zones, upkeep and stock. */
 	private static int colony(CommandContext<ServerCommandSource> ctx) {
 		var colony = com.botcraft.colony.Colony.get();
+		var faction = com.botcraft.faction.Factions.get(com.botcraft.faction.Scope.current());
+		String whose = !com.botcraft.faction.Factions.enabled() || faction == null ? "" : faction.name + ": ";
 		if (colony == null || !colony.hasBase()) {
-			ctx.getSource().sendFeedback(() -> Text.literal("No base yet. Stand somewhere and say \"everyone, this is home\"."), false);
+			ctx.getSource().sendFeedback(() -> Text.literal(whose + "no base yet. " + (whose.isEmpty() ? "Stand somewhere and say \"everyone, this is home\"."
+				: "Its founder picks a spot by day, or tell a member \"this is home\". Another faction: /companion colony of <faction>.")), false);
 			return 0;
 		}
 		var base = colony.base();
-		ctx.getSource().sendFeedback(() -> Text.literal("Base at " + base.toShortString() + ", " + colony.chests().size() + " chest(s)")
+		ctx.getSource().sendFeedback(() -> Text.literal(whose + "base at " + base.toShortString() + ", " + colony.chests().size() + " chest(s)")
 			.formatted(Formatting.AQUA), false);
 		for (String line : colony.describeChests()) {
 			ctx.getSource().sendFeedback(() -> Text.literal("  chest " + line).formatted(Formatting.GRAY), false);
@@ -507,6 +655,27 @@ public final class CompanionCommand {
 		return m.all().size();
 	}
 
+	/** /companion goals: the goal tree free mode chooses from, with scores, what's put aside and why. */
+	private static int goals(CommandContext<ServerCommandSource> ctx) {
+		String name = StringArgumentType.getString(ctx, "name");
+		Companion c = manager(ctx).byName(name);
+		if (c == null) {
+			ctx.getSource().sendError(Text.literal("No companion named " + name));
+			return 0;
+		}
+		ctx.getSource().sendFeedback(() -> Text.literal(c.name() + "'s goals (" + c.data.mode + " mode" + ("free".equals(c.data.mode) ? "" : "; the tree is used in free mode")
+			+ "):").formatted(Formatting.AQUA), false);
+		List<String> lines = c.life().tree().render(c.now());
+		if (lines.isEmpty()) {
+			ctx.getSource().sendFeedback(() -> Text.literal("  nothing decided yet").formatted(Formatting.GRAY), false);
+		}
+		for (String l : lines) {
+			Formatting f = l.contains("> ") ? Formatting.WHITE : l.endsWith(":") ? Formatting.YELLOW : l.contains("put aside") ? Formatting.DARK_GRAY : Formatting.GRAY;
+			ctx.getSource().sendFeedback(() -> Text.literal(l).formatted(f), false);
+		}
+		return lines.size();
+	}
+
 	/** Debug view: personality, orders, plan, memory highlights. */
 	private static int info(CommandContext<ServerCommandSource> ctx) {
 		String name = StringArgumentType.getString(ctx, "name");
@@ -518,7 +687,18 @@ public final class CompanionCommand {
 		var d = c.data;
 		List<String> lines = new ArrayList<>();
 		lines.add(name + " (skin " + d.skin + ", owner " + (d.ownerName == null ? "nobody" : d.ownerName) + ")");
-		lines.add(String.format("personality: chatty %.2f, brave %.2f, curious %.2f, helpful %.2f", d.chattiness, d.bravery, d.curiosity, d.helpfulness));
+		lines.add("personality" + (d.archetype == null ? "" : " (" + d.archetype + ")") + ": " + c.brain().personality().summary());
+		lines.add("mood: " + c.mood().summary());
+		lines.add("faction: " + com.botcraft.faction.Factions.of(c).name + (com.botcraft.faction.Factions.enabled() ? "" : " (single mode)"));
+		List<String> people = new ArrayList<>();
+		for (var person : c.memory().people.values()) {
+			if (person.rel != null) {
+				people.add(person.name + " " + person.rel.summary());
+			}
+		}
+		if (!people.isEmpty()) {
+			lines.add("feelings: " + String.join("; ", people));
+		}
 		lines.add("mode: " + d.mode + (d.defendOwner ? " + defend" : "") + "; doing: " + c.describeActivity());
 		lines.add("queued: " + (c.jobs().pending().isEmpty() ? "nothing" : String.join(" | ", c.jobs().pending())));
 		lines.add("drives: " + c.brain().lastScores());

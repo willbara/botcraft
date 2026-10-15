@@ -17,11 +17,14 @@ public record Intent(Type type, String item, int count, String target) {
 
 	public enum Type {
 		FOLLOW, STOP, COME_HERE, DEFEND, CANCEL, FREE, SCATTER,
-		GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT,
+		GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT, FARM, FISH,
 		HOME_SET, HOME_GO, SLEEP, CHEST_SET, DEPOSIT, STOCK, DANCE, LIGHT, COLONY_WANT,
 		WHERE, INVENTORY, STATS, FOUND, HELP, STATUS,
 		JOKE, COMPLIMENT, INSULT, WHO, LOVE, BYE, TIME, FAVORITE, OPINION, FEELING, SORRY,
-		GREETING, THANKS, UNKNOWN;
+		GREETING, THANKS,
+		/** "Do you trust me?", "are we cool?", "do you like alex?" (target: who, "" for the speaker). */
+		TRUST,
+		UNKNOWN;
 
 		/** Chit-chat handled by SmallTalk. */
 		public boolean isSmallTalk() {
@@ -34,7 +37,7 @@ public record Intent(Type type, String item, int count, String target) {
 		/** Orders change behaviour; only the owner may give them. */
 		public boolean isOrder() {
 			return switch (this) {
-				case FOLLOW, STOP, COME_HERE, DEFEND, CANCEL, FREE, SCATTER, GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT, HOME_SET, HOME_GO, SLEEP,
+				case FOLLOW, STOP, COME_HERE, DEFEND, CANCEL, FREE, SCATTER, GATHER, MINE, CRAFT, BRING, GIVE, HUNT, SMELT, FARM, FISH, HOME_SET, HOME_GO, SLEEP,
 					CHEST_SET, DEPOSIT, LIGHT -> true;
 				default -> false;
 			};
