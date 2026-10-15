@@ -331,6 +331,7 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] `/companion spawn Herobrine`: Herobrine's skin appears (with network); it says nothing and ignores chat; takes off any armour; at night stands 24-40 blocks from you staring; walk towards it and it vanishes. By day, blank signs turn up where it's been, and leaves go missing from trees.
 - [ ] `/companion spawn Technoblade`: Technoblade's skin; never runs from a fight (even at low health); goes for pigs first when hunting; kill it and it comes back saying "Technoblade never dies!".
 - [ ] `/companion spawn Hausemaster`: Hausemaster's skin; silent, ignores orders; `/kill Hausemaster` does nothing; attacks nobody (even with factions at war); when popbob hits it, it fights popbob back.
+- [ ] Herobrine at night among zombies and skeletons: none of them go for it, and it doesn't fight them.
 - [ ] Herobrine with factions at war around it: nobody attacks it. Walk up to it, or look straight at it for 3 seconds, or hit it: it's gone. At night it shifts to a new watching spot every half minute or so, not standing in one place.
 
 ### 38. No faction means no faction (0.14.6)
