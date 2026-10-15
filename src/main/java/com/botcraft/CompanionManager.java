@@ -64,8 +64,10 @@ public final class CompanionManager {
 		com.botcraft.colony.Colony.load(server);
 		com.botcraft.colony.Builds.load(server);
 		instance = new CompanionManager(server);
-		instance.loadAndSpawnAll();
-		com.botcraft.faction.Factions.syncTeams();
+		// Companions rejoin on the first server tick, not here: other mods finish setting up in
+		// their own "server started" handlers (Xaero's minimap threw on a join this early, and the
+		// companion was disconnected at once).
+		instance.restorePending = true;
 		com.botcraft.ops.Soak.maybeStart(server);
 		com.botcraft.ops.Bench.maybeStart(server);
 		com.botcraft.ops.NavBench.maybeStart(server);
@@ -94,6 +96,7 @@ public final class CompanionManager {
 		com.botcraft.faction.Factions.unload();
 		com.botcraft.faction.Raids.clear();
 		com.botcraft.faction.Fracture.clear();
+		com.botcraft.faction.Diplomacy.clear();
 		com.botcraft.chat.Lexicon.clear();
 		com.botcraft.colony.Builds.save(server);
 		com.botcraft.colony.Builds.unload();
@@ -101,6 +104,9 @@ public final class CompanionManager {
 		com.botcraft.brain.Board.clear();
 		instance = null;
 	}
+
+	/** Companions from the save still to rejoin (done on the first tick). */
+	private boolean restorePending;
 
 	private void loadAndSpawnAll() {
 		List<CompanionData> list = CompanionStore.load(server);
@@ -330,6 +336,11 @@ public final class CompanionManager {
 			return;
 		}
 		tickCount++;
+		if (restorePending) {
+			restorePending = false;
+			loadAndSpawnAll();
+			com.botcraft.faction.Factions.syncTeams();
+		}
 		double budget = budgetMs();
 		TickBudget.begin(budget);
 		// Rotate the starting companion so a shared, exhausted budget doesn't always starve the same one.
@@ -366,6 +377,7 @@ public final class CompanionManager {
 		try {
 			com.botcraft.faction.Raids.tick(this, tickCount);
 			com.botcraft.faction.Fracture.tick(this, tickCount);
+			com.botcraft.faction.Diplomacy.tick(this, tickCount);
 		} catch (RuntimeException e) {
 			Botcraft.LOG.error("Error updating factions", e);
 		}
@@ -418,9 +430,17 @@ public final class CompanionManager {
 		}
 		if (p.isDisconnected()) {
 			// Kicked (/kick) or otherwise disconnected by someone else. Stays registered and
-			// comes back on the next server start or /companion spawn.
-			Botcraft.LOG.info("Companion {} was disconnected", c.name());
+			// comes back on the next server start or /companion spawn. Dropped right after
+			// joining (another mod failing on the join) it tries again, twice at most.
 			c.setPlayer(null);
+			if (p.age < 100 && c.rejoinTries < 2) {
+				c.rejoinTries++;
+				c.rejoinPending = true;
+				c.respawnAtTick = tickCount + 100;
+				Botcraft.LOG.warn("Companion {} was disconnected right after joining; trying again in 5 s", c.name());
+			} else {
+				Botcraft.LOG.info("Companion {} was disconnected", c.name());
+			}
 			return;
 		}
 		if (p.isDead()) {
@@ -444,6 +464,18 @@ public final class CompanionManager {
 
 	private void respawn(Companion c) {
 		c.respawnAtTick = -1;
+		if (c.rejoinPending) {
+			// Dropped right after joining: back where it was saved, as if the server had just started.
+			c.rejoinPending = false;
+			try {
+				c.setPlayer(FakePlayers.connect(server, c.data, null, null, 0.0F));
+				reviveIfDead(c, false);
+				c.onSpawned("restored");
+			} catch (RuntimeException e) {
+				Botcraft.LOG.error("Failed to rejoin companion {}", c.name(), e);
+			}
+			return;
+		}
 		Arrival arrival = respawnPoint(c);
 		ServerWorld world = arrival.world();
 		Vec3d pos = arrival.pos();

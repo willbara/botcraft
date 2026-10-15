@@ -275,6 +275,12 @@ public final class Factions {
 	/** Put a companion in a faction. */
 	public static void join(Companion c, String id) {
 		c.data.faction = DEFAULT.equals(id) ? null : id;
+		String uuid = c.data.uuid.toString();
+		for (Faction o : FACTIONS.values()) {
+			if (!o.id.equals(id) && o.members.remove(uuid) != null) {
+				dirty = true; // a rank in the faction it left goes with it
+			}
+		}
 		c.brain().reconsider();
 		syncTeams();
 	}
