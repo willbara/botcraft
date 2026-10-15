@@ -111,6 +111,8 @@ public class FarmTask extends Task {
 	private boolean noWater;
 	private boolean askedForBucket;
 	private int waterTicks;
+	/** Ticks spent getting down into the dug water hole. */
+	private int intoHoleTicks;
 	private static final Predicate<ItemStack> WATER_BUCKET = s -> s.isOf(Items.WATER_BUCKET);
 	private static final Predicate<ItemStack> BUCKET = s -> s.isOf(Items.BUCKET);
 	/** How far from the plot to look for water to fill a bucket at. */
@@ -271,6 +273,7 @@ public class FarmTask extends Task {
 			}
 			waterHole = Zones.waterSpot(dry);
 			waterTicks = 0;
+			intoHoleTicks = 0;
 		}
 		if (++waterTicks > 20 * 120) {
 			return giveUpWater("took too long");
@@ -298,13 +301,32 @@ public class FarmTask extends Task {
 					return Status.RUNNING;
 				}
 			}
-			if (!c.actions().canReachBlock(hole)) {
-				walkNear(w, hole);
+			// Get down into the hole and pour at our feet. From the rim, a bucket aimed down into a
+			// one-block hole at a slant catches the rim and the water lands a block short (where it
+			// then looks like water to fill the bucket from: pour, scoop, pour...).
+			Vec3d center = Vec3d.ofBottomCenter(hole);
+			double dx = p.getX() - center.x;
+			double dz = p.getZ() - center.z;
+			if (!p.getBlockPos().equals(hole) || dx * dx + dz * dz > 0.3 * 0.3) {
+				if (++intoHoleTicks > 20 * 30) {
+					return giveUpWater("couldn't get down into the hole");
+				}
+				boolean atRim = dx * dx + dz * dz <= 2.5 * 2.5 && Math.abs(p.getY() - hole.getY()) <= 1.5;
+				if (atRim) {
+					// Standing on the edge (or in it, off centre): step in, slowly, to the middle.
+					c.nav().stop();
+					c.actions().moveTo(center, 0.5);
+				} else if (c.nav().state() == Navigator.State.IDLE || c.nav().state() == Navigator.State.FAILED) {
+					c.nav().moveTo(Goal.near(hole, 1.5, 1, 1), false);
+				}
 				return Status.RUNNING;
 			}
 			c.nav().stop();
-			// Aim at the floor of the hole: the water goes in on top of it.
-			c.actions().useItemToward(new Vec3d(hole.getX() + 0.5, hole.getY() + 0.02, hole.getZ() + 0.5), WATER_BUCKET);
+			c.actions().reset(); // stand still in the hole
+			// Straight down at the hole's floor: the water goes in where we stand.
+			if (c.actions().useItemToward(new Vec3d(center.x, hole.getY() + 0.02, center.z), WATER_BUCKET)) {
+				AiLog.log(c.name(), "farm: poured water into the hole at {} from inside it", hole.toShortString());
+			}
 			return Status.RUNNING;
 		}
 		if (count(p, BUCKET) > 0) {
@@ -365,8 +387,9 @@ public class FarmTask extends Task {
 			for (int dz = -WATER_SEARCH; dz <= WATER_SEARCH; dz++) {
 				int x = near.getX() + dx;
 				int z = near.getZ() + dz;
-				if (!w.isChunkLoaded(x >> 4, z >> 4) || Zones.isWaterSpot(colony, x, z)) {
-					continue;
+				var zone = w.isChunkLoaded(x >> 4, z >> 4) ? Zones.at(colony, x, z) : null;
+				if (!w.isChunkLoaded(x >> 4, z >> 4) || Zones.isWaterSpot(colony, x, z) || zone != null && Zones.isFarm(zone.kind)) {
+					continue; // (not water spilled on a plot: scooping that up is how the pour-and-scoop loop went)
 				}
 				int top = w.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
 				if (!isSource(w, m.set(x, top, z)) || !w.getBlockState(m.up()).isAir()) {
