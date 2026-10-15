@@ -186,6 +186,11 @@ public class RaidTask extends Task {
 		return Status.RUNNING;
 	}
 
+	/** {@link #value} for other packages (how much a raider wants it). */
+	public static int worth(ItemStack s) {
+		return value(s);
+	}
+
 	/** 3 = precious, 2 = useful gear and metal, 1 = food and fuel, 0 = not worth carrying. */
 	static int value(ItemStack s) {
 		Item it = s.getItem();
