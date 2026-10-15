@@ -66,6 +66,8 @@ public class Life {
 	private String boardHolder = "";
 	/** Just finished a board request: give our own progression a turn before the next one. */
 	private boolean boardRest;
+	/** The board request we're on was our leader's order (see Leadership): we report back on it. */
+	private boolean boardOrdered;
 
 	public record Goal(String key, List<String> jobs, String reason) {
 	}
@@ -194,10 +196,16 @@ public class Life {
 		boardRequest = a.request().id;
 		boardHolder = c.name();
 		boardRest = false;
+		boardOrdered = true;
 		lastGoal = "board";
 		AiLog.log(c.name(), "life: the leader asked for {} -> {}", a.request().describe(), a.steps());
 		c.jobs().append(a.steps());
 		return true;
+	}
+
+	/** Still on an order our leader gave us (a board request it handed us). */
+	public boolean onOrder() {
+		return boardOrdered && boardRequest != null;
 	}
 
 	/** Decide again soon rather than at the next scheduled decision (a job just ended, a leader called). */
@@ -221,6 +229,9 @@ public class Life {
 		if ("farm".equals(lastGoal)) {
 			tree.rest("farm", now + 20 * 60 * 3); // the crops need time to grow back
 		}
+		if ("clear_home".equals(lastGoal)) {
+			tree.rest("clear_home", now + 20 * 30); // a breather (and the next look at home) between clearing trips
+		}
 		if ("board".equals(lastGoal)) {
 			finishBoard(true, now);
 			boardRest = true;
@@ -232,6 +243,14 @@ public class Life {
 		if (boardRequest != null) {
 			Board.finished(boardRequest, boardHolder, ok, now);
 			boardRequest = null;
+			if (boardOrdered) {
+				boardOrdered = false;
+				var m = com.botcraft.CompanionManager.get();
+				Companion who = m == null ? null : m.byName(boardHolder);
+				if (who != null) {
+					com.botcraft.faction.Leadership.reportBack(who, ok, now);
+				}
+			}
 		}
 	}
 
@@ -435,6 +454,7 @@ public class Life {
 			if (a != null) {
 				boardRequest = a.request().id;
 				boardHolder = c.name();
+				boardOrdered = false;
 				return new Goal("board", a.steps(), a.reason());
 			}
 		}
@@ -642,7 +662,7 @@ public class Life {
 		if (colony.zone(com.botcraft.colony.Zones.FARM) == null) {
 			return null;
 		}
-		long[] seen = FARM_SEEN.computeIfAbsent(colony.id(), k -> new long[]{-10_000, 0, 0, 0, 0, 0});
+		long[] seen = FARM_SEEN.computeIfAbsent(colony.id(), k -> new long[]{-10_000, 0, 0, 0, 0, 0, 0});
 		if (now - seen[0] > 20 * 20) { // shared by everyone at this base, refreshed every 20 s
 			var n = com.botcraft.brain.task.FarmTask.needs(p.getServerWorld(), colony);
 			seen[0] = now;
@@ -651,9 +671,11 @@ public class Life {
 			seen[3] = n.tillable();
 			seen[4] = n.grass();
 			seen[5] = n.dry();
+			seen[6] = n.wild();
 		}
-		var needs = new com.botcraft.brain.task.FarmTask.Needs((int) seen[1], (int) seen[2], (int) seen[3], (int) seen[4], (int) seen[5]);
-		boolean seeds = com.botcraft.brain.task.FarmTask.seeds(p) > 0;
+		var needs = new com.botcraft.brain.task.FarmTask.Needs((int) seen[1], (int) seen[2], (int) seen[3], (int) seen[4], (int) seen[5], (int) seen[6]);
+		// Seeds in the chests count as ours (the farm job fetches them first).
+		boolean seeds = com.botcraft.brain.task.FarmTask.seeds(p) > 0 || com.botcraft.brain.task.FarmTask.seedsInStock(colony);
 		boolean hoe = com.botcraft.brain.task.FarmTask.hasHoe(p);
 		boolean hungry = Inventories.foodCount(inv) == 0 && p.getHungerManager().getFoodLevel() < 14;
 		boolean water = needs.dry() > 0 && com.botcraft.brain.task.FarmTask.hasBucket(p);
@@ -873,6 +895,7 @@ public class Life {
 			if (a != null) {
 				boardRequest = a.request().id;
 				boardHolder = c.name();
+				boardOrdered = false;
 				return new Goal("board", a.steps(), a.reason());
 			}
 		}

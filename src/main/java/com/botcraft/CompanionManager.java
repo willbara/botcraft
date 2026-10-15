@@ -553,15 +553,32 @@ public final class CompanionManager {
 		BlockPos at = null;
 		// Like a player: our bed, else home, else with the owner (only if they're somewhere safe:
 		// not spectating inside a flooded cave), else world spawn. Never into water, lava or a wall.
+		// Never at another faction's base or on enemy land, though: a bed or home remembered from a
+		// faction we've left would put us among enemies, to die again and again.
+		String ours = com.botcraft.faction.Factions.idOf(c);
 		for (String placeName : new String[]{"bed", "home"}) {
 			var place = c.memory().place(placeName);
 			if (at == null && place != null) {
 				ServerWorld w = worldFor(place.dim);
+				if (w != null && com.botcraft.faction.Factions.enabled() && (com.botcraft.faction.Factions.foreignBase(ours, w, place.pos()) != null
+					|| com.botcraft.faction.Hostility.hostileLand(c, w, place.pos()))) {
+					Botcraft.LOG.info("[{}] won't respawn at its {} ({}): another faction's ground", c.name(), placeName, place.pos().toShortString());
+					continue;
+				}
 				BlockPos safe = w == null ? null : SafeSpot.near(w, place.pos(), 6);
 				if (safe != null) {
 					world = w;
 					at = safe;
 				}
+			}
+		}
+		// Else our own faction's base.
+		var colony = com.botcraft.faction.Factions.enabled() && !com.botcraft.faction.Factions.loners(ours) ? com.botcraft.colony.Colony.of(ours) : null;
+		if (at == null && colony != null && colony.hasBase() && colony.world() != null) {
+			BlockPos safe = SafeSpot.near(colony.world(), colony.base(), 6);
+			if (safe != null) {
+				world = colony.world();
+				at = safe;
 			}
 		}
 		ServerPlayerEntity owner = c.owner();

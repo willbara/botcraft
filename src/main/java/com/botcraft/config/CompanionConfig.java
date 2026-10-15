@@ -63,6 +63,12 @@ public class CompanionConfig {
 	 */
 	public String chatVerbosity = "all";
 	/**
+	 * Who talks in a faction (teams and dynamic mode): "leader" (default): only the one in charge
+	 * (giving orders, checking in, speaking for the faction), and a member answering its order or
+	 * a player; "all": everyone, as before. Set in game with /companion chat factions leader|all.
+	 */
+	public String factionChat = "leader";
+	/**
 	 * When false (default) companions never break blocks that could be player-placed:
 	 * navigation only breaks natural (non-persistent) leaves, and wood is only taken from
 	 * trees that still have natural leaves. Containers / block entities are never broken.
@@ -247,6 +253,9 @@ public class CompanionConfig {
 		initiative = Math.max(0.0F, Math.min(1.0F, initiative));
 		if (!"quiet".equals(chatVerbosity)) {
 			chatVerbosity = "all";
+		}
+		if (!"all".equals(factionChat)) {
+			factionChat = "leader";
 		}
 		if (!java.util.List.of("single", "teams", "dynamic").contains(factionMode)) {
 			factionMode = "single";

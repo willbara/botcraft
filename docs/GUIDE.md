@@ -241,19 +241,19 @@ While mining:
 
 ### Farming
 
-- **The farm** is the base's farm zone (a flat 9x9 near water, laid out with the other zones, or set by hand with `/companion colony zone farm here`), and the plots added next to it.
+- **The farm** is the base's farm zone (a flat 9x9 near water, laid out with the other zones, or set by hand with `/companion colony zone farm here`), and the plots added next to it. In a wood with no open ground, the best plot that would do once its trees are down is laid out anyway: home grows round it, its trees are felled with the rest of home's, and farming starts as the ground clears.
 - **More plots** (`expandFarms`). Every few minutes, once every plot is three-quarters planted, the farm grows: a new 9x9 plot (`farm2`, `farm3`, `farm4`) one block from an existing plot (a path between them), on whichever side has the most flat soil at about the same height, nearest water and the core. A base gets one plot, plus one for every four members, up to four. Home grows to take them in.
 - **Water.** One water block wets farmland up to 4 blocks away, so a 9x9 plot is all wet from a block of water in its middle. A plot with dry soil (not within 4 blocks of water) gets one: the farmer fills a bucket at the nearest open water (making a bucket first if the base has 3 iron, or taking one from the chests), digs out the plot's middle and pours it in. The middle of every plot is kept for water: never tilled, planted, or filled back in by upkeep.
 - **Tending it** ("farm", or free mode when there's something to do), nearest work first:
   1. **Harvest** ripe wheat, carrots, potatoes and beetroot.
   2. **Plant** empty farmland. Potatoes and carrots go first (they're food straight away), then wheat seeds, then beetroot seeds.
-  3. **Pull up grass and flowers** in the farm, and grass around it when it has no seeds (grass drops seeds now and then).
+  3. **Pull up grass and flowers** in the farm, and grass around it when it has no seeds (grass drops seeds now and then): within 8 blocks, else up to 20. Seeds, potatoes or carrots in the base's chests are taken first.
   4. **Till** grass and dirt with a hoe when there are seeds to plant. It makes a wooden hoe first if it has none.
 - **Picking up.** Drops are picked up like any others.
 - **Free mode** goes farming by day, within 64 blocks of the base, when it's worth the trip, and bakes bread from 3 wheat when short of food:
   - at least 6 ripe crops (any, when it has no food and is hungry);
   - at least 3 tiles to plant or till;
-  - grass and flowers in the way;
+  - grass and flowers in the way, or (with nothing to plant) grass around the farm to pull up for seeds;
   - or a dry plot, when it carries a bucket.
 
   One companion tends a base's farm at a time, and a farmer rests from farming for 3 minutes after a run. The farm is looked at every 20 seconds, shared by everyone at the base.
@@ -285,7 +285,7 @@ While mining:
 
 ### Death, rejoining and getting lost
 
-- **Respawning.** A companion that dies comes back after `respawnDelayTicks`. It returns at its bed, else home, else (when following you) next to you if you're standing somewhere safe, else world spawn, always on dry, solid ground. It never reappears looking dead.
+- **Respawning.** A companion that dies comes back after `respawnDelayTicks`. It returns at its bed, else home, else its faction's base, else (when following you) next to you if you're standing somewhere safe, else world spawn, always on dry, solid ground. It never reappears looking dead. A bed or home at another faction's base, or on enemy land, is skipped. Joining a faction with a base makes that base home (and forgets a bed somewhere else), so members who change sides don't come back to life among their old faction.
 - **Getting its things back.** After respawning it goes back for what it dropped, and keeps looking for as long as the items last (5 minutes from the death), unless it died in lava, fire, the void or by drowning, or that spot has already killed it twice in 10 minutes. Killed by a player or another faction's companion, it waits until the killer has moved off (more than 40 blocks from the spot, dead or gone), checking every few seconds, then goes. A death also counts as a failed goal, so free mode puts that goal aside for a while.
 - **Unsafe saves.** A companion saved somewhere deadly (under water, in lava, inside a block) is moved to the nearest safe spot when the world loads.
 - **Not getting lost.**
@@ -337,7 +337,7 @@ While mining:
     - natural trees standing in the home zone (`clearTrees`): felled, all of them. While a base still has trees in its home zone or no farm or pen yet, clearing it comes first: the tidy request goes to the top of the board (leaders hand it out first), and free companions near the base join in felling, several at once, until it's done (the logs go into the chests). Otherwise, by whoever takes the job (it needs nothing to climb with: home's open ground may be dug for dirt to tower up on, and upkeep fills the holes back in afterwards). On a base founded in a wood, that's what makes room for the farm and pen;
     - one-block pits in flat ground, and ground a companion dug out at home (filled back in; holes players dig in the zones are left alone);
     - bumps or dips up to 3 blocks deep in the core, bed row, farm plots and pen (levelled to the zone's ground; never built blocks, trees, water or ground under furniture);
-    - a fence round home (`fenceHome`), once the chests hold 24 logs: fence posts along the home zone's edge, with gates where the paths cross it and in the middle of each side. Fences and gates are made from the base's wood.
+    - a fence round home (`fenceHome`), once the chests hold 24 logs: fence posts along the home zone's edge, with gates where the paths cross it and in the middle of each side. Fences and gates are made from the base's wood. The fence follows the home zone, not the faction's land: when home grows (a new farm plot), a new fence goes up along the new edge and the old one stays inside it.
 
     It goes on the request board as "tidy up the base", and a free companion takes it like any other request. Holes are filled with dirt or other throwaway blocks the companion carries. `/companion colony` shows what's waiting.
 - **Night chores.** An armed companion at the base at night (with no bed) stores its things, cooks raw meat, smelts raw iron and crafts iron gear from carried and stored materials. It doesn't leave the base for anything after dark.
@@ -564,6 +564,7 @@ It goes to bed when you do (and on its own at night in free mode), so the night 
 - **Lines** come from `dialogue.json`, a large pool that avoids repeating itself.
 - **Voices.** Each companion has its own voice (casual or proper, calm or excited, filler words, emoticons, a nickname for you), so the same line sounds different from different companions.
 - **Unprompted remarks** on nightfall and morning, weather, new biomes, low health, creepers, you getting hurt or dying, diamonds, each step of a plan, plan failures (with the reason), kills, fleeing, missing beds, its own initiative, and idle musings. How often depends on chattiness.
+- **In a faction** (teams and dynamic mode, `/companion chat factions leader`, the default), only whoever's in charge talks: the leader (or an officer while it's away) gives orders ("RainyTiger, see to 6 cooked food for the base."), checks in on them every couple of minutes ("how's it going?") until they're done, and speaks for the faction (wars, truces, bounties, land). The member given the order answers ("On it."), answers the check-ins with what it's doing, and reports back when it's done or gave up; the leader says thanks. Everyone else keeps quiet, except when a player talks to them. The factionless, single mode and the easter eggs' lines are as before. `/companion chat factions all` lets every member talk.
 - **Customising.** Create `config/botcraft-dialogue.json` in the same format as [`dialogue.json`](../src/main/resources/botcraft/dialogue.json); any key you define replaces that key's default lines. Placeholders include `{player}`, `{nick}`, `{name}`, `{friend}`, `{mob}`, `{item}`, `{count}`, `{plan}`, `{result}`, `{reason}`, `{biome}`, `{time}` and `{fav}`. Restart to reload.
 
 ### Easter eggs
@@ -686,6 +687,7 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `maxTickBudgetMs` | 8.0 | When the rest of the server leaves room (a whole tick under 35 ms), the AI budget grows up to this. |
 | `pathNodesPerTick` / `pathPrimaryNodes` / `maxPathNodes` | 600 / 20000 / 80000 | A* nodes per companion per tick; where a search stops once it has a partial path worth taking; where it stops in any case. |
 | `chatEnabled` | true | Replies and unprompted remarks. |
+| `factionChat` | leader | `leader`: in a faction only the one in charge talks, and members answer its orders and players; `all`: everyone. `/companion chat factions leader\|all` sets it in game. |
 | `chatVerbosity` | all | `all`, or `quiet`: only answers and acknowledgements, what a companion starts on its own and what failed. `/companion chat all\|quiet\|off` sets it in game. |
 | `griefing` | false | When off, navigation only breaks natural terrain and companions' own throwaway blocks, and only natural trees are chopped. Containers and block entities are never broken either way. |
 | `allowBridging` | true | May place dirt or cobblestone to cross gaps. |

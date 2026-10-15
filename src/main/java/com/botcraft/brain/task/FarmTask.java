@@ -62,6 +62,8 @@ public class FarmTask extends Task {
 	public static final int RIPE_TRIP = 6;
 	/** How far around the farm to look for grass to pull up for seeds. */
 	private static final int GRASS_MARGIN = 8;
+	/** How far to look for grass when there's none close by (a new farm in a wood, a cleared base). */
+	private static final int WIDE_GRASS_MARGIN = 20;
 
 	enum Work {
 		HARVEST, PLANT, CLEAR, TILL
@@ -75,9 +77,9 @@ public class FarmTask extends Task {
 	}
 
 	/** What the farm needs (for deciding whether to go farming at all). {@code dry}: plots that want water. */
-	public record Needs(int ripe, int empty, int tillable, int grass, int dry) {
+	public record Needs(int ripe, int empty, int tillable, int grass, int dry, int wild) {
 		public Needs(int ripe, int empty, int tillable, int grass) {
-			this(ripe, empty, tillable, grass, 0);
+			this(ripe, empty, tillable, grass, 0, 0);
 		}
 
 		/**
@@ -85,8 +87,9 @@ public class FarmTask extends Task {
 		 * the way. One ripe stalk isn't worth walking over for.
 		 */
 		public boolean worthIt(boolean seeds, boolean hoe, boolean hungry) {
+			// (wild: grass growing round the plots, where a new farm's first seeds come from)
 			return ripe >= (hungry ? 1 : RIPE_TRIP) || (seeds && empty >= 3) || (seeds && hoe && tillable >= 3) || grass >= 3
-				|| (!seeds && empty + tillable > 0 && grass > 0);
+				|| (!seeds && empty + tillable > 0 && grass + wild > 0);
 		}
 	}
 
@@ -99,6 +102,7 @@ public class FarmTask extends Task {
 	private int planted;
 	private int tilled;
 	private boolean askedForHoe;
+	private boolean askedForSeeds;
 	/** The water hole being made, and the water we fill the bucket at. */
 	@Nullable
 	private BlockPos waterHole;
@@ -148,6 +152,16 @@ public class FarmTask extends Task {
 			return done();
 		}
 		ServerWorld world = p.getServerWorld();
+		if (!askedForSeeds && count(p, SEED) == 0) {
+			// Seeds (or potatoes, carrots) in the chests: take some before pulling up grass for them.
+			askedForSeeds = true;
+			for (Item seed : SEEDS) {
+				String w = com.botcraft.brain.Jobs.withdrawSpec(c, com.botcraft.knowledge.ItemNames.id(seed), s -> s.isOf(seed), 32);
+				if (w != null) {
+					return deferTo(List.of(w));
+				}
+			}
+		}
 		FARMER.put(colony.id(), c.name());
 		FARMER_UNTIL.put(colony.id(), c.now() + 20 * 15);
 		if (job == null && !noWater) {
@@ -404,7 +418,12 @@ public class FarmTask extends Task {
 			// Grass in the farm is in the way; grass around it is where seeds come from.
 			if (!seeds) {
 				for (Colony.Zone farm : farms) {
-					clear.addAll(grassAround(w, colony, farm));
+					clear.addAll(grassAround(w, colony, farm, GRASS_MARGIN));
+				}
+				if (clear.stream().allMatch(j -> skipped.contains(j.target()))) {
+					for (Colony.Zone farm : farms) {
+						clear.addAll(grassAround(w, colony, farm, WIDE_GRASS_MARGIN));
+					}
 				}
 			}
 			clear.removeIf(j -> skipped.contains(j.target()));
@@ -440,10 +459,10 @@ public class FarmTask extends Task {
 	}
 
 	/** Grass plants within a few blocks of the farm (pulling them up drops seeds now and then). */
-	private static List<Job> grassAround(ServerWorld w, Colony colony, Colony.Zone farm) {
+	private static List<Job> grassAround(ServerWorld w, Colony colony, Colony.Zone farm, int margin) {
 		List<Job> out = new ArrayList<>();
-		for (int x = farm.x1 - GRASS_MARGIN; x <= farm.x2 + GRASS_MARGIN; x++) {
-			for (int z = farm.z1 - GRASS_MARGIN; z <= farm.z2 + GRASS_MARGIN; z++) {
+		for (int x = farm.x1 - margin; x <= farm.x2 + margin; x++) {
+			for (int z = farm.z1 - margin; z <= farm.z2 + margin; z++) {
 				if (Zones.at(colony, x, z) != null || !w.isChunkLoaded(x >> 4, z >> 4)) {
 					continue;
 				}
@@ -486,7 +505,17 @@ public class FarmTask extends Task {
 				dry++;
 			}
 		}
-		return new Needs(ripe, empty, tillable, grass, dry);
+		int wild = 0;
+		if (grass == 0 && empty + tillable > 0) {
+			// Nothing to pull up in the plots: is there grass round them (for a new farm's seeds)?
+			for (Colony.Zone farm : Zones.farms(colony)) {
+				wild += grassAround(w, colony, farm, WIDE_GRASS_MARGIN).size();
+				if (wild > 0) {
+					break;
+				}
+			}
+		}
+		return new Needs(ripe, empty, tillable, grass, dry, wild);
 	}
 
 	/** Carrying a bucket (empty or full): a dry plot is worth the trip. */
@@ -543,5 +572,10 @@ public class FarmTask extends Task {
 	/** Seeds or seed crops carried. */
 	public static int seeds(CompanionPlayer p) {
 		return count(p, SEED);
+	}
+
+	/** Something to plant in the base's chests. */
+	public static boolean seedsInStock(Colony colony) {
+		return colony.count(SEED) > 0;
 	}
 }

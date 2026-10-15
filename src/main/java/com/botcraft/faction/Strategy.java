@@ -90,6 +90,7 @@ public final class Strategy {
 				c.jobs().append(List.of("goto " + s.getX() + " " + s.getY() + " " + s.getZ() + " to stake our claim", "home"));
 				if (i == 0) {
 					boss.speech().event("faction.expand", Map.of("name", c.name()), 20 * 60, 0.9F);
+					c.speech().sayIn("faction.order_ack", null, Map.of("leader", boss.name(), "task", "staking a claim"), 50);
 				}
 			}
 			AiLog.log("faction", "{}: {} sends {} out to stake claims", f.id, boss.name(), spots.size());
@@ -105,6 +106,7 @@ public final class Strategy {
 			BlockPos to = scoutTarget(f, colony);
 			scout.jobs().append(List.of("goto " + to.getX() + " " + to.getY() + " " + to.getZ() + " scouting", "home"));
 			boss.speech().event("faction.scout", Map.of("name", scout.name()), 20 * 60, 0.9F);
+			scout.speech().sayIn("faction.order_ack", null, Map.of("leader", boss.name(), "task", "scouting"), 50);
 			AiLog.log("faction", "{}: {} sends {} scouting towards {}", f.id, boss.name(), scout.name(), to.toShortString());
 		}
 	}
