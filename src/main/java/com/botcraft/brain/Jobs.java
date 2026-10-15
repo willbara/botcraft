@@ -43,6 +43,11 @@ public final class Jobs {
 		try {
 			switch (w[0]) {
 				case "gather" -> {
+					if (w.length > 3 && w[3].equals("home")) {
+						var colony = com.botcraft.colony.Colony.get();
+						var home = colony == null ? null : colony.zone(com.botcraft.colony.Zones.HOME);
+						return home == null ? null : new GatherLogsTask(c, num(w, 2, 256), home);
+					}
 					return new GatherLogsTask(c, num(w, 2, 16));
 				}
 				case "mine" -> {
@@ -144,7 +149,7 @@ public final class Jobs {
 	public static String describe(String spec) {
 		String[] w = base(spec).split(" ");
 		return switch (w[0]) {
-			case "gather" -> "chop " + num(w, 2, 16) + " logs";
+			case "gather" -> w.length > 3 && w[3].equals("home") ? "clear the trees at home" : "chop " + num(w, 2, 16) + " logs";
 			case "mine" -> {
 				OreKind k = w.length > 1 ? OreKind.byWord(w[1]) : null;
 				yield "mine " + num(w, 2, 8) + " " + (k == null ? w[1] : k.noun());

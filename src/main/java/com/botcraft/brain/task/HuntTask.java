@@ -30,12 +30,14 @@ import java.util.List;
  * or player are left to them.
  */
 public class HuntTask extends Task {
-	private static final double RADIUS = 32;
+	private static final double RADIUS = 40;
+	/** A chase gives up on an animal this much further off than {@link #RADIUS}. */
+	private static final double CHASE_SLACK = 16;
 	/** How far off we can make out animals (about a normal render distance). */
 	private static final double FAR_RADIUS = 96;
 	/** How far each search trip goes, and how many trips before giving up. */
-	private static final int TRIP = 40;
-	private static final int MAX_TRIPS = 5;
+	private static final int TRIP = 48;
+	private static final int MAX_TRIPS = 8;
 
 	private final List<EntityType<?>> species;
 	private final int count;
@@ -80,7 +82,7 @@ public class HuntTask extends Task {
 	@Override
 	protected void onStop() {
 		Claims.release(c);
-		search.cancel(c);
+		search.suspend(c); // paused by a fight or a meal: the trip carries on afterwards
 		super.onStop();
 	}
 
@@ -128,7 +130,8 @@ public class HuntTask extends Task {
 						AiLog.log(c.name(), "hunt: spotted animals over at {}", herd.toShortString());
 					} else {
 						for (var seen : c.memory().sightings("herd", p.getBlockPos(), c.dimension(), 160)) {
-							if (seen.pos().getSquaredDistance(p.getBlockPos()) > RADIUS * RADIUS && !triedHerds.contains(seen.pos())) {
+							if (seen.pos().getSquaredDistance(p.getBlockPos()) > RADIUS * RADIUS && !triedHerds.contains(seen.pos())
+								&& !com.botcraft.faction.Hostility.hostileLand(c, p.getServerWorld(), seen.pos())) {
 								herd = seen.pos();
 								AiLog.log(c.name(), "hunt: there were animals over at {} before", herd.toShortString());
 								break;
@@ -151,7 +154,7 @@ public class HuntTask extends Task {
 			AiLog.log(c.name(), "hunting a {}", target.getType().getUntranslatedName());
 		}
 		double d = p.distanceTo(target);
-		if (d > RADIUS + 8) {
+		if (d > RADIUS + CHASE_SLACK) {
 			target = null;
 			return Status.RUNNING;
 		}
@@ -218,7 +221,8 @@ public class HuntTask extends Task {
 		far.sort(Comparator.comparingDouble(a -> a.squaredDistanceTo(p)));
 		var border = p.getWorld().getWorldBorder();
 		for (AnimalEntity a : far) {
-			if (!border.contains(a.getBlockPos()) || triedHerds.stream().anyMatch(t -> t.getSquaredDistance(a.getBlockPos()) < 16 * 16)) {
+			if (!border.contains(a.getBlockPos()) || triedHerds.stream().anyMatch(t -> t.getSquaredDistance(a.getBlockPos()) < 16 * 16)
+				|| com.botcraft.faction.Hostility.hostileLand(c, p.getServerWorld(), a.getBlockPos())) {
 				continue;
 			}
 			List<AnimalEntity> herd = far.stream().filter(o -> o.squaredDistanceTo(a) < 16 * 16).toList();
@@ -252,7 +256,8 @@ public class HuntTask extends Task {
 		around.sort(Comparator.comparingDouble(a -> a.squaredDistanceTo(p)));
 		AnimalEntity shared = null;
 		for (AnimalEntity a : around) {
-			if (Animals.huntable(a, around, desperate(p))) {
+			if (Animals.huntable(a, around, desperate(p))
+				&& (a.squaredDistanceTo(p) < 12 * 12 || !com.botcraft.faction.Hostility.hostileLand(c, p.getServerWorld(), a.getBlockPos()))) {
 				// Leave animals by someone else to them, unless that's all there is.
 				if (!Claims.crowded(c, a.getBlockPos(), 6)) {
 					return a;

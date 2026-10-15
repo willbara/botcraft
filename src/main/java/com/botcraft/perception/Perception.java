@@ -106,7 +106,7 @@ public class Perception {
 
 	/**
 	 * Notice animals while doing other things, like a player does: groups of three or more food
-	 * animals within 48 blocks are remembered (one spot per area), and remembered spots in view
+	 * animals within 64 blocks are remembered (one spot per area), and remembered spots in view
 	 * with nothing there any more are forgotten. Hunting goes straight to these.
 	 */
 	private void watchHerds() {
@@ -115,7 +115,7 @@ public class Perception {
 		var memory = companion.memory();
 		String dim = companion.dimension();
 		List<net.minecraft.entity.passive.AnimalEntity> animals = world.getEntitiesByClass(net.minecraft.entity.passive.AnimalEntity.class,
-			p.getBoundingBox().expand(48, 16, 48), a -> com.botcraft.knowledge.Animals.FOOD_ANIMALS.contains(a.getType())
+			p.getBoundingBox().expand(64, 16, 64), a -> com.botcraft.knowledge.Animals.FOOD_ANIMALS.contains(a.getType())
 				&& !a.isBaby() && !a.hasCustomName() && a.isAlive());
 		java.util.Map<net.minecraft.entity.EntityType<?>, List<net.minecraft.entity.passive.AnimalEntity>> byKind = new java.util.HashMap<>();
 		for (var a : animals) {

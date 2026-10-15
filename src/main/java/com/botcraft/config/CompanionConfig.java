@@ -26,8 +26,16 @@ public class CompanionConfig {
 	/** Brain (drive scoring / task selection) runs every N ticks. Body control runs every tick. */
 	public int aiTickInterval = 5;
 	/**
-	 * Time (milliseconds) all companions together may always spend on heavy AI work (path
-	 * search, block scans) per server tick. More is used when the server has time to spare.
+	 * Time (milliseconds) each companion has of its own for heavy AI work (path search, block
+	 * scans) per server tick, halved while the server is falling behind. Unused time is saved up
+	 * to companionBurstMs, so a long search can run without starving the others.
+	 */
+	public double companionBudgetMs = 0.5;
+	/** Most AI time a companion can save up for one tick (ms). */
+	public double companionBurstMs = 5.0;
+	/**
+	 * Time (milliseconds) shared by all companions per server tick on top of their own: what a
+	 * companion borrows once its own is spent. More is shared when the server has time to spare.
 	 */
 	public double tickBudgetMs = 2.0;
 	/**
@@ -92,6 +100,8 @@ public class CompanionConfig {
 	public boolean farming = true;
 	/** Farmers add more farm plots next to the first as the base grows, each watered from a hole in its middle. */
 	public boolean expandFarms = true;
+	/** Fell the trees standing in the home zone (part of tidying the base). */
+	public boolean clearTrees = true;
 	/** Put a fence round the home zone (with gates on the paths) once the base has wood to spare. */
 	public boolean fenceHome = true;
 	/** Companions who find water may make a fishing rod and fish there. */
@@ -203,6 +213,8 @@ public class CompanionConfig {
 		maxCompanions = Math.max(0, maxCompanions);
 		aiTickInterval = Math.max(1, Math.min(40, aiTickInterval));
 		tickBudgetMs = Math.max(0.2, Math.min(20.0, tickBudgetMs));
+		companionBudgetMs = Math.max(0.0, Math.min(10.0, companionBudgetMs));
+		companionBurstMs = Math.max(companionBudgetMs, Math.min(50.0, companionBurstMs));
 		maxTickBudgetMs = Math.max(tickBudgetMs, Math.min(30.0, maxTickBudgetMs));
 		pathNodesPerTick = Math.max(10, pathNodesPerTick);
 		maxPathNodes = Math.max(200, maxPathNodes);

@@ -1,6 +1,6 @@
 # Botcraft feature plan
 
-The plan for Botcraft's next major line of work, written against v0.11.2. Each section is one feature: **what it is**, **how to implement it**, **what it touches**, and **when it's done**. The status table below says how far 0.13.0 got.
+The plan for Botcraft's next major line of work, written against v0.11.2. Each section is one feature: **what it is**, **how to implement it**, **what it touches**, and **when it's done**. The status table below says how far 0.14.0 got.
 
 ## Ground rules
 
@@ -25,7 +25,7 @@ The plan for Botcraft's next major line of work, written against v0.11.2. Each s
 
 ---
 
-## Status in 0.13.0
+## Status in 0.14.0
 
 | § | Feature | Status |
 |---|---|---|
@@ -39,7 +39,7 @@ The plan for Botcraft's next major line of work, written against v0.11.2. Each s
 | 8 | Factions core | **Done.** |
 | 9 | Modes single, teams, dynamic | **Done.** |
 | 10 | Dynamic bases | **Founding: done** (`SiteSurvey`, `FoundTask`), well apart (160 blocks, scouting further when needed). **Territory: done** (`faction/Territory`): chunk claims that grow over time, borders, first contact, occupation at war, land ceded for peace. **Growing zones: farm plots** (up to four, watered). Outposts and relocation: not yet. |
-| 11 | Fracture, merging, leadership | **Fracture and disbanding: done** (simple unhappiness). Merging, elections and dividing the chests: not yet. |
+| 11 | Fracture, merging, leadership | **Fracture and disbanding: done** (simple unhappiness). **Leadership: done** (`faction/Leadership`): the group picks its leader, the leader its officers, succession. Merging and dividing the chests: not yet. |
 | 12 | Diplomacy | **War weariness, declarations of war and first contact at the border: done** (dynamic mode), plus commands. **Bounties** (`faction/Bounties`): done. Alliances, gifts and envoys: not yet. |
 | 13 | Warfare | **off, defend, pvp and raid: done.** Raids go, fight, break in with griefing on, loot and return. Raid formations and a block cap: not yet. |
 | 14 | English understanding | **Partly:** stack amounts, follow-ups, teaching words and routines, trust questions. The tagger, chunker and frames pipeline: not yet. |
