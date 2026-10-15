@@ -46,6 +46,8 @@ public final class Faction {
 	public java.util.List<String> met = new java.util.ArrayList<>();
 	/** Killer name -> bounty (see {@link Bounties}). */
 	public Map<String, Bounty> bounties = new LinkedHashMap<>();
+	/** Other faction id -> a ceasefire with it, current or recent (see {@link Ceasefire}). */
+	public Map<String, Ceasefire.Terms> ceasefires = new LinkedHashMap<>();
 
 	/** A price on someone's head: how much the faction wants them dead. */
 	public static final class Bounty {
@@ -119,6 +121,9 @@ public final class Faction {
 		}
 		if (bounties == null) {
 			bounties = new LinkedHashMap<>();
+		}
+		if (ceasefires == null) {
+			ceasefires = new LinkedHashMap<>();
 		}
 	}
 }

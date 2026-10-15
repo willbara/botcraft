@@ -409,7 +409,11 @@ public final class Factions {
 		Faction fa = FACTIONS.get(a);
 		Faction fb = FACTIONS.get(b);
 		if (fa != null && fb != null && !a.equals(b)) {
-			int floor = inGrace(a, b) ? CompanionConfig.get().hostileStanding + 1 : -100;
+			boolean ceasefire = Ceasefire.active(a, b) || Ceasefire.parleying(a, b);
+			if (Ceasefire.active(a, b)) {
+				Ceasefire.strain(a, b, by); // can't bring war back by itself: it strains the deal instead
+			}
+			int floor = inGrace(a, b) || ceasefire ? CompanionConfig.get().hostileStanding + 1 : -100;
 			fa.setRelation(b, Math.max(Math.min(fa.relation(b), floor), fa.relation(b) - by));
 			fb.setRelation(a, Math.max(Math.min(fb.relation(a), floor), fb.relation(a) - by));
 			dirty = true;
@@ -422,6 +426,11 @@ public final class Factions {
 	}
 
 	/** Either faction is still settling in (see {@link Faction#graceUntil}). */
+	/** The overworld's time (what grace and ceasefires are counted in); 0 with no server. */
+	public static long worldTime() {
+		return server == null ? 0 : server.getOverworld().getTime();
+	}
+
 	public static boolean inGrace(String a, String b) {
 		long now = server == null ? 0 : server.getOverworld().getTime();
 		Faction fa = FACTIONS.get(a);

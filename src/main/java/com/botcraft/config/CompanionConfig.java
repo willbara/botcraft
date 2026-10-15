@@ -128,6 +128,8 @@ public class CompanionConfig {
 	public boolean fenceHome = true;
 	/** Free companions with bones (theirs or the base's) try to tame a wolf they see, when nothing more pressing is on. */
 	public boolean taming = true;
+	/** Dynamic mode: leaders of two factions locked in an even, bloody war may agree a ceasefire (see Ceasefire). */
+	public boolean ceasefires = true;
 	/** Companions who find water may make a fishing rod and fish there. */
 	public boolean fishing = true;
 	/** Put torches down in dark caves and around a dark base. */
