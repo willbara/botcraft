@@ -120,7 +120,11 @@ public final class FactionCommand {
 	public static LiteralArgumentBuilder<ServerCommandSource> standing() {
 		return CommandManager.literal("standing")
 			.then(CommandManager.argument("faction", StringArgumentType.word())
-				.suggests(FACTIONS)
+				.suggests((ctx, b) -> {
+					List<String> all = new ArrayList<>(Factions.ids());
+					all.addAll(List.of(ctx.getSource().getServer().getPlayerNames()));
+					return CommandSource.suggestMatching(all, b);
+				})
 				.executes(ctx -> standing(ctx, null, null))
 				.then(CommandManager.argument("player", StringArgumentType.word())
 					.suggests(PLAYERS)
@@ -507,7 +511,11 @@ public final class FactionCommand {
 	}
 
 	private static int standing(CommandContext<ServerCommandSource> ctx, String playerName, Integer value) {
-		Faction f = Factions.find(StringArgumentType.getString(ctx, "faction"));
+		String first = StringArgumentType.getString(ctx, "faction");
+		Faction f = Factions.find(first);
+		if (f == null && playerName == null) {
+			return standingEverywhere(ctx, first); // "/companion standing Steve": Steve with every faction
+		}
 		if (f == null) {
 			ctx.getSource().sendError(Text.literal("No such faction"));
 			return 0;
@@ -543,6 +551,57 @@ public final class FactionCommand {
 		}
 		say(ctx, f.name + ": " + s.summary(), Formatting.WHITE);
 		return 1;
+	}
+
+	/** What every faction thinks of one player (online or remembered by name). */
+	private static int standingEverywhere(CommandContext<ServerCommandSource> ctx, String playerName) {
+		ServerPlayerEntity online = ctx.getSource().getServer().getPlayerManager().getPlayer(playerName);
+		String name = online != null ? online.getGameProfile().getName() : playerName;
+		boolean absolute = !"standing".equals(CompanionConfig.get().ownerAuthority);
+		int owned = 0;
+		CompanionManager m = CompanionManager.get();
+		if (online != null && m != null) {
+			owned = (int) m.all().stream().filter(c -> online.getUuid().equals(c.data.owner)).count();
+		}
+		say(ctx, name + "'s standing" + (owned > 0 ? " (owns " + owned + " companion(s); owner authority " + CompanionConfig.get().ownerAuthority
+			+ (absolute ? ": always obeyed by them" : ": judged like anyone") + ")" : "") + ":", Formatting.AQUA);
+		int known = 0;
+		for (Faction f : Factions.all()) {
+			if (Factions.enabled() && f.id.equals(Factions.DEFAULT) && Factions.members(f.id).isEmpty() && f.players.isEmpty()) {
+				continue; // the empty default colony, outside single mode
+			}
+			Standing s = null;
+			if (online != null) {
+				s = f.players.get(online.getUuidAsString());
+			}
+			if (s == null) {
+				for (Standing o : f.players.values()) {
+					if (o.name != null && o.name.equalsIgnoreCase(name)) {
+						s = o;
+						break;
+					}
+				}
+			}
+			Faction.Rank rank = online == null ? null : f.rank(online.getUuidAsString());
+			String suffix = rank == null ? "" : ", " + rank.word();
+			if (s == null) {
+				say(ctx, "  " + f.name + ": never met" + suffix, Formatting.DARK_GRAY);
+				continue;
+			}
+			known++;
+			Formatting color = switch (s.band) {
+				case HOSTILE -> Formatting.RED;
+				case TRUSTED -> Formatting.GREEN;
+				case FRIENDLY -> Formatting.WHITE;
+				case NEUTRAL -> Formatting.GRAY;
+			};
+			say(ctx, "  " + f.name + ": " + String.format(Locale.ROOT, "%+.0f (%s)", s.value, s.band.word()) + suffix, color);
+		}
+		if (known == 0 && online == null) {
+			ctx.getSource().sendError(Text.literal("No faction knows " + playerName + " (and it isn't a faction either)"));
+			return 0;
+		}
+		return Math.max(1, known);
 	}
 
 	private static int archetypeSet(CommandContext<ServerCommandSource> ctx) {
