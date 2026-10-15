@@ -34,7 +34,7 @@ public final class Authority {
 
 	/** What a friendly player may ask for. */
 	private static final Set<Intent.Type> REQUESTS = Set.of(Intent.Type.GIVE, Intent.Type.COME_HERE, Intent.Type.BRING, Intent.Type.LIGHT,
-		Intent.Type.DANCE, Intent.Type.HUNT, Intent.Type.SMELT, Intent.Type.CRAFT, Intent.Type.CANCEL, Intent.Type.FARM);
+		Intent.Type.DANCE, Intent.Type.HUNT, Intent.Type.SMELT, Intent.Type.CRAFT, Intent.Type.CANCEL, Intent.Type.FARM, Intent.Type.FISH);
 	/** Questions only a friendly player gets an answer to (where we are, what we and the base have). */
 	private static final Set<Intent.Type> PRIVATE = Set.of(Intent.Type.WHERE, Intent.Type.STOCK, Intent.Type.FOUND, Intent.Type.INVENTORY,
 		Intent.Type.STATS, Intent.Type.COLONY_WANT);

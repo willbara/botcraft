@@ -96,7 +96,9 @@ public final class CompanionManager {
 		com.botcraft.faction.Factions.unload();
 		com.botcraft.faction.Raids.clear();
 		com.botcraft.faction.Fracture.clear();
+		com.botcraft.colony.Zones.clear();
 		com.botcraft.faction.Diplomacy.clear();
+		com.botcraft.faction.Territory.clear();
 		com.botcraft.chat.Lexicon.clear();
 		com.botcraft.colony.Builds.save(server);
 		com.botcraft.colony.Builds.unload();
@@ -378,6 +380,7 @@ public final class CompanionManager {
 			com.botcraft.faction.Raids.tick(this, tickCount);
 			com.botcraft.faction.Fracture.tick(this, tickCount);
 			com.botcraft.faction.Diplomacy.tick(this, tickCount);
+			com.botcraft.faction.Territory.tick(this, tickCount);
 		} catch (RuntimeException e) {
 			Botcraft.LOG.error("Error updating factions", e);
 		}

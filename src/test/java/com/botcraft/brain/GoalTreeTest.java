@@ -64,5 +64,6 @@ class GoalTreeTest {
 		assertNull(t.pick(10, EVEN, 0.1F, false), "nothing offered");
 		assertEquals(Root.SURVIVE, GoalTree.rootOf("hunt"));
 		assertEquals(Root.PROGRESS, GoalTree.rootOf("target_iron_pickaxe"));
+		assertEquals(Root.CURIOSITY, GoalTree.rootOf("fish"));
 	}
 }

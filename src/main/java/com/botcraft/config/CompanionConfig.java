@@ -90,6 +90,12 @@ public class CompanionConfig {
 	public int commandPermissionLevel = 2;
 	/** Free mode tends the base's farm zone (harvest, replant, till). Asking a companion to farm works either way. */
 	public boolean farming = true;
+	/** Farmers add more farm plots next to the first as the base grows, each watered from a hole in its middle. */
+	public boolean expandFarms = true;
+	/** Put a fence round the home zone (with gates on the paths) once the base has wood to spare. */
+	public boolean fenceHome = true;
+	/** Companions who find water may make a fishing rod and fish there. */
+	public boolean fishing = true;
 	/** Put torches down in dark caves and around a dark base. */
 	public boolean placeTorches = true;
 	/** Easter eggs (a companion named "popbob" is hostile and griefs). */
@@ -129,6 +135,13 @@ public class CompanionConfig {
 	public boolean dynamicBases = true;
 	/** Dynamic mode: most factions there can be (splits stop at this many). */
 	public int maxFactions = 6;
+	/**
+	 * Factions hold land (chunks) round their base and spread out over time; wars, raids and
+	 * truces start where their borders meet. Off: factions anywhere can fight (as before 0.13).
+	 */
+	public boolean territory = true;
+	/** Kills of our members put a price on the killer's head; companions go after them first. */
+	public boolean bounties = true;
 	/** Which defaults this file was written with (missing = before 0.11.0), so old defaults can be upgraded. */
 	public int configVersion = 0;
 	private static final int CONFIG_VERSION = 2;

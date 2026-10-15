@@ -628,6 +628,29 @@ public class ActionController {
 		return r.isAccepted() && p.isUsingItem();
 	}
 
+	/**
+	 * Right-click into the air with an item, aimed at a point (fill or pour a bucket, cast or reel
+	 * in a fishing rod): turns to look at it, and uses the item once the aim is good. Call every
+	 * tick until it returns true.
+	 */
+	public boolean useItemToward(Vec3d point, Predicate<ItemStack> which) {
+		CompanionPlayer p = player();
+		int slot = Inventories.find(p.getInventory(), which);
+		if (slot < 0) {
+			return false;
+		}
+		Inventories.select(p, slot);
+		lookAt(point);
+		if (aimError(point) > 2.5F) {
+			return false;
+		}
+		ActionResult r = p.interactionManager.interactItem(p, p.getWorld(), p.getMainHandStack(), Hand.MAIN_HAND);
+		if (r.isAccepted()) {
+			p.swingHand(Hand.MAIN_HAND);
+		}
+		return r.isAccepted();
+	}
+
 	public boolean isUsingItem() {
 		CompanionPlayer p = player();
 		return p != null && p.isUsingItem();

@@ -28,7 +28,7 @@ A companion only responds when you say its name ("Bob, follow me") or address al
 | its owner (the player who spawned it) | give any order (unless `ownerAuthority` is `standing`) |
 | a leader or officer of its faction | give any order |
 | trusted (standing 60 or more) | give any order |
-| friendly (standing 20 or more) | ask small favours: give/bring me something, come here, hunt, smelt, craft, farm, light, dance, cancel; and ask anything |
+| friendly (standing 20 or more) | ask small favours: give/bring me something, come here, hunt, smelt, craft, farm, fish, light, dance, cancel; and ask anything |
 | neutral | ask public questions and chat (not where it is, what it carries, or what's in the chests) |
 | an enemy (standing -30 or less, or just hit it) | nothing but "sorry" |
 
@@ -79,7 +79,8 @@ A companion only responds when you say its name ("Bob, follow me") or address al
 | go home / come home | Go home. |
 | go to sleep / go to bed | Find a free bed and sleep (only at night). With no free bed around but one in its pockets, it puts that one down first. |
 | do your own thing / go explore / you're free | Free mode: live and progress on its own around home. Any other order ends it. |
-| farm / go farming / tend the crops / harvest the wheat / plant some potatoes | Look after the base's farm zone: harvest ripe crops, replant, till soil (making a wooden hoe if it has seeds and soil to till), and pull up grass for seeds. "harvest 10 wheat" stops after 10. |
+| farm / go farming / tend the crops / harvest the wheat / plant some potatoes | Look after the base's farm plots: harvest ripe crops, replant, till soil (making a wooden hoe if it has seeds and soil to till), pull up grass for seeds, and give a dry plot its water. "harvest 10 wheat" stops after 10. |
+| go fishing / catch some fish / catch 5 fish | Fish at the nearest water it knows of (making a rod first from sticks and string). |
 | join the red team / you're with blue now | Move to that faction (outside single mode; needs order rights). |
 | when I say lumber I mean logs / "lumber means logs" | Teach a word. It's swapped for its meaning in everything anyone says afterwards. Saved per world. |
 | morning routine means get food then light the base | Teach a routine: saying "Bob, morning routine" now does both. |
@@ -238,7 +239,9 @@ While mining:
 
 ### Farming
 
-- **The farm** is the base's farm zone (a flat 9x9 near water, laid out with the other zones, or set by hand with `/companion colony zone farm here`).
+- **The farm** is the base's farm zone (a flat 9x9 near water, laid out with the other zones, or set by hand with `/companion colony zone farm here`), and the plots added next to it.
+- **More plots** (`expandFarms`). Every few minutes, once every plot is three-quarters planted, the farm grows: a new 9x9 plot (`farm2`, `farm3`, `farm4`) one block from an existing plot (a path between them), on whichever side has the most flat soil at about the same height, nearest water and the core. A base gets one plot, plus one for every four members, up to four. Home grows to take them in.
+- **Water.** One water block wets farmland up to 4 blocks away, so a 9x9 plot is all wet from a block of water in its middle. A plot with dry soil (not within 4 blocks of water) gets one: the farmer fills a bucket at the nearest open water (making a bucket first if the base has 3 iron, or taking one from the chests), digs out the plot's middle and pours it in. The middle of every plot is kept for water: never tilled, planted, or filled back in by upkeep.
 - **Tending it** ("farm", or free mode when there's something to do), nearest work first:
   1. **Harvest** ripe wheat, carrots, potatoes and beetroot.
   2. **Plant** empty farmland. Potatoes and carrots go first (they're food straight away), then wheat seeds, then beetroot seeds.
@@ -248,9 +251,16 @@ While mining:
 - **Free mode** goes farming by day, within 64 blocks of the base, when it's worth the trip, and bakes bread from 3 wheat when short of food:
   - at least 6 ripe crops (any, when it has no food and is hungry);
   - at least 3 tiles to plant or till;
-  - or grass and flowers in the way.
+  - grass and flowers in the way;
+  - or a dry plot, when it carries a bucket.
 
   One companion tends a base's farm at a time, and a farmer rests from farming for 3 minutes after a run. The farm is looked at every 20 seconds, shared by everyone at the base.
+
+### Fishing
+
+- **Finding water.** While about, a companion notices open water (a lake, a river, the sea: enough of the surface round it) and remembers it.
+- **Going fishing** (`fishing`): by day, a curious companion (explorers and scouts) with remembered water within 64 blocks, and a fishing rod or the makings of one (two string, and sticks or wood), goes fishing now and then; anyone goes when short of food. "Go fishing" asks for it.
+- **How.** It makes a rod if it has none (three sticks and two string, from the chests if need be), walks to a dry spot on the shore with open water in front, casts out, waits for a bite (the moment the bobber dips) and reels in, until it has caught 3 to 7 fish (6 when hungry). A cast that lands on the bank is reeled in and thrown again; a spot where casts keep missing is forgotten. Raw cod and salmon are cooked like raw meat.
 
 ### Picking up after itself
 
@@ -301,7 +311,7 @@ While mining:
 - **Zones.** Once the base map has seen the whole area, the base is laid out and saved in `colony.json`:
   - **core:** 7x7 around the home spot, for chests, furnaces and the crafting table; new chests go here first;
   - **beds:** a row of bed slots (11 long, 2 deep) on the flattest side just outside the core; beds put down at home go into the next free slot, heads toward the core;
-  - **farm:** a flat 9x9, soil preferred, near water if there is some, 10-28 blocks out;
+  - **farm:** a flat 9x9, soil preferred, near water if there is some, 10-28 blocks out (and `farm2`-`farm4` as the farm grows, see Farming);
   - **pen:** another flat 9x9, clear of the farm;
   - **paths** from the core to the farm and the pen;
   - **home:** the base and all the zones above, plus 3 blocks, and at least 16 blocks each way from the home spot (33x33). It grows when a zone is added.
@@ -318,13 +328,20 @@ While mining:
   - **no mining or digging for dirt** (see "The base's ground" under Mining);
   - **no litter:** a bridge or pillar block at home costs as much as walking about 20 extra blocks, so paths go round when they can (not when escaping from a hole);
   - **tables and furnaces go in the core.** A companion elsewhere at home walks to the core to put one down;
-  - **upkeep:** every few seconds the base looks for litter companions left at home (taken down, unless it fills a hole in the ground or holds something up), ground a companion dug out at home (filled back in; holes players dig are left alone), and bumps or dips up to 3 blocks deep in the core, bed row, farm and pen (levelled to the zone's ground; never built blocks, trees, water or ground under furniture). It goes on the request board as "tidy up the base", and a free companion takes it like any other request. Holes are filled with dirt or other throwaway blocks the companion carries. `/companion colony` shows what's waiting.
+  - **upkeep:** every few seconds the base looks over home and 12 blocks round it for:
+    - litter companions left (taken down, unless it fills a hole in the ground or holds something up); dirt a companion put down that has since grown grass still counts;
+    - pillars and lone blocks of dirt, grass or cobblestone standing up out of flat ground (older litter nobody recorded), and stumps (logs with no leaves on them, what a felled tree leaves); nothing a player built, and nothing holding up a torch, chest or the like;
+    - one-block pits in flat ground, and ground a companion dug out at home (filled back in; holes players dig in the zones are left alone);
+    - bumps or dips up to 3 blocks deep in the core, bed row, farm plots and pen (levelled to the zone's ground; never built blocks, trees, water or ground under furniture);
+    - a fence round home (`fenceHome`), once the chests hold 24 logs: fence posts along the home zone's edge, with gates where the paths cross it and in the middle of each side. Fences and gates are made from the base's wood.
+
+    It goes on the request board as "tidy up the base", and a free companion takes it like any other request. Holes are filled with dirt or other throwaway blocks the companion carries. `/companion colony` shows what's waiting.
 - **Night chores.** An armed companion at the base at night (with no bed) stores its things, cooks raw meat, smelts raw iron and crafts iron gear from carried and stored materials. It doesn't leave the base for anything after dark.
 
 ### Torches
 
 - **In caves and tunnels.** Underground with torches on hand, a companion puts one on the floor beside it whenever its spot gets dark (block light below 6), so the places it mines and explores end up lit every six or seven blocks. It waits until it isn't mid-swing or fighting.
-- **At the base.** Monsters spawn on pitch-dark ground. When the area within 12 blocks of the base (at about its level) has any, free mode lights it up: torches it carries, or torches it crafts from coal and sticks (taken from the chests if need be). It's also a night chore at the base, and an order ("light up the base").
+- **At the base.** Monsters spawn on pitch-dark ground. When home has any (out to the corners of the home zone, up to 32 blocks from the base: within 12 blocks at about the base's level, roofs and all, and further out the open ground, uphill and down), free mode lights it up: torches it carries, or torches it crafts from coal and sticks (taken from the chests if need be). It's also a night chore at the base, and an order ("light up the base").
 - `placeTorches` in the config turns all of this off.
 
 ### Watchdog
@@ -389,7 +406,13 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - **teams:** fixed teams. `/companion faction teams red blue` splits the companions evenly between new teams Red and Blue (`... red blue owner` keeps each owner's companions together; any number of teams). Teams start as enemies.
   - **dynamic:** factions form and split on their own, and fight and raid each other.
 - **A faction has its own everything:** its own base (the default colony keeps `colony.json`; others are `colonies/<id>.json`), its own base map, zones, upkeep and request board, and its own stock. Companions only bid on, share with and ask for help from their own faction (or allies). Names show in the faction's colour (a vanilla scoreboard team), and members can't hurt each other.
-- **Bases found themselves** (outside single mode, `dynamicBases`): a faction without a base sends its most ambitious member, by day, to the best spot nearby: flat ground, water and trees close, no lava, not the sea, not on someone's buildings, at least 64 blocks from another faction's base. It founds the base there (every member's home), and the zones are laid out as usual. Zones set by hand are never moved. In single mode, you still say "this is home".
+- **Bases found themselves** (outside single mode, `dynamicBases`): a faction without a base sends its most ambitious member, by day, to the best spot nearby: flat ground, water and trees close, no lava, not the sea, not on someone's buildings, at least 160 blocks from another faction's base and 3 chunks from its land (the further the better). If nowhere in sight will do, it walks on, away from the nearest other base, and looks again. It founds the base there (every member's home), and the zones are laid out as usual. Zones set by hand are never moved. In single mode, you still say "this is home".
+- **Land** (`territory`, teams and dynamic mode). A faction holds the chunks round its base (5x5 chunks to start, never lost) and spreads out every minute and a half into unclaimed chunks on its frontier, nearest the base first: one chunk a time plus one for every four members, up to 25 + 8 per member, and no further than 14 chunks from the base. `/companion faction info` shows how much it holds and whose land borders it.
+  - **Borders.** When two factions' land first touches, they meet. Enemies already at war say so, and the fighting starts at the border. In dynamic mode, neutral ones size each other up: an aggressive leader, and lopsided numbers, make war likely ("We're going to war with Red!"); a sociable other side makes a truce likelier ("Truce with Blue. Stay on your side."), which guarantees 20 minutes of peace.
+  - **Only neighbours fight wars.** Raids, and declarations of war, only happen between factions whose land touches (a raid ordered with `/companion faction raid` goes anyway). Enemies on a faction's land count as intruders (see warfare below).
+  - **Occupation.** At war, a chunk of the enemy's border land where a faction's companions stand and none of the enemy's do becomes its own (never the 5x5 round the enemy's base).
+  - **Peace terms.** The side that sues for peace gives up 3 chunks of its border land to the other.
+- **Bounties** (`bounties`). Every kill of a faction's member puts a price on the killer's head, player or companion (a leader's death counts double). Bounties halve every 30 minutes without another kill. From 3 the killer is wanted ("Red10 has killed 3 of us. There's a price on their head now."): fought on sight as long as the two sides are enemies, spotted from 32 blocks instead of 16, picked before other enemies, and their faction is the first one raided. The member who kills a wanted target collects: the bounty is cleared, it's cheered, and its friends think better of it. `/companion faction info` lists the bounties.
 - **Player standing.** Each faction keeps a standing for every player it has dealt with, from -100 to 100, starting at `playerStartStanding` (0); players who own a companion in the faction, or are members, start at `ownerStartStanding` (90).
 
   | What you do | Standing |
@@ -408,7 +431,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
 - **Owner authority** (`ownerAuthority`): `absolute` (the default) means your own companions always obey you and never treat you as an enemy, whatever you do. `standing` means you're judged like anyone else, starting trusted at `ownerStartStanding`: hit them enough and they stop listening.
 - **Warfare** (`warfare`, or per faction with `/companion faction warfare <level> [faction]`):
   - **off:** never fight players or other factions.
-  - **defend** (the default): fight whoever just hit them, and enemies (hostile players, enemy factions' companions) who are inside their base (48 blocks) or just attacked one of them.
+  - **defend** (the default): fight whoever just hit them, and enemies (hostile players, enemy factions' companions) who are inside their base (48 blocks) or on their land, who just attacked one of them, or who are wanted.
   - **pvp:** enemies on sight.
   - **raid:** pvp, and raids on enemy bases. Dynamic factions always raid.
 - **Raids.** Every minute, a raiding faction with a base looks at the nearest enemy base. It raids if two or more of its free-roaming members are armed and healthy, they clearly outmatch the defenders it can count (aggressive leaders settle for less), and it hasn't raided in 15 minutes. Up to four go together. The raiders walk to the enemy base and fight whoever's there. With `griefing: true` they break in (the path finder may go through what the enemy built, except doors, beds and gates) and take the most valuable things from the enemy's chests: diamonds, gold and emeralds first, then iron, gear and tools, then food and fuel. Without griefing it's a two-minute skirmish and nothing is taken. Raiders pull out below 40% health, when their pockets are full, or after two minutes, then go home and put the loot away. `/companion faction raid <faction>` sends one now.
@@ -418,7 +441,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - frustration;
   - crowding.
 
-  Unhappy members grumble. When three or more stay unhappy, and they're a quarter of the faction, the most ambitious leaves with them, and with whoever likes it better than the rest, as a new faction ("Bob's Band"). They start as enemies of the old one, found their own base, and the raids begin. At most one split per faction per in-game day, and at most `maxFactions` factions. Empty factions disband. Companions grow fond of each other by chatting and helping each other out.
+  Unhappy members grumble. When three or more stay unhappy, and they're a quarter of the faction, the most ambitious leaves with them, and with whoever likes it better than the rest, as a new faction ("Bob's Band"). They start on cool terms with the old one (as enemies with `territory` off), found their own base well away, and when their land meets the old faction's it's war or a truce. At most one split per faction per in-game day, and at most `maxFactions` factions. Empty factions disband. Companions grow fond of each other by chatting and helping each other out.
 - **War and peace** (dynamic mode). Every two minutes:
   - **Peace:** a faction at war that has lost 6 or more members to the other side in 20 minutes, at least twice what it took from them, sues for peace ("We've lost too many. Truce with Blue!"). The two become neutral, and neither declares war on the other for 20 minutes.
   - **War:** after that, a bigger faction with an aggressive member may declare war on a neutral neighbour with a base ("We're going to war with Red!"). Aggressive factions, and lopsided ones, do it more.
@@ -615,6 +638,9 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `commandPermissionLevel` | 2 | Permission level for `/companion`. |
 | `placeTorches` | true | Put torches down in dark caves and around a dark base. |
 | `farming` | true | Free mode tends the base's farm zone. Asking a companion to farm works either way. |
+| `expandFarms` | true | Farmers add plots next to the farm as the base grows, and water each plot from a hole in its middle. |
+| `fenceHome` | true | Upkeep puts a fence round the home zone (gates on the paths) once the base has wood to spare. |
+| `fishing` | true | Curious or hungry companions who know of water make a rod and fish. |
 | `factionMode` | single | `single` (one colony), `teams` (fixed teams), or `dynamic` (factions split, fight and raid on their own). |
 | `warfare` | defend | `off`, `defend`, `pvp` or `raid` (see [Factions](#factions-standing-and-warfare)). Breaking in and looting also need `griefing`. Dynamic factions always raid. |
 | `ownerAuthority` | absolute | `absolute`: your companions always obey you. `standing`: you're judged by how you treat them, like anyone else. |
@@ -623,6 +649,8 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `orderStanding` / `requestStanding` / `hostileStanding` | 60 / 20 / -30 | Standing needed to give orders, to ask favours, and at or below which a player is an enemy. |
 | `dynamicBases` | true | Factions without a base (teams and dynamic mode) find a spot and found one. |
 | `maxFactions` | 6 | Dynamic mode: splits stop at this many factions. |
+| `territory` | true | Factions hold land round their base and spread out; wars and raids only between factions whose borders touch. Off: everyone can fight anyone, as before 0.13. |
+| `bounties` | true | Kills of a faction's members put a price on the killer's head. |
 | `easterEggs` | true | Easter eggs. Currently: a companion named "popbob" (see [Easter eggs](#easter-eggs)). |
 | `verboseAiLogging` | false | Log AI decisions at INFO instead of DEBUG, so they show in `latest.log`. |
 

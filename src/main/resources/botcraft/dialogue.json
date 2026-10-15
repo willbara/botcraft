@@ -170,5 +170,12 @@
   "faction.split": ["That's it, I'm done with {old}. Who's with me? We're {faction} now!", "{old} can manage without us. {faction}, let's go!", "We're leaving {old}. {faction} will find its own home."],
   "faction.truce": ["Enough fighting. We want peace with {faction}.", "We've lost too many. Truce with {faction}!", "Let's call it off with {faction}. Nobody's winning this.", "{faction}, we're done fighting. Peace?"],
   "faction.war": ["{faction} has had it coming. We're at war!", "Everyone, we're going to war with {faction}!", "Peace is over. {faction} is our enemy now.", "Time to show {faction} who's in charge. War!"],
-  "faction.joined_rank": ["Leading {faction}? I won't let you down.", "{faction}, follow me!", "Right, I'm in charge of {faction} now."]
+  "faction.joined_rank": ["Leading {faction}? I won't let you down.", "{faction}, follow me!", "Right, I'm in charge of {faction} now."],
+  "faction.border_war": ["Our land meets {faction}'s now. Watch the border!", "{faction} is right on our doorstep. Time to fight for this land.", "There's {faction}'s border. They won't have it for long."],
+  "faction.border_meet": ["We've reached {faction}'s land.", "Our border meets {faction}'s now.", "That's {faction}'s land over there."],
+  "faction.border_truce": ["We've met {faction} at the border. We'll keep the peace, for now.", "{faction} and us, a truce. Stay on your side.", "Truce with {faction}. Good fences make good neighbours."],
+  "faction.took_land": ["That land's ours now, {faction}!", "We pushed {faction} back. This ground is ours.", "Another piece of {faction}'s land, taken."],
+  "bounty.posted": ["{target} has killed {kills} of us. There's a price on their head now.", "Whoever brings down {target} has my thanks. {kills} of ours, gone because of them.", "{target} is wanted. Get them on sight!"],
+  "bounty.raised": ["{target} again! That's {kills} of us. Double the bounty!", "{target} won't stop. Everyone, hunt them down.", "{kills} kills, {target}. You're our most wanted."],
+  "bounty.collected": ["Got {target}! The bounty's mine.", "{target} won't be killing any more of us.", "That's {target} dealt with. Justice!"]
 }
