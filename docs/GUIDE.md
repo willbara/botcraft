@@ -334,7 +334,7 @@ While mining:
   - **upkeep:** every few seconds the base looks over home and 12 blocks round it for:
     - litter companions left (taken down, unless it fills a hole in the ground or holds something up); dirt a companion put down that has since grown grass still counts;
     - pillars and lone blocks of dirt, grass or cobblestone standing up out of flat ground (older litter nobody recorded), and stumps (logs with no leaves on them, what a felled tree leaves); nothing a player built, and nothing holding up a torch, chest or the like;
-    - natural trees standing in the home zone (`clearTrees`): felled, all of them, by whoever takes the job (it needs nothing to climb with: home's open ground may be dug for dirt to tower up on, and upkeep fills the holes back in afterwards). On a base founded in a wood, that's what makes room for the farm and pen;
+    - natural trees standing in the home zone (`clearTrees`): felled, all of them. While a base still has trees in its home zone or no farm or pen yet, clearing it comes first: the tidy request goes to the top of the board (leaders hand it out first), and free companions near the base join in felling, several at once, until it's done (the logs go into the chests). Otherwise, by whoever takes the job (it needs nothing to climb with: home's open ground may be dug for dirt to tower up on, and upkeep fills the holes back in afterwards). On a base founded in a wood, that's what makes room for the farm and pen;
     - one-block pits in flat ground, and ground a companion dug out at home (filled back in; holes players dig in the zones are left alone);
     - bumps or dips up to 3 blocks deep in the core, bed row, farm plots and pen (levelled to the zone's ground; never built blocks, trees, water or ground under furniture);
     - a fence round home (`fenceHome`), once the chests hold 24 logs: fence posts along the home zone's edge, with gates where the paths cross it and in the middle of each side. Fences and gates are made from the base's wood.
@@ -453,6 +453,12 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - **Sparks:** a hothead (aggression 0.65 or more) may pick a quarrel with the other side's member it's near ("Watch where you're going, Bob!"). The two factions think 8 less of each other; four or so quarrels and they're enemies, and the fighting starts. Hotter heads quarrel more. Not during grace.
   - **Getting along:** otherwise, sociable members who meet without trouble warm the factions to each other, a point or two each time, up to alliance (60 both ways).
 - **Recruiting** (`recruit`, teams and dynamic mode). A companion in no faction of its own (newly spawned, or its faction gone) is taken in within half a minute: the smallest team in teams mode, the faction it likes best (nearer ones first) in dynamic mode. Its new leader welcomes it.
+- **Merging** (dynamic mode). Every three minutes, two factions may become one if:
+  - they aren't enemies, neither has split or merged in the last in-game day, and they're close (land touching, or bases within 200 blocks, or one has no base yet);
+  - they think well of each other (40 or more both ways) and their members get on;
+  - the smaller side's leader is willing to stop leading (not too ambitious, or fond of the other leader).
+
+  A band warming back to the faction it split from, or a faction down to two members, comes round more easily (20 is warm enough, and it's likelier). The larger faction (or the old one, for a reunion) takes in the other's members, land, the players it knew and its bounties; the other's leader becomes an officer, and its base's chests stay where they are. `/companion faction merge <into> <from>` does it at once.
 - **War and peace** (dynamic mode). Every two minutes:
   - **Peace:** a faction at war that has lost 6 or more members to the other side in 20 minutes, at least twice what it took from them, sues for peace ("We've lost too many. Truce with Blue!"). The two become neutral, and neither declares war on the other for 20 minutes.
   - **War:** after that, a bigger faction with an aggressive member may declare war on a neutral neighbour with a base ("We're going to war with Red!"). Aggressive factions, and lopsided ones, do it more.
@@ -472,6 +478,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - `join <companion> <faction>`;
   - `member <faction> <player or companion> <member|officer|leader|remove>`: a companion given a rank also joins the faction. Its leader founds the faction's base and speaks for it (truces, declarations of war). Ranks given this way are never changed by the automatic leadership below. A companion still following you stays with you; say "do your own thing" to let it live with its faction;
   - `relation`, `raid`, `ceasefire`;
+  - `merge <into> <from>`: one faction joins another (see Merging);
   - `authority [absolute|standing]`: show or switch owner authority (see above);
   - `info <faction>`.
 

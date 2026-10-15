@@ -395,6 +395,7 @@ public final class CompanionManager {
 			com.botcraft.faction.Diplomacy.tick(this, tickCount);
 			com.botcraft.faction.Territory.tick(this, tickCount);
 			com.botcraft.faction.Leadership.tick(this, tickCount);
+			com.botcraft.faction.Merger.tick(this, tickCount);
 		} catch (RuntimeException e) {
 			Botcraft.LOG.error("Error updating factions", e);
 		}

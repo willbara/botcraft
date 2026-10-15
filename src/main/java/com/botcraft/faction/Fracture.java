@@ -139,6 +139,7 @@ public final class Fracture {
 			STREAK.remove(c.name());
 		}
 		nf.members.put(leader.data.uuid.toString(), Faction.Rank.LEADER);
+		nf.parent = from.id; // (a band that warms to its old faction again may go back: see Merger)
 		// Splits are bitter: with land to fight over they start cool and settle far apart (the fight
 		// starts when their borders meet); without, they start out as enemies.
 		Factions.setRelation(from.id, nf.id, Territory.on() ? -15 : -45);
@@ -173,6 +174,20 @@ public final class Fracture {
 				AiLog.log("faction", "{} disbanded (nobody left)", id);
 			}
 		}
+	}
+
+	/** When the faction last split (or merged), or a long time ago. */
+	static long lastChange(String id) {
+		return LAST_SPLIT.getOrDefault(id, -SPLIT_COOLDOWN * 10);
+	}
+
+	/** A merge counts like a split: no splitting again straight away. */
+	static void changed(String id, long now) {
+		LAST_SPLIT.put(id, now);
+	}
+
+	static long cooldown() {
+		return SPLIT_COOLDOWN;
 	}
 
 	public static void clear() {
