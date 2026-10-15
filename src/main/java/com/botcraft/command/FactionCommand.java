@@ -5,6 +5,7 @@ import com.botcraft.CompanionManager;
 import com.botcraft.brain.Personality;
 import com.botcraft.colony.Colony;
 import com.botcraft.config.CompanionConfig;
+import com.botcraft.faction.Ceasefire;
 import com.botcraft.faction.Faction;
 import com.botcraft.faction.Factions;
 import com.botcraft.faction.Standing;
@@ -100,12 +101,23 @@ public final class FactionCommand {
 						.then(CommandManager.argument("value", StringArgumentType.word())
 							.suggests((ctx, b) -> CommandSource.suggestMatching(List.of("allied", "neutral", "hostile", "-50", "0", "75"), b))
 							.executes(FactionCommand::relation)))))
+			.then(CommandManager.literal("parley")
+				.then(CommandManager.argument("a", StringArgumentType.word())
+					.suggests(FACTIONS)
+					.then(CommandManager.argument("b", StringArgumentType.word())
+						.suggests(FACTIONS)
+						.executes(FactionCommand::parley))))
 			.then(CommandManager.literal("raid")
 				.then(CommandManager.argument("faction", StringArgumentType.word())
 					.suggests(FACTIONS)
 					.executes(FactionCommand::raid)))
 			.then(CommandManager.literal("ceasefire")
-				.executes(FactionCommand::ceasefire))
+				.executes(FactionCommand::ceasefire)
+				.then(CommandManager.argument("a", StringArgumentType.word())
+					.suggests(FACTIONS)
+					.then(CommandManager.argument("b", StringArgumentType.word())
+						.suggests(FACTIONS)
+						.executes(FactionCommand::ceasefirePair))))
 			.then(CommandManager.literal("merge")
 				.then(CommandManager.argument("into", StringArgumentType.word())
 					.suggests(FACTIONS)
@@ -401,8 +413,39 @@ public final class FactionCommand {
 			return 0;
 		}
 		Factions.setRelation(a.id, b.id, value);
+		if (value <= com.botcraft.config.CompanionConfig.get().hostileStanding) {
+			Ceasefire.end(a.id, b.id); // war by order: any ceasefire between them is off
+		}
 		say(ctx, a.name + " and " + b.name + ": " + value + (Factions.hostile(a.id, b.id) ? " (enemies)" : Factions.friendly(a.id, b.id) ? " (allies)" : ""),
 			Formatting.WHITE);
+		return 1;
+	}
+
+	/** /companion faction parley <a> <b>: the two leaders call their people home and go to meet (see Ceasefire). */
+	private static int parley(CommandContext<ServerCommandSource> ctx) {
+		Faction a = Factions.find(StringArgumentType.getString(ctx, "a"));
+		Faction b = Factions.find(StringArgumentType.getString(ctx, "b"));
+		if (a == null || b == null || a == b || Factions.loners(a.id) || Factions.loners(b.id)) {
+			ctx.getSource().sendError(Text.literal("Name two different factions"));
+			return 0;
+		}
+		CompanionManager m = CompanionManager.get();
+		Ceasefire.startParley(a.id, b.id, m == null ? 0 : m.tickCount());
+		say(ctx, a.name + " and " + b.name + ": the leaders call everyone home and go to parley", Formatting.WHITE);
+		return 1;
+	}
+
+	/** /companion faction ceasefire <a> <b>: the two stop fighting, as if their leaders had agreed it (see Ceasefire). */
+	private static int ceasefirePair(CommandContext<ServerCommandSource> ctx) {
+		Faction a = Factions.find(StringArgumentType.getString(ctx, "a"));
+		Faction b = Factions.find(StringArgumentType.getString(ctx, "b"));
+		if (a == null || b == null || a == b || Factions.loners(a.id) || Factions.loners(b.id)) {
+			ctx.getSource().sendError(Text.literal("Name two different factions"));
+			return 0;
+		}
+		Ceasefire.agree(a.id, b.id);
+		say(ctx, a.name + " and " + b.name + ": ceasefire for " + Ceasefire.LENGTH / 1200 + " minutes (it can't be broken for the first "
+			+ Ceasefire.HOLD / 1200 + ")", Formatting.WHITE);
 		return 1;
 	}
 
@@ -516,7 +559,8 @@ public final class FactionCommand {
 			Formatting.GRAY);
 		for (Faction o : Factions.all()) {
 			if (o != f && (f.relation(o.id) != 0 || o.relation(f.id) != 0)) {
-				say(ctx, "  " + o.name + ": " + f.relation(o.id) + (Factions.hostile(f.id, o.id) ? " (enemies)" : Factions.friendly(f.id, o.id) ? " (allies)" : ""),
+				say(ctx, "  " + o.name + ": " + f.relation(o.id) + (Factions.hostile(f.id, o.id) ? " (enemies)" : Factions.friendly(f.id, o.id) ? " (allies)" : "")
+					+ (Ceasefire.active(f.id, o.id) ? " (ceasefire, " + Math.max(1, (Ceasefire.until(f.id, o.id) - Factions.worldTime()) / 1200) + " min left)" : ""),
 					Formatting.GRAY);
 			}
 		}
