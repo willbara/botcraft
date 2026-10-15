@@ -587,7 +587,7 @@ public class ActionController {
 		lookAt(target);
 		if (target != lastAttackTarget) {
 			lastAttackTarget = target;
-			reactionTicks = 3 + random.nextInt(6); // ~150-400 ms human reaction
+			reactionTicks = 2 + random.nextInt(4); // ~100-250 ms: a practised player's reaction
 		}
 		if (reactionTicks > 0) {
 			return false;

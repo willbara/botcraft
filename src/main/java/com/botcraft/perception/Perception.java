@@ -30,7 +30,7 @@ public class Perception {
 	public static final double THREAT_RADIUS = 16.0;
 	/** Someone with a price on their head is spotted (and gone after) from this far. */
 	public static final double WANTED_RADIUS = 32.0;
-	private static final int THREAT_TTL = 5;
+	private static final int THREAT_TTL = 3;
 	private static final int INVENTORY_TTL = 20;
 
 	private final Companion companion;
@@ -56,6 +56,16 @@ public class Perception {
 			surroundings.tick(companion.player());
 			if ((serverTick + Math.floorMod(companion.name().hashCode(), 100)) % 100 == 0) {
 				watchHerds();
+			}
+			// Keep an eye out between decisions: something new coming at us (or a friend) gets a
+			// decision at once, not at the next scheduled think.
+			if ((serverTick + Math.floorMod(companion.name().hashCode(), THREAT_TTL)) % THREAT_TTL == 0) {
+				boolean had = !threats.isEmpty() || !enemies.isEmpty();
+				threats();
+				enemyPlayers();
+				if (!had && (!threats.isEmpty() || !enemies.isEmpty())) {
+					companion.brain().alert();
+				}
 			}
 			if ((serverTick + Math.floorMod(companion.name().hashCode(), 200)) % 200 == 100) {
 				watchWater();
@@ -218,6 +228,12 @@ public class Perception {
 		}
 		list.sort(Comparator.comparingDouble(o -> o.squaredDistanceTo(p) / (1.0 + bounty.getOrDefault(o, 0.0))));
 		return list;
+	}
+
+	/** Something just happened (we were hit, a friend was): look again now instead of trusting the last look. */
+	public void alert() {
+		threatsAt = -1000;
+		enemiesAt = -1000;
 	}
 
 	/** Hostile mobs within 16 blocks that are (or would be) hostile to us or our owner, nearest first. */

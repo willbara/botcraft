@@ -274,9 +274,30 @@ public class Companion {
 		if (attacker instanceof ServerPlayerEntity) {
 			mood.bump(com.botcraft.brain.Mood.Kind.ANGER, 0.2F + share, now);
 		}
+		// React now (fight back, back off), and so do friends close by: a hit is heard and seen.
+		alarm();
+		CompanionManager m = CompanionManager.get();
+		if (m != null) {
+			String faction = com.botcraft.faction.Factions.idOf(this);
+			for (Companion o : m.all()) {
+				CompanionPlayer op = o.player();
+				if (o != this && op != null && o.isOnline() && op.getWorld() == player.getWorld() && op.squaredDistanceTo(player) < ALARM_RANGE * ALARM_RANGE
+					&& com.botcraft.faction.Factions.idOf(o).equals(faction)) {
+					o.alarm();
+				}
+			}
+		}
 	}
 
 	private long nextHeadBack;
+	/** Friends this close to a companion that gets hit look round at once. */
+	private static final double ALARM_RANGE = 24;
+
+	/** Look round and decide again right away (we, or a friend nearby, were just attacked). */
+	public void alarm() {
+		perception.alert();
+		brain.alert();
+	}
 
 	/**
 	 * Don't stay lost: with nothing to do (a job failed, or simply ran out of things to do) and

@@ -61,13 +61,14 @@ public final class Incidents {
 		if (!(attacker instanceof ServerPlayerEntity player) || player == victimPlayer) {
 			return;
 		}
-		if (Hostility.isProtectedOwner(victim, player)) {
-			return; // the owner's word is law, and probably an accident
-		}
+		// The owner's word stays law (absolute authority: still obeyed, never fought), but it's
+		// still felt: the hit is remembered, and the faction's standing for them drops like anyone's.
+		boolean owner = Hostility.isProtectedOwner(victim, player);
 		String name = player.getGameProfile().getName();
 		victim.relations().note(name, Relationship.Event.HIT);
 		for (Companion w : witnesses(victim, player)) {
 			w.relations().note(name, Relationship.Event.HIT);
+			w.alarm();
 		}
 		Faction f = Factions.of(victim);
 		Standing before = Factions.standing(f, player);
@@ -75,7 +76,9 @@ public final class Incidents {
 		Standing.Band changed = Factions.incident(f, player, Standing.Incident.HIT, 1);
 		Standing.Band now = Factions.standing(f, player).band;
 		Map<String, String> vars = Map.of("player", name);
-		if (changed != null && now == Standing.Band.HOSTILE) {
+		if (owner) {
+			victim.speech().event(now == Standing.Band.HOSTILE ? "standing.owner_hostile" : "standing.owner_hit", vars, 20 * 20, 1.0F);
+		} else if (changed != null && now == Standing.Band.HOSTILE) {
 			victim.speech().event("standing.hostile", vars, 20 * 30, 1.0F);
 		} else if (was == Standing.Band.FRIENDLY || was == Standing.Band.TRUSTED) {
 			before.warnings++;
@@ -103,17 +106,22 @@ public final class Incidents {
 			}
 			return;
 		}
-		if (!(attacker instanceof ServerPlayerEntity player) || Hostility.isProtectedOwner(victim, player)) {
+		if (!(attacker instanceof ServerPlayerEntity player)) {
 			return;
 		}
+		// An owner with absolute authority is still obeyed and never fought, so no bounty; but a
+		// killing is remembered and the standing falls (shown by /companion standing).
+		boolean owner = Hostility.isProtectedOwner(victim, player);
 		String name = player.getGameProfile().getName();
 		victim.relations().note(name, Relationship.Event.KILLED_ME);
 		for (Companion w : witnesses(victim, player)) {
 			w.relations().note(name, Relationship.Event.HIT);
-			w.speech().event("standing.murder", Map.of("player", name, "friend", victim.name()), 20 * 30, 1.0F);
+			w.speech().event(owner ? "standing.owner_murder" : "standing.murder", Map.of("player", name, "friend", victim.name()), 20 * 30, 1.0F);
 		}
 		Factions.incident(Factions.of(victim), player, Standing.Incident.KILLED, 1);
-		Bounties.killed(Factions.of(victim), name, isLeader(victim), victim.now());
+		if (!owner) {
+			Bounties.killed(Factions.of(victim), name, isLeader(victim), victim.now());
+		}
 	}
 
 	private static boolean isLeader(Companion c) {
