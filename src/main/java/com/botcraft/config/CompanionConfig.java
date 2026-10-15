@@ -118,6 +118,8 @@ public class CompanionConfig {
 	 * is taken in by one: the smallest team, or in dynamic mode the faction it likes best nearby.
 	 */
 	public boolean recruit = true;
+	/** Dynamic mode: members unhappy with their faction may leave for (or be recruited by) one that suits them better. */
+	public boolean defection = true;
 	/** Free mode tends the base's farm zone (harvest, replant, till). Asking a companion to farm works either way. */
 	public boolean farming = true;
 	/** Farmers add more farm plots next to the first as the base grows, each watered from a hole in its middle. */
