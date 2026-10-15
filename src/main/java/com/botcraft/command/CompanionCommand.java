@@ -360,7 +360,7 @@ public final class CompanionCommand {
 		}
 		CompanionConfig.save();
 		String what = switch (level) {
-			case "quiet" -> "quiet: answers, what they start and what failed";
+			case "quiet" -> "quiet: answers, what they start, what failed, and faction business (orders, wars, parleys)";
 			case "off" -> "off: companions don't talk";
 			default -> "all";
 		};
