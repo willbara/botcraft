@@ -38,6 +38,10 @@ public final class Hostility {
 		if (self == null || other == self || !other.isAlive() || other.isSpectator() || other.isCreative()) {
 			return false;
 		}
+		if (com.botcraft.brain.Popbob.is(c)) {
+			// popbob answers to nobody's warfare: whoever just hit it is fair game, once it's armed.
+			return com.botcraft.brain.Popbob.geared(self) && c.relations().grudge(other.getGameProfile().getName(), GRUDGE_TICKS);
+		}
 		Faction mine = Factions.of(c);
 		String warfare = Factions.warfare(mine);
 		if ("off".equals(warfare)) {

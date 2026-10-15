@@ -33,6 +33,10 @@ import java.util.Set;
  *       killed, and teleports away from popbob.</li>
  * </ul>
  * Each wears its namesake's skin: the account's skin is fetched when it joins, if it isn't on.
+ *
+ * <p>An egg is the ordinary companion plus a {@link Persona} (its own touches) and the flags
+ * below, so it keeps up with everything ordinary companions learn. See {@link Persona} for how to
+ * add to one.
  */
 public final class EasterEggs {
 	public enum Kind {
@@ -82,6 +86,29 @@ public final class EasterEggs {
 
 	public static boolean is(Companion c, Kind k) {
 		return of(c) == k;
+	}
+
+	/** A new persona for this kind (its per-companion state), or null for flag-only eggs. */
+	@Nullable
+	public static Persona newPersona(@Nullable Kind k) {
+		if (k == null) {
+			return null;
+		}
+		return switch (k) {
+			case POPBOB -> new Popbob();
+			case HEROBRINE -> new Herobrine();
+			case HAUSEMASTER -> new Hausemaster();
+			case TECHNOBLADE -> null; // all flags: fearless, pigs, the respawn line
+		};
+	}
+
+	/**
+	 * Nothing more urgent on: no job, and no fight, flight, meal or breath to catch. When a
+	 * persona may make its own moves (see {@link Persona#act}).
+	 */
+	public static boolean free(Companion c) {
+		Objective o = c.brain().currentObjective();
+		return c.jobs().isIdle() && (o == null || o == Objective.IDLE || o == Objective.STAY || o == Objective.WORK);
 	}
 
 	/** Never says anything (and ignores chat). */

@@ -21,17 +21,19 @@ import java.util.Random;
 
 /**
  * Easter egg: a companion named "popbob" is a menace, but a patient one. It belongs to no faction
- * and takes no orders. First it gears up like anyone would (tools, a proper weapon, armour);
- * only then does it go looking for trouble, turn and turn about:
+ * and takes no orders. It's an ordinary free companion underneath (see {@link Persona}): it gears
+ * up like anyone (tools, a proper weapon, armour), eats, and fights with everything ordinary
+ * companions know. Once armed it goes looking for trouble, turn and turn about:
  * <ul>
- *   <li><b>raids</b> a faction's base, helping itself to what's in the chests (see StealTask);</li>
+ *   <li><b>raids</b> a faction's base, helping itself to what's in the chests (the "steal" job);</li>
  *   <li><b>bothers</b> someone: follows them about, takes a swipe now and then, taunts them;</li>
- *   <li>and in between <b>wrecks</b> built blocks in reach (never containers or anything unbreakable).</li>
+ *   <li>and on the way <b>wrecks</b> built blocks in reach (never containers or anything unbreakable).</li>
  * </ul>
- * Hit it and, geared up and healthy, it fights back properly; otherwise it backs off like anyone.
- * Companions only gang up on it once it's armed and dangerous. Turn it off with {@code easterEggs: false}.
+ * Hit it once it's armed and it fights back (faction.Hostility: whoever just hit it is its enemy);
+ * before that it backs off like anyone. Companions only gang up on it once it's armed and
+ * dangerous. Turn it off with {@code easterEggs: false}.
  */
-public final class Popbob {
+public final class Popbob implements Persona {
 	private static final double BOTHER_RANGE = 48;
 	private static final double GRIEF_REACH = ActionController.BLOCK_REACH - 0.3;
 	/** How far it'll go to rob a base. */
@@ -45,7 +47,6 @@ public final class Popbob {
 	private int wreckTicks;
 	private BlockPos chasing = BlockPos.ORIGIN;
 	private long nextTaunt;
-	private long nextRoam;
 	private long nextMischief;
 	private long botherUntil;
 	private long nextSwipe;
@@ -61,60 +62,67 @@ public final class Popbob {
 		return weapon >= 6.0 || (weapon >= 5.0 && p.getArmor() >= 6);
 	}
 
-	/** Runs instead of the normal brain while the companion is popbob. */
-	public void tick(Companion c, long now) {
+	/**
+	 * Gearing up: free mode's own plans, like anyone. Armed: every so often, some mischief (off to
+	 * rob a base, or someone to pester); while pestering, its own plans (see {@link #act}).
+	 */
+	@Override
+	public boolean ownPlans(Companion c, long now) {
 		CompanionPlayer p = c.player();
-		if (p == null || !p.isAlive()) {
-			return;
+		if (p == null || !p.isAlive() || !geared(p)) {
+			return false;
 		}
-		boolean geared = geared(p);
-		// Someone's having a go: fight back if ready for it, otherwise let the ordinary drives back off.
-		if (p.getAttacker() instanceof PlayerEntity attacker && attacker.isAlive() && attacker.getWorld() == p.getWorld()
-			&& attacker.distanceTo(p) < 24 && geared && p.getHealth() > 8) {
-			target = attacker;
-			fight(c, p, now);
-			return;
+		if (now >= nextMischief && !urgent(c)) {
+			nextMischief = now + 20 * (30 + random.nextInt(60));
+			mischief(c, p, now);
 		}
-		if (!geared) {
-			c.tickNormal(now); // gearing up: tools, a weapon, armour, like anyone
+		return bothering(p, now);
+	}
+
+	/** Pestering someone, or (with nothing else on) wrecking what's in reach. */
+	@Override
+	public void act(Companion c, long now) {
+		CompanionPlayer p = c.player();
+		if (p == null || !geared(p)) {
 			return;
 		}
 		if (now % 40 == 0) {
 			Inventories.equipBestWeapon(p);
 		}
-		if (!c.jobs().isIdle()) {
-			c.tickJobs(now); // on a raid
-			return;
-		}
-		if (target != null && now < botherUntil && target.isAlive() && !target.isSpectator() && target.getWorld() == p.getWorld()
-			&& target.distanceTo(p) <= BOTHER_RANGE) {
+		if (bothering(p, now)) {
 			bother(c, p, now);
-			return;
-		}
-		target = null;
-		if (now >= nextMischief) {
-			nextMischief = now + 20 * (30 + random.nextInt(60));
-			if (random.nextBoolean() && raid(c, p, now)) {
-				return;
-			}
-			target = EasterEggs.nearestOther(c, BOTHER_RANGE, EasterEggs.Kind.POPBOB);
-			if (target != null) {
-				botherUntil = now + 20 * (25 + random.nextInt(30));
-				AiLog.log(c.name(), "popbob: going to bother {}", target.getGameProfile().getName());
-				return;
-			}
-			raid(c, p, now);
-			return;
-		}
-		// Nothing planned: wreck stuff, and wander looking for trouble.
-		if (!griefNearby(c, p) && !c.nav().isBusy() && now >= nextRoam) {
-			nextRoam = now + 20 * 8;
-			BlockPos to = p.getBlockPos().add(random.nextInt(25) - 12, 0, random.nextInt(25) - 12);
-			c.nav().moveTo(Goal.near(to, 2), false);
+		} else {
+			griefNearby(c, p);
 		}
 	}
 
-	/** Off to rob the nearest faction base it hasn't robbed lately. True if it set off. */
+	/** A fight, a flight or a meal on: no mischief now. */
+	private static boolean urgent(Companion c) {
+		Objective o = c.brain().currentObjective();
+		return o == Objective.FIGHT || o == Objective.FLEE || o == Objective.RETREAT || o == Objective.EAT || o == Objective.BREATHE;
+	}
+
+	private boolean bothering(CompanionPlayer p, long now) {
+		return target != null && now < botherUntil && target.isAlive() && !target.isSpectator() && target.getWorld() == p.getWorld()
+			&& target.distanceTo(p) <= BOTHER_RANGE;
+	}
+
+	/** Rob a base, or pick someone to pester (whichever there is, half and half). */
+	private void mischief(Companion c, CompanionPlayer p, long now) {
+		if (random.nextBoolean() && raid(c, p, now)) {
+			return;
+		}
+		target = EasterEggs.nearestOther(c, BOTHER_RANGE, EasterEggs.Kind.POPBOB);
+		if (target != null) {
+			botherUntil = now + 20 * (25 + random.nextInt(30));
+			c.jobs().clear(); // drops whatever free mode had it doing
+			AiLog.log(c.name(), "popbob: going to bother {}", target.getGameProfile().getName());
+			return;
+		}
+		raid(c, p, now);
+	}
+
+	/** Off to rob the nearest faction base it hasn't robbed lately (an ordinary "steal" job). True if it set off. */
 	private boolean raid(Companion c, CompanionPlayer p, long now) {
 		com.botcraft.colony.Colony best = null;
 		double bestD = RAID_RANGE * RAID_RANGE;
@@ -133,6 +141,7 @@ public final class Popbob {
 			return false;
 		}
 		robbed.put(best.id(), now);
+		target = null;
 		c.jobs().replace(java.util.List.of("steal " + best.id()));
 		var f = com.botcraft.faction.Factions.get(best.id());
 		taunt(c, "popbob.raid", f == null ? best.id() : f.name, now);
@@ -157,33 +166,6 @@ public final class Popbob {
 			nextSwipe = now + 20 * (3 + random.nextInt(4));
 			if (now >= nextTaunt) {
 				taunt(c, "popbob.bother", target.getGameProfile().getName(), now);
-			}
-		}
-	}
-
-	/** A proper fight with whoever hit us. */
-	private void fight(Companion c, CompanionPlayer p, long now) {
-		if (now % 40 == 0) {
-			Inventories.equipBestWeapon(p);
-		}
-		double d = target.distanceTo(p);
-		c.actions().lookAt(target);
-		if (d > ActionController.ATTACK_REACH - 0.4) {
-			if (d < 6 && p.canSee(target)) {
-				c.nav().stop();
-				c.actions().moveTo(target.getPos());
-				c.actions().sprint(true);
-				if (p.horizontalCollision && p.isOnGround()) {
-					c.actions().jump();
-				}
-			} else if (!c.nav().isBusy() || target.getBlockPos().getSquaredDistance(chasing) > 9) {
-				chasing = target.getBlockPos();
-				c.nav().moveTo(Goal.near(chasing, 1.5), true);
-			}
-		} else {
-			c.nav().stop();
-			if (c.actions().attack(target) && now >= nextTaunt) {
-				taunt(c, "popbob.attack", target.getGameProfile().getName(), now);
 			}
 		}
 	}
@@ -248,13 +230,19 @@ public final class Popbob {
 	/** An armed popbob within {@code range} of this companion, for the others to fight back. */
 	@Nullable
 	public static ServerPlayerEntity near(Companion c, double range) {
+		return near(c, range, true);
+	}
+
+	/** A popbob within {@code range} of this companion (only an armed one if {@code armedOnly}). */
+	@Nullable
+	public static ServerPlayerEntity near(Companion c, double range, boolean armedOnly) {
 		var m = com.botcraft.CompanionManager.get();
 		if (m == null || !CompanionConfig.get().easterEggs || c.player() == null) {
 			return null;
 		}
 		for (Companion o : m.all()) {
 			CompanionPlayer op = o.player();
-			if (o != c && is(o) && op != null && op.isAlive() && geared(op) && op.getWorld() == c.player().getWorld() && op.distanceTo(c.player()) <= range) {
+			if (o != c && is(o) && op != null && op.isAlive() && (!armedOnly || geared(op)) && op.getWorld() == c.player().getWorld() && op.distanceTo(c.player()) <= range) {
 				return op;
 			}
 		}
