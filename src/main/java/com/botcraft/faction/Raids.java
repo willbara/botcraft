@@ -38,7 +38,7 @@ public final class Raids {
 		if (now % CHECK_TICKS != 37 || !Factions.enabled()) {
 			return;
 		}
-		for (Faction f : Factions.all()) {
+		for (Faction f : Factions.groups()) {
 			if (!"raid".equals(Factions.warfare(f)) || now < NEXT.getOrDefault(f.id, 0L)) {
 				continue;
 			}
@@ -113,7 +113,7 @@ public final class Raids {
 	private static Faction target(Faction f, Colony home, boolean force) {
 		Faction best = null;
 		double bestD = Double.MAX_VALUE;
-		for (Faction o : Factions.all()) {
+		for (Faction o : Factions.groups()) {
 			if (o == f || !Factions.hostile(f.id, o.id) || !force && !Territory.neighbours(f.id, o.id)) {
 				continue;
 			}

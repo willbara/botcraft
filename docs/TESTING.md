@@ -333,5 +333,8 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] `/companion spawn Hausemaster`: Hausemaster's skin; silent, ignores orders; `/kill Hausemaster` does nothing; attacks nobody (even with factions at war); when popbob hits it, it fights popbob back.
 - [ ] Herobrine with factions at war around it: nobody attacks it. Walk up to it, or look straight at it for 3 seconds, or hit it: it's gone. At night it shifts to a new watching spot every half minute or so, not standing in one place.
 
+### 38. No faction means no faction (0.14.6)
+- [ ] Teams or dynamic mode with some companions left in the colony (`recruit: false`): `/companion faction` lists them as "no faction"; no faction declares war on them, raids them, borders them or posts a bounty; they don't fight faction members unless hit; and they don't fight each other as a group.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

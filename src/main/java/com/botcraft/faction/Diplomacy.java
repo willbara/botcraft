@@ -47,7 +47,7 @@ public final class Diplomacy {
 
 	/** A member of {@code victim} was killed by a member of {@code killer}. */
 	public static void death(String victim, String killer, long now) {
-		if (victim.equals(killer)) {
+		if (victim.equals(killer) || Factions.loners(victim) || Factions.loners(killer)) {
 			return;
 		}
 		DEATHS.computeIfAbsent(victim + ">" + killer, k -> new ArrayList<>()).add(now);
@@ -62,7 +62,7 @@ public final class Diplomacy {
 		if (!Factions.dynamic()) {
 			return;
 		}
-		List<String> ids = Factions.ids();
+		List<String> ids = Factions.groups().stream().map(f -> f.id).toList();
 		for (int i = 0; i < ids.size(); i++) {
 			for (int j = i + 1; j < ids.size(); j++) {
 				String a = ids.get(i);
@@ -205,7 +205,7 @@ public final class Diplomacy {
 				Companion y = all.get(j);
 				String a = Factions.idOf(x);
 				String b = Factions.idOf(y);
-				if (a.equals(b) || x.player().getWorld() != y.player().getWorld()
+				if (a.equals(b) || Factions.loners(a) || Factions.loners(b) || x.player().getWorld() != y.player().getWorld()
 					|| x.player().squaredDistanceTo(y.player()) > MEET_RANGE * MEET_RANGE) {
 					continue;
 				}

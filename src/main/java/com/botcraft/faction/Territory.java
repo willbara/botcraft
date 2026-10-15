@@ -60,7 +60,7 @@ public final class Territory {
 			return;
 		}
 		index();
-		for (Faction f : new ArrayList<>(Factions.all())) {
+		for (Faction f : Factions.groups()) {
 			Colony colony = Colony.of(f.id);
 			if (colony == null || !colony.hasBase() || colony.world() == null) {
 				continue;
@@ -332,7 +332,7 @@ public final class Territory {
 
 	/** First contact: pairs whose land touches and who haven't met. */
 	private static void contacts(long now) {
-		List<Faction> all = new ArrayList<>(Factions.all());
+		List<Faction> all = Factions.groups();
 		for (int i = 0; i < all.size(); i++) {
 			for (int j = i + 1; j < all.size(); j++) {
 				Faction a = all.get(i);

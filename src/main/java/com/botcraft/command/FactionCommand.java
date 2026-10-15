@@ -167,6 +167,10 @@ public final class FactionCommand {
 			+ CompanionConfig.get().ownerAuthority + "):", Formatting.AQUA);
 		for (Faction f : Factions.all()) {
 			int n = Factions.members(f.id).size();
+			if (Factions.loners(f.id)) {
+				say(ctx, "  no faction: " + n + " companion(s), each for itself (no relations, wars or land)", Formatting.DARK_GRAY);
+				continue;
+			}
 			say(ctx, "  " + f.id + " \"" + f.name + "\" (" + f.color + "): " + n + " companion(s), " + f.members.size() + " player member(s), warfare "
 				+ Factions.warfare(f), Formatting.GRAY);
 		}

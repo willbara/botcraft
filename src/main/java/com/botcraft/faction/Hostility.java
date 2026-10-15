@@ -58,8 +58,13 @@ public final class Hostility {
 			// popbob is everyone's problem once it's armed (or once it's hit us).
 			return com.botcraft.brain.Popbob.geared(other) || c.relations().grudge(otherName, GRUDGE_TICKS);
 		}
-		if (otherC != null && com.botcraft.brain.EasterEggs.factionless(otherC)) {
-			return c.relations().grudge(otherName, GRUDGE_TICKS); // nobody's enemy unless they started it
+		if (otherC != null && (com.botcraft.brain.EasterEggs.factionless(otherC) || Factions.loners(Factions.idOf(otherC)))) {
+			// No faction: an individual, nobody's enemy unless they started it.
+			return c.relations().grudge(otherName, GRUDGE_TICKS);
+		}
+		if (otherC != null && Factions.loners(Factions.idOf(c))) {
+			// We've no faction ourselves: we fight who hit us, not anyone's wars.
+			return c.relations().grudge(otherName, GRUDGE_TICKS);
 		}
 		Faction mine = Factions.of(c);
 		String warfare = Factions.warfare(mine);

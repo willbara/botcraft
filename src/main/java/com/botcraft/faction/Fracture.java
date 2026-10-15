@@ -46,7 +46,7 @@ public final class Fracture {
 			return;
 		}
 		disband();
-		for (Faction f : new ArrayList<>(Factions.all())) {
+		for (Faction f : Factions.groups()) {
 			try {
 				check(f, now);
 			} catch (RuntimeException e) {
