@@ -64,6 +64,18 @@ public class CompanionPlayer extends ServerPlayerEntity {
 	/** Damage that got through: the companion feels it, and remembers who did it (see faction.Incidents). */
 	@Override
 	public boolean damage(net.minecraft.entity.damage.DamageSource source, float amount) {
+		var m = com.botcraft.CompanionManager.get();
+		var self = m == null ? null : m.byPlayer(this);
+		if (self != null && com.botcraft.brain.EasterEggs.unkillable(self)) {
+			// Hausemaster can't be hurt; if it's popbob having a go, Hausemaster isn't staying around.
+			if (source.getAttacker() instanceof CompanionPlayer cp && m.byPlayer(cp) != null && com.botcraft.brain.Popbob.is(m.byPlayer(cp))) {
+				com.botcraft.brain.EasterEggs.vanish(self, cp.getPos(), 48, 96);
+			}
+			if (source.isOf(net.minecraft.entity.damage.DamageTypes.OUT_OF_WORLD)) {
+				com.botcraft.brain.EasterEggs.vanish(self, null, 4, 24); // fell out of the world: back on solid ground
+			}
+			return false;
+		}
 		boolean hurt = super.damage(source, amount);
 		if (hurt && amount > 0) {
 			try {

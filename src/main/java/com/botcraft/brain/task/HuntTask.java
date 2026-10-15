@@ -219,6 +219,10 @@ public class HuntTask extends Task {
 		List<AnimalEntity> far = p.getServerWorld().getEntitiesByClass(AnimalEntity.class, p.getBoundingBox().expand(FAR_RADIUS, 48, FAR_RADIUS),
 			a -> species.isEmpty() ? Animals.FOOD_ANIMALS.contains(a.getType()) : species.contains(a.getType()));
 		far.sort(Comparator.comparingDouble(a -> a.squaredDistanceTo(p)));
+		if (com.botcraft.brain.EasterEggs.is(c, com.botcraft.brain.EasterEggs.Kind.TECHNOBLADE)) {
+			far.sort(Comparator.comparingInt((AnimalEntity a) -> a.getType() == net.minecraft.entity.EntityType.PIG ? 0 : 1)
+				.thenComparingDouble(a -> a.squaredDistanceTo(p)));
+		}
 		var border = p.getWorld().getWorldBorder();
 		for (AnimalEntity a : far) {
 			if (!border.contains(a.getBlockPos()) || triedHerds.stream().anyMatch(t -> t.getSquaredDistance(a.getBlockPos()) < 16 * 16)
@@ -254,6 +258,11 @@ public class HuntTask extends Task {
 			a -> (species.isEmpty() ? Animals.FOOD_ANIMALS.contains(a.getType()) : species.contains(a.getType()))
 				&& a.squaredDistanceTo(p) <= RADIUS * RADIUS);
 		around.sort(Comparator.comparingDouble(a -> a.squaredDistanceTo(p)));
+		if (com.botcraft.brain.EasterEggs.is(c, com.botcraft.brain.EasterEggs.Kind.TECHNOBLADE)) {
+			// Pigs first, always.
+			around.sort(Comparator.comparingInt((AnimalEntity a) -> a.getType() == net.minecraft.entity.EntityType.PIG ? 0 : 1)
+				.thenComparingDouble(a -> a.squaredDistanceTo(p)));
+		}
 		AnimalEntity shared = null;
 		for (AnimalEntity a : around) {
 			if (Animals.huntable(a, around, desperate(p))

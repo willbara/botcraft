@@ -41,12 +41,12 @@ public final class Social {
 	private static List<Companion> near(Companion c, Collection<Companion> all, double radius) {
 		List<Companion> out = new ArrayList<>();
 		CompanionPlayer p = c.player();
-		if (com.botcraft.brain.Popbob.is(c)) {
+		if (com.botcraft.brain.Popbob.is(c) || com.botcraft.brain.EasterEggs.silent(c)) {
 			return out; // nobody's friend
 		}
 		for (Companion o : all) {
 			CompanionPlayer op = o.player();
-			if (o != c && !com.botcraft.brain.Popbob.is(o) && op != null && o.isOnline() && !op.isDead() && op.getWorld() == p.getWorld() && op.distanceTo(p) <= radius) {
+			if (o != c && !com.botcraft.brain.EasterEggs.silent(o) && !com.botcraft.brain.Popbob.is(o) && op != null && o.isOnline() && !op.isDead() && op.getWorld() == p.getWorld() && op.distanceTo(p) <= radius) {
 				out.add(o);
 			}
 		}

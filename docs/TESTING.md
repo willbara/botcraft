@@ -326,5 +326,11 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] Unarmed at home at night with planks in the chests: they make a wooden sword first.
 - [ ] Over a long run, companions keep climbing the gear ladder (`/companion why <name>` shows a "next:" target most of the time), and the base's logs, coal and iron get topped up when nothing else is pressing.
 
+### 37. Easter eggs (0.14.3)
+- [ ] `/companion spawn popbob`: no faction (`faction join` refuses). It gears up quietly first (watch `/companion why popbob`), then raids a faction base ("Thanks for the N things..."; the base's chests lose their best items), follows and pesters someone, and wrecks build blocks. Hit it once geared: it fights back. Companions only fight it once it's armed.
+- [ ] `/companion spawn Herobrine`: Herobrine's skin appears (with network); it says nothing and ignores chat; takes off any armour; at night stands 24-40 blocks from you staring; walk towards it and it vanishes. By day, blank signs turn up where it's been, and leaves go missing from trees.
+- [ ] `/companion spawn Technoblade`: Technoblade's skin; never runs from a fight (even at low health); goes for pigs first when hunting; kill it and it comes back saying "Technoblade never dies!".
+- [ ] `/companion spawn Hausemaster`: Hausemaster's skin; silent, ignores orders; `/kill Hausemaster` does nothing; with popbob nearby it teleports away.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.

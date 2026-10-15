@@ -187,5 +187,10 @@
   "faction.order": ["{name}, see to {task}.", "{name}: {task}. Off you go.", "{name}, we need {task}. Get on it.", "I need you on {task}, {name}."],
   "faction.rally": ["Come on, {faction}, we're falling behind. Food, wood, iron: let's move!", "{faction}, the chests are empty. Everyone pitch in!", "We're struggling, {faction}. Less standing around, more work."],
   "faction.praise": ["Good work, {faction}. The chests are full.", "{faction}, look at us. Well done, everyone.", "Proud of you lot. {faction} is thriving."],
-  "faction.recruit": ["Welcome to {faction}, {name}.", "{name}, you're with us now. Welcome to {faction}!", "Another pair of hands. Glad to have you, {name}."]
+  "faction.recruit": ["Welcome to {faction}, {name}.", "{name}, you're with us now. Welcome to {faction}!", "Another pair of hands. Glad to have you, {name}."],
+  "popbob.raid": ["Shopping trip to {faction}'s chests. Don't wait up.", "{faction} won't mind if I borrow a few things.", "Heard {faction} has nice stuff. Not for long."],
+  "popbob.bother": ["Boop. Hi, {player}.", "What're you doing, {player}? Can I help? No.", "Tag, {player}, you're it.", "{player}, you dropped this. Just kidding."],
+  "popbob.steal": ["Thanks for the {count} things, {faction}!", "{faction} should really lock their chests.", "Finders keepers, {faction}."],
+  "popbob.robbed": ["Popbob's been in our chests!", "Hey! Popbob, that's ours!", "Somebody stop popbob, he's robbing us!"],
+  "egg.technoblade": ["Technoblade never dies!"]
 }

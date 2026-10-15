@@ -70,6 +70,7 @@ public class Companion {
 	private final com.botcraft.brain.Failsafe failsafe = new com.botcraft.brain.Failsafe();
 	private final com.botcraft.brain.Lighting lighting = new com.botcraft.brain.Lighting();
 	private final com.botcraft.brain.Popbob popbob = new com.botcraft.brain.Popbob();
+	private final com.botcraft.brain.Herobrine herobrine = new com.botcraft.brain.Herobrine();
 	/** Recent deaths (where, when): don't keep walking back into the same danger. */
 	private final java.util.ArrayDeque<long[]> recentDeaths = new java.util.ArrayDeque<>();
 	private boolean lastDeathUnrecoverable;
@@ -204,8 +205,12 @@ public class Companion {
 		now = serverTick;
 		perception.tick(serverTick);
 		processHeard();
-		if (serverTick % 40 == 0 && Inventories.equipBestArmor(player)) {
-			AiLog.log(name(), "put on better armour");
+		if (serverTick % 40 == 0) {
+			if (com.botcraft.brain.EasterEggs.noArmour(this)) {
+				com.botcraft.brain.EasterEggs.stripArmour(this);
+			} else if (Inventories.equipBestArmor(player)) {
+				AiLog.log(name(), "put on better armour");
+			}
 		}
 		if (serverTick % 40 == 20 && !player.isUsingItem() && Inventories.equipShield(player)) {
 			AiLog.log(name(), "took my shield in my off hand");
@@ -240,17 +245,37 @@ public class Companion {
 				rescueHome(why);
 			}
 		}
-		if (com.botcraft.brain.Popbob.is(this)) {
-			popbob.tick(this, serverTick); // the easter egg: no jobs, no plans, just trouble
+		var egg = com.botcraft.brain.EasterEggs.of(this);
+		if (egg == com.botcraft.brain.EasterEggs.Kind.POPBOB) {
+			popbob.tick(this, serverTick); // the easter egg: gears up, then raids, steals and pesters
+		} else if (egg == com.botcraft.brain.EasterEggs.Kind.HEROBRINE) {
+			herobrine.tick(this, serverTick);
 		} else {
-			jobs.tick();
-			life.tick(this, serverTick);
-			brain.tick(serverTick);
+			if (egg == com.botcraft.brain.EasterEggs.Kind.HAUSEMASTER && serverTick % 10 == 0) {
+				var pop = com.botcraft.brain.Popbob.near(this, 6);
+				if (pop != null) {
+					com.botcraft.brain.EasterEggs.vanish(this, pop.getPos(), 48, 96); // wants nothing to do with popbob
+				}
+			}
+			tickNormal(serverTick);
 		}
 		nav.tick();
 		actions.tick();
 		events.tick(this, serverTick);
 		speech.tick(serverTick);
+	}
+
+	/** Just the jobs we were given and the brain's drives (no free-mode plans of our own). */
+	public void tickJobs(long serverTick) {
+		jobs.tick();
+		brain.tick(serverTick);
+	}
+
+	/** The ordinary routine: jobs, free-mode plans, and the brain's drives (easter eggs use it in between). */
+	public void tickNormal(long serverTick) {
+		jobs.tick();
+		life.tick(this, serverTick);
+		brain.tick(serverTick);
 	}
 
 	/** Once a second: tiredness from working, rest from sleeping, fear from what's around. */
@@ -362,6 +387,7 @@ public class Companion {
 			jobs.pushFront(List.of(data.job));
 			data.job = null;
 		}
+		com.botcraft.brain.EasterEggs.onSpawned(this, reason);
 		brain.reconsider();
 		AiLog.log(name(), "spawned ({}), personality {}", reason, brain.personality().summary());
 		speech.tick(now);
