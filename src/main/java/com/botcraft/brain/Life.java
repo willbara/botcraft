@@ -164,6 +164,7 @@ public class Life {
 
 	/** A job from a life goal failed: leave that goal alone for a while. */
 	public void failed(long now) {
+		nextDecision = Math.min(nextDecision, now + 40);
 		if (lastGoal != null) {
 			if (lastGoal.equals("board")) {
 				// The request goes back on the board (with this failure counting against our next bid
@@ -182,6 +183,28 @@ public class Life {
 		}
 	}
 
+	/**
+	 * Our leader gave us a board request to do (see Leadership): take it on like one we'd picked,
+	 * if we've nothing else on. True if we did.
+	 */
+	public boolean directed(Companion c, Board.Assignment a, long now) {
+		if (!c.jobs().isIdle() || boardRequest != null) {
+			return false;
+		}
+		boardRequest = a.request().id;
+		boardHolder = c.name();
+		boardRest = false;
+		lastGoal = "board";
+		AiLog.log(c.name(), "life: the leader asked for {} -> {}", a.request().describe(), a.steps());
+		c.jobs().append(a.steps());
+		return true;
+	}
+
+	/** Decide again soon rather than at the next scheduled decision (a job just ended, a leader called). */
+	public void hurry(long now) {
+		nextDecision = Math.min(nextDecision, now + 20);
+	}
+
 	/** Something else took over (a raid): the goal we were on isn't ours to finish any more. */
 	public void abandon(long now) {
 		if ("board".equals(lastGoal)) {
@@ -191,6 +214,7 @@ public class Life {
 	}
 
 	public void succeeded(long now) {
+		hurry(now); // on to the next thing straight away: no standing about between jobs
 		if (lastGoal != null) {
 			tree.succeeded(lastGoal);
 		}

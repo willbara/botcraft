@@ -33,6 +33,8 @@ public final class Faction {
 	public String warfare;
 	/** World time it was founded. */
 	public long founded;
+	/** No wars, and no falling out past cool, with anyone before this (world time): a new faction's settling-in time. */
+	public long graceUntil;
 	/** Chunks it holds ({@link net.minecraft.util.math.ChunkPos#toLong}), in {@link #claimDim}. See {@link Territory}. */
 	public java.util.List<Long> claims = new java.util.ArrayList<>();
 	public String claimDim = "";

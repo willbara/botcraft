@@ -406,7 +406,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
 
 - **Modes** (`factionMode`, or `/companion faction mode`):
   - **single** (the default): one colony, exactly as before 0.12.
-  - **teams:** fixed teams. `/companion faction teams red blue` splits the companions evenly between new teams Red and Blue (`... red blue owner` keeps each owner's companions together; any number of teams). Teams start as enemies.
+  - **teams:** fixed teams. `/companion faction teams red blue` splits the companions evenly between new teams Red and Blue (`... red blue owner` keeps each owner's companions together; any number of teams). Teams start as strangers: neutral, with a grace period (below). `/companion faction relation red blue hostile` makes them enemies at once if that's what you want.
   - **dynamic:** factions form and split on their own, and fight and raid each other.
 - **A faction has its own everything:** its own base (the default colony keeps `colony.json`; others are `colonies/<id>.json`), its own base map, zones, upkeep and request board, and its own stock. Companions only bid on, share with and ask for help from their own faction (or allies). Names show in the faction's colour (a vanilla scoreboard team), and members can't hurt each other.
 - **Bases found themselves** (outside single mode, `dynamicBases`): a faction without a base sends its most ambitious member, by day, to the best spot nearby: flat ground, water and trees close, no lava, not the sea, not on someone's buildings, at least 160 blocks from another faction's base and 3 chunks from its land (the further the better). Open ground on the site counts most (a clearing beats the middle of a wood, which has to be felled first), with water and woods a short walk away (up to 38 blocks out). If nowhere in sight will do, it walks on, away from the nearest other base, and looks again. It founds the base there (every member's home), and the zones are laid out as usual. Zones set by hand are never moved. In single mode, you still say "this is home".
@@ -445,6 +445,11 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - crowding.
 
   Unhappy members grumble. When three or more stay unhappy, and they're a quarter of the faction, the most ambitious leaves with them, and with whoever likes it better than the rest, as a new faction ("Bob's Band"). They start on cool terms with the old one (as enemies with `territory` off), found their own base well away, and when their land meets the old faction's it's war or a truce. At most one split per faction per in-game day, and at most `maxFactions` factions. Empty factions disband. Companions grow fond of each other by chatting and helping each other out.
+- **Grace** (`factionGraceMinutes`, 15). A new faction (teams just made, a split) starts neutral with everyone, and for its first 15 minutes nothing can sour past cool: hits between factions still count against them, but can't make them enemies, and no war is declared or started at a border.
+- **Getting on** (teams and dynamic mode). Every two minutes, for every two factions whose members are within 12 blocks of each other:
+  - **Sparks:** a hothead (aggression 0.65 or more) may pick a quarrel with the other side's member it's near ("Watch where you're going, Bob!"). The two factions think 8 less of each other; four or so quarrels and they're enemies, and the fighting starts. Hotter heads quarrel more. Not during grace.
+  - **Getting along:** otherwise, sociable members who meet without trouble warm the factions to each other, a point or two each time, up to alliance (60 both ways).
+- **Recruiting** (`recruit`, teams and dynamic mode). A companion in no faction of its own (newly spawned, or its faction gone) is taken in within half a minute: the smallest team in teams mode, the faction it likes best (nearer ones first) in dynamic mode. Its new leader welcomes it.
 - **War and peace** (dynamic mode). Every two minutes:
   - **Peace:** a faction at war that has lost 6 or more members to the other side in 20 minutes, at least twice what it took from them, sues for peace ("We've lost too many. Truce with Blue!"). The two become neutral, and neither declares war on the other for 20 minutes.
   - **War:** after that, a bigger faction with an aggressive member may declare war on a neutral neighbour with a base ("We're going to war with Red!"). Aggressive factions, and lopsided ones, do it more.
@@ -455,6 +460,7 @@ Every task has its own time limit, but a task can keep itself busy without getti
   - **The leader picks its officers:** one for every four members (none under three members, three at most), the ones it likes and trusts most, weighed with their loyalty, diligence, bravery and weapon. An officer is only replaced by someone clearly better (0.15 on the leader's scale), and steps down if the faction shrinks.
   - **Succession:** if the leader leaves the faction or is removed, its best officer takes over, else a new pick.
   - The leader speaks for the faction (officers when it's away), founds its base and gets the founder's pick. `/companion faction info` shows the ranks.
+  - **Giving orders.** Every 30 seconds by day, the leader (or an officer while it's away) looks over the faction: how well the base is stocked against its stock targets, and who's standing about. Idle members are given the most important open request they can do ("Bob, see to 16 logs for the base."): up to three at a time while the faction is new (its first 20 minutes) or struggling (under 40% stocked), two when middling, one when thriving. Anyone else idle is told to get on with something of their own. Every 8 minutes a struggling faction hears a rallying call, and a thriving one praise (which cheers everyone up).
 - **Diplomacy by command:** `/companion faction relation <a> <b> <allied|neutral|hostile|number>`. Enemies are -30 or less; allies are 60 or more both ways. Hits and raids between factions push them apart. `/companion faction ceasefire` makes everyone neutral at once.
 - **Respawn grace:** for a minute after respawning, a companion only hits back and doesn't go looking for enemies. A companion killed by a player or an enemy doesn't go back to where it died for its things.
 - **Commands:** `/companion faction` lists factions. The subcommands are:
@@ -492,7 +498,8 @@ Every task has its own time limit, but a task can keep itself busy without getti
 
 ### Free mode (autonomy)
 
-"Do your own thing" turns on a player-like routine around home:
+"Do your own thing" turns on a player-like routine around home. `/companion freemode on` sets every companion loose at once (except ones told to stay) and makes new ones start that way (`startFree`), with home where they arrive; `off` goes back to new ones following whoever spawned them. Between jobs a free companion decides again within a second, so it doesn't stand about.
+
 
 - **Night:** sleep in a bed: a free one near home, else its own bed from its pockets (put down at home), else one it crafts on the spot from 3 wool of one colour (carried or in the base chests) and planks. Only with none of that does an armed companion guard home and an unarmed one dig in (three blocks down, roofed) until morning. Errands still running at dusk (hunting, chopping, exploring) are dropped so it heads in instead of being caught outside.
 - **Food:** cook raw meat, ask a friend, or hunt, and keep a reserve of about 6 food when animals are known nearby. Tend the base's farm when its crops are ripe or it needs planting (`farming`), and bake bread from wheat when short of food.
@@ -648,6 +655,7 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `sleepWithOwner` | true | Go to bed when the owner sleeps. |
 | `commandPermissionLevel` | 2 | Permission level for `/companion`. |
 | `placeTorches` | true | Put torches down in dark caves and around a dark base. |
+| `startFree` | false | New companions start in free mode instead of following. `/companion freemode on\|off` sets it (and `on` frees everyone now). |
 | `farming` | true | Free mode tends the base's farm zone. Asking a companion to farm works either way. |
 | `clearTrees` | true | Upkeep fells the trees standing in the home zone. |
 | `expandFarms` | true | Farmers add plots next to the farm as the base grows, and water each plot from a hole in its middle. |
@@ -661,6 +669,8 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `orderStanding` / `requestStanding` / `hostileStanding` | 60 / 20 / -30 | Standing needed to give orders, to ask favours, and at or below which a player is an enemy. |
 | `dynamicBases` | true | Factions without a base (teams and dynamic mode) find a spot and found one. |
 | `maxFactions` | 6 | Dynamic mode: splits stop at this many factions. |
+| `factionGraceMinutes` | 15 | New factions start neutral and can't fall out past cool, or go to war, for this long. |
+| `recruit` | true | Teams and dynamic mode: companions in no faction are taken in by one. |
 | `territory` | true | Factions hold land round their base and spread out; wars and raids only between factions whose borders touch. Off: everyone can fight anyone, as before 0.13. |
 | `bounties` | true | Kills of a faction's members put a price on the killer's head. |
 | `easterEggs` | true | Easter eggs. Currently: a companion named "popbob" (see [Easter eggs](#easter-eggs)). |

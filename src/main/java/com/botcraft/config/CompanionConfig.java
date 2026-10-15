@@ -96,6 +96,16 @@ public class CompanionConfig {
 	public boolean forceSurvival = true;
 	/** Permission level required for /companion. */
 	public int commandPermissionLevel = 2;
+	/**
+	 * New companions start in free mode (living on their own, as after "go have fun") instead of
+	 * following whoever spawned them. /companion freemode on|off sets it.
+	 */
+	public boolean startFree = false;
+	/**
+	 * Teams and dynamic mode: a companion left in no faction (just spawned, its faction disbanded)
+	 * is taken in by one: the smallest team, or in dynamic mode the faction it likes best nearby.
+	 */
+	public boolean recruit = true;
 	/** Free mode tends the base's farm zone (harvest, replant, till). Asking a companion to farm works either way. */
 	public boolean farming = true;
 	/** Farmers add more farm plots next to the first as the base grows, each watered from a hole in its middle. */
@@ -143,6 +153,11 @@ public class CompanionConfig {
 	 * the zones are then laid out as usual. Zones set by hand are never moved.
 	 */
 	public boolean dynamicBases = true;
+	/**
+	 * New factions (teams just made, a split) start neutral and can't fall out past cool, or go to
+	 * war, for this many minutes. After that, how they get on is up to them.
+	 */
+	public int factionGraceMinutes = 15;
 	/** Dynamic mode: most factions there can be (splits stop at this many). */
 	public int maxFactions = 6;
 	/**
