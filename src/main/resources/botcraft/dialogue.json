@@ -194,5 +194,8 @@
   "popbob.robbed": ["Popbob's been in our chests!", "Hey! Popbob, that's ours!", "Somebody stop popbob, he's robbing us!"],
   "egg.technoblade": ["Technoblade never dies!"],
   "faction.merge": ["Welcome, {faction}. We're one people now.", "{faction} joins us. Stronger together!", "From today, {faction} and us are one."],
-  "faction.merge_join": ["We're with {faction} now. Glad to be back together.", "{faction} it is. No point standing apart.", "Joining {faction}. Let's make it work."]
+  "faction.merge_join": ["We're with {faction} now. Glad to be back together.", "{faction} it is. No point standing apart.", "Joining {faction}. Let's make it work."],
+  "faction.war_resources": ["{faction} sits on full chests while we go hungry. Not any more: war!", "We need what {faction} has. Arm up, we're taking it.", "{faction} won't share? Then we'll take. To war!"],
+  "faction.expand": ["{name}, take a few of us and stake out the land past our border.", "We need more room. {name}, go claim the ground out there.", "{name}, push our border out. That land should be ours."],
+  "faction.scout": ["{name}, go and see what's out past the border. Report back.", "Scout ahead for us, {name}. I want to know who our neighbours are.", "{name}, take a look around out there and come back safe."]
 }

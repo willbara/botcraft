@@ -47,6 +47,7 @@ public final class Leadership {
 				String prev = Scope.enter(f.id);
 				try {
 					direct(f, now);
+					Strategy.plan(f, now);
 				} catch (RuntimeException e) {
 					com.botcraft.Botcraft.LOG.error("Error directing {}", f.id, e);
 				} finally {
@@ -308,7 +309,7 @@ public final class Leadership {
 	}
 
 	/** Living on its own with nothing to do right now (not fighting, sleeping or on an errand). */
-	private static boolean idle(Companion c) {
+	static boolean idle(Companion c) {
 		var p = c.player();
 		var obj = c.brain().currentObjective();
 		return c.isOnline() && p != null && !p.isDead() && !p.isSleeping() && "free".equals(c.data.mode) && c.jobs().isIdle()
@@ -317,7 +318,7 @@ public final class Leadership {
 
 	/** Who gives the orders: the leader if it's about, else an officer. */
 	@Nullable
-	private static Companion commander(Faction f, List<Companion> members) {
+	static Companion commander(Faction f, List<Companion> members) {
 		Companion officer = null;
 		for (Companion c : members) {
 			if (!c.isOnline() || c.player() == null || c.player().isDead()) {

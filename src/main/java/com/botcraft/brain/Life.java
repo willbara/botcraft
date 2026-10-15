@@ -915,7 +915,7 @@ public class Life {
 		return job instanceof com.botcraft.brain.task.HuntTask
 			|| (job instanceof com.botcraft.brain.task.GatherLogsTask gl && !gl.clearingHome())
 			|| job instanceof com.botcraft.brain.task.FishTask
-			|| (job instanceof com.botcraft.brain.task.GoToTask g && g.label().equals("exploring"));
+			|| (job instanceof com.botcraft.brain.task.GoToTask g && (g.label().equals("exploring") || g.label().equals("scouting")));
 	}
 
 	/** The last planning decision, for /companion why. */

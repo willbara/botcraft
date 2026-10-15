@@ -69,6 +69,7 @@ public final class Territory {
 				settle(f, colony);
 				grow(f, colony);
 				occupy(f, colony, m);
+				stake(f, colony, m);
 			} catch (RuntimeException e) {
 				com.botcraft.Botcraft.LOG.error("Error updating {}'s land", f.id, e);
 			}
@@ -155,6 +156,73 @@ public final class Territory {
 	/** Most land the faction's numbers can hold. */
 	static int cap(int members) {
 		return 25 + 8 * members;
+	}
+
+	/**
+	 * Staking a claim: an unclaimed chunk on our frontier with one of our members standing in it
+	 * becomes ours (while we're under our cap), on top of the steady spread. Leaders send members
+	 * out to do this (see Strategy).
+	 */
+	private static void stake(Faction f, Colony colony, CompanionManager m) {
+		int members = Factions.members(f.id).size();
+		if (members == 0 || f.claims.size() >= cap(members)) {
+			return;
+		}
+		Set<Long> frontier = new HashSet<>(frontier(f));
+		ChunkPos home = new ChunkPos(colony.base());
+		for (Companion c : Factions.members(f.id)) {
+			CompanionPlayer p = c.player();
+			if (p == null || !c.isOnline() || p.isDead() || p.getServerWorld() != colony.world()) {
+				continue;
+			}
+			long chunk = ChunkPos.toLong(p.getBlockX() >> 4, p.getBlockZ() >> 4);
+			int dx = ChunkPos.getPackedX(chunk) - home.x;
+			int dz = ChunkPos.getPackedZ(chunk) - home.z;
+			if (frontier.contains(chunk) && !OWNER.containsKey(chunk) && dx * dx + dz * dz <= MAX_REACH * MAX_REACH) {
+				f.claims.add(chunk);
+				OWNER.put(chunk, f.id);
+				frontier.remove(chunk);
+				Factions.markDirty();
+				AiLog.log("faction", "{} staked a claim where {} stands ({} chunks)", f.id, c.name(), f.claims.size());
+				if (f.claims.size() >= cap(members)) {
+					return;
+				}
+			}
+		}
+	}
+
+	/**
+	 * Unclaimed chunks on the frontier within reach, nearest the base first: where to send
+	 * members to stake a claim. Their centres, at the surface height of the base.
+	 */
+	public static List<BlockPos> freeFrontier(Faction f, Colony colony, int max) {
+		index();
+		ChunkPos home = new ChunkPos(colony.base());
+		List<Long> free = new ArrayList<>();
+		for (long c : frontier(f)) {
+			int dx = ChunkPos.getPackedX(c) - home.x;
+			int dz = ChunkPos.getPackedZ(c) - home.z;
+			if (!OWNER.containsKey(c) && dx * dx + dz * dz <= MAX_REACH * MAX_REACH) {
+				free.add(c);
+			}
+		}
+		free.sort(java.util.Comparator.comparingDouble(c -> {
+			int dx = ChunkPos.getPackedX(c) - home.x;
+			int dz = ChunkPos.getPackedZ(c) - home.z;
+			return dx * dx + dz * dz + RANDOM.nextDouble() * 4;
+		}));
+		List<BlockPos> out = new ArrayList<>();
+		for (int i = 0; i < Math.min(max, free.size()); i++) {
+			long c = free.get(i);
+			out.add(new BlockPos(ChunkPos.getPackedX(c) * 16 + 8, colony.base().getY(), ChunkPos.getPackedZ(c) * 16 + 8));
+		}
+		return out;
+	}
+
+	/** Land it could still take: under its cap, with free frontier left. */
+	public static boolean roomToGrow(Faction f, Colony colony) {
+		int members = Factions.members(f.id).size();
+		return members > 0 && f.claims.size() < cap(members) && !freeFrontier(f, colony, 1).isEmpty();
 	}
 
 	/** Spread into a few unclaimed chunks on the frontier, nearest the base first. */

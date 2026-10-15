@@ -345,5 +345,10 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] Dynamic mode, a split that later warms back up (`/companion faction relation red band 50`) and is close: within a few checks (a day after the split) it rejoins Red ("We're with Red now. Glad to be back together."). Log: "merged into".
 - [ ] A base founded in a wood: within the first few minutes several members are "clearing the trees at home" at once, and the farm and pen get laid out soon after (`/companion colony`).
 
+### 41. Leaders' plans (0.15.0)
+- [ ] A faction with a base, idle members and free land around: within a few minutes the leader sends people out ("push our border out"); `latest.log` shows "staked a claim where X stands"; `/companion faction info` shows the land growing faster than before.
+- [ ] Every so often a curious member is sent scouting ("go and see what's out past the border"), walks 120-200 blocks out and comes home.
+- [ ] Dynamic mode, a poorly stocked faction with an aggressive leader next to a well stocked, smaller neighbour: it declares war for their stores and raids at once (log: "goes to war with ... for their stores").
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.
