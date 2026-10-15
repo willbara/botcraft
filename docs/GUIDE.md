@@ -501,7 +501,12 @@ Every task has its own time limit, but a task can keep itself busy without getti
 "Do your own thing" turns on a player-like routine around home. `/companion freemode on` sets every companion loose at once (except ones told to stay) and makes new ones start that way (`startFree`), with home where they arrive; `off` goes back to new ones following whoever spawned them. Between jobs a free companion decides again within a second, so it doesn't stand about.
 
 
-- **Night:** sleep in a bed: a free one near home, else its own bed from its pockets (put down at home), else one it crafts on the spot from 3 wool of one colour (carried or in the base chests) and planks. Only with none of that does an armed companion guard home and an unarmed one dig in (three blocks down, roofed) until morning. Errands still running at dusk (hunting, chopping, exploring) are dropped so it heads in instead of being caught outside.
+- **Night** (`nightWork`, on by default): no shutting down. Errands that take it away from home (hunting, chopping in the woods, exploring, fishing) are dropped at dusk and it heads home; then, armed:
+  1. **Sleep** only if that gets the night skipped: a real player is in bed, or there's no real player in the world to wait for. (Otherwise lying in bed until morning is wasted time.) It still sleeps once there's nothing left to do.
+  2. **Night chores:** store its things, light the base, cook, smelt raw iron, make iron gear from the chests.
+  3. **Work close to home:** the base's upkeep from the board (clearing trees, levelling, filling, fencing), the farm, and mining from home for what the base is short of (coal, then iron, then stone), bringing it back.
+
+  Unarmed at home with wood to hand, it makes a sword first; otherwise it digs in (three blocks down, roofed) until morning. Companions working through the night get no phantoms. `nightWork: false` goes back to bed-at-dusk: sleep in a bed (a free one near home, its own, or one crafted from 3 wool), else guard home or dig in.
 - **Food:** cook raw meat, ask a friend, or hunt, and keep a reserve of about 6 food when animals are known nearby. Tend the base's farm when its crops are ripe or it needs planting (`farming`), and bake bread from wheat when short of food.
 - **Progression:** wooden and stone tools, then a bed of its own at home (hunting sheep for the wool if need be; companions don't share beds, so everyone can sleep), then smelting carried raw iron, an iron pickaxe, an iron sword and iron armour piece by piece.
 - **The base's needs:** requests from the board (see [Working together](#working-together)), taking turns with its own progression.
@@ -655,6 +660,7 @@ Away from home, pillars, bridges and staircases built while travelling are left 
 | `sleepWithOwner` | true | Go to bed when the owner sleeps. |
 | `commandPermissionLevel` | 2 | Permission level for `/companion`. |
 | `placeTorches` | true | Put torches down in dark caves and around a dark base. |
+| `nightWork` | true | Free mode keeps working near home at night, sleeping only when that skips the night. |
 | `startFree` | false | New companions start in free mode instead of following. `/companion freemode on\|off` sets it (and `on` frees everyone now). |
 | `farming` | true | Free mode tends the base's farm zone. Asking a companion to farm works either way. |
 | `clearTrees` | true | Upkeep fells the trees standing in the home zone. |

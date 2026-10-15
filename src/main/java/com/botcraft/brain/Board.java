@@ -268,7 +268,7 @@ public final class Board {
 	 */
 	@Nullable
 	public static Assignment take(Companion c, long now) {
-		return takeFor(c, now, false);
+		return takeFor(c, now, false, false);
 	}
 
 	/**
@@ -277,7 +277,13 @@ public final class Board {
 	 */
 	@Nullable
 	public static Assignment direct(Companion c, long now) {
-		return takeFor(c, now, true);
+		return takeFor(c, now, true, false);
+	}
+
+	/** At night: only the base's own upkeep (clearing, levelling, filling, fencing), which is all at home. */
+	@Nullable
+	public static Assignment takeAtNight(Companion c, long now) {
+		return takeFor(c, now, false, true);
 	}
 
 	/** Open requests waiting for someone (for leaders judging how the faction is doing). */
@@ -286,13 +292,13 @@ public final class Board {
 	}
 
 	@Nullable
-	private static Assignment takeFor(Companion c, long now, boolean ordered) {
+	private static Assignment takeFor(Companion c, long now, boolean ordered, boolean upkeepOnly) {
 		Colony colony = Colony.get();
 		if (colony == null || !colony.hasBase() || colony.world() != c.player().getServerWorld()
 			|| !colony.near(c.player().getServerWorld(), c.player().getBlockPos(), 256) || holding(c.name()) != null) {
 			return null;
 		}
-		List<Request> open = mine().stream().filter(r -> r.kind != Kind.DELIVER && r.state == State.OPEN)
+		List<Request> open = mine().stream().filter(r -> r.kind != Kind.DELIVER && r.state == State.OPEN && (!upkeepOnly || r.kind == Kind.UPKEEP))
 			.sorted(Comparator.comparingDouble((Request r) -> -r.priority)).toList();
 		if (open.isEmpty()) {
 			return null;

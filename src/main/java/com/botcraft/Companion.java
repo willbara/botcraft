@@ -213,6 +213,11 @@ public class Companion {
 		if (serverTick % 100 == 0) {
 			headBackIfLost("idle");
 		}
+		if (serverTick % 1200 == 600 && com.botcraft.config.CompanionConfig.get().nightWork && !player.isSleeping()) {
+			// Working through the night instead of sleeping is a companion's choice, not insomnia:
+			// no phantoms for it (they'd only come after three sleepless nights anyway).
+			player.resetStat(net.minecraft.stat.Stats.CUSTOM.getOrCreateStat(net.minecraft.stat.Stats.TIME_SINCE_REST));
+		}
 		if (recoveryWaiting && serverTick % 100 == 50 && perception.enemyPlayers().isEmpty()) {
 			planRecovery(); // killed in a fight: see whether the killer has gone yet
 		}

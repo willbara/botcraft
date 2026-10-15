@@ -90,6 +90,12 @@ public class CompanionConfig {
 	 * without orders, 1 = eager. Personality scales it further.
 	 */
 	public float initiative = 0.5F;
+	/**
+	 * Free mode keeps working at night, close to home (upkeep, the farm, chores, mining from
+	 * home), sleeping only when that skips the night (a player is in bed, or there's no player to
+	 * wait for). Off: to bed at dusk, as before.
+	 */
+	public boolean nightWork = true;
 	/** Companions go to bed when their owner sleeps (so the night can be skipped). */
 	public boolean sleepWithOwner = true;
 	/** Put companions in survival mode when they join (they gather/fight like survival players). */
