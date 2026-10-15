@@ -217,5 +217,8 @@
   "faction.parley_reply": ["I'm listening, {leader}.", "Say what you came to say, {leader}.", "Go on, {leader}. My people are tired too."],
   "faction.parley_hothead": ["Peace? With {faction}? After what they did? Never!", "No deal! {faction} will pay for every one of ours!", "I'm not shaking hands with {faction}. Charge!"],
   "faction.ceasefire_terms": ["The border stays where it is. Your side's yours, ours is ours.", "Terms: the lines are frozen. Nobody takes another chunk.", "The border holds where it stands. Keep to your side."],
-  "faction.ceasefire_tribute": ["And {faction} gives up {count} chunk(s) of border land for its trouble. The lines freeze there.", "Terms: {count} chunk(s) of {faction}'s border are ours now, and the border freezes.", "{faction} hands over {count} chunk(s) of land. Then nobody moves the border."]
+  "faction.ceasefire_tribute": ["And {faction} gives up {count} chunk(s) of border land for its trouble. The lines freeze there.", "Terms: {count} chunk(s) of {faction}'s border are ours now, and the border freezes.", "{faction} hands over {count} chunk(s) of land. Then nobody moves the border."],
+  "faction.poach": ["{name}, you're wasted with {faction}. Come with us.", "{name}! {faction} doesn't know what it's got. We do. Join us.", "There's a place for you with us, {name}. Leave {faction} behind."],
+  "faction.defect": ["I'm done here. I'm going over to {faction}.", "That's it, I'm with {faction} now.", "Sorry. {faction} suits me better."],
+  "faction.deserted": ["{name}'s run off to {faction}. Good riddance.", "So {name} thinks {faction} is better. We'll see.", "{name} has left us for {faction}. Remember that."]
 }

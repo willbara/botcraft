@@ -80,10 +80,11 @@ public final class Fracture {
 	private static void check(Faction f, long now) {
 		List<Companion> members = Factions.members(f.id);
 		members.removeIf(c -> !c.isOnline());
-		if (members.size() < MIN_SIDE * 2) {
+		if (members.size() < 2) {
 			return;
 		}
 		List<Companion> unhappy = new ArrayList<>();
+		Map<Companion, Double> howUnhappy = new HashMap<>();
 		for (Companion c : members) {
 			double u = unhappiness(c, members);
 			int streak = u > UNHAPPY ? STREAK.getOrDefault(c.name(), 0) + 1 : 0;
@@ -93,9 +94,20 @@ public final class Fracture {
 			}
 			if (streak >= 2) {
 				unhappy.add(c);
+				howUnhappy.put(c, u);
 			}
 		}
-		if (unhappy.size() < MIN_SIDE || unhappy.size() * 4 < members.size() || now - LAST_SPLIT.getOrDefault(f.id, -SPLIT_COOLDOWN) < SPLIT_COOLDOWN
+		unhappy.sort((x, y) -> Double.compare(howUnhappy.get(y), howUnhappy.get(x)));
+		// Enough of them together, and room for another faction: they split off (below). Fewer, or
+		// no room: one may leave for a faction that suits it better (Defection).
+		boolean couldSplit = members.size() >= MIN_SIDE * 2 && unhappy.size() >= MIN_SIDE && unhappy.size() * 4 >= members.size()
+			&& Factions.all().size() < CompanionConfig.get().maxFactions;
+		Companion left = couldSplit ? null : Defection.consider(f, members, unhappy, howUnhappy, now);
+		if (left != null) {
+			STREAK.remove(left.name());
+			return;
+		}
+		if (members.size() < MIN_SIDE * 2 || unhappy.size() < MIN_SIDE || unhappy.size() * 4 < members.size() || now - LAST_SPLIT.getOrDefault(f.id, -SPLIT_COOLDOWN) < SPLIT_COOLDOWN
 			|| Factions.all().size() >= CompanionConfig.get().maxFactions) {
 			return;
 		}

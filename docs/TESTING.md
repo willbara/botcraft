@@ -368,5 +368,9 @@ Optional: set `"verboseAiLogging": true` in `config/botcraft.json` and read `log
 - [ ] During the ceasefire: no fights or raids between the two, and their land doesn't grow into the gap between them. Hit the other side's members a few times: "the ceasefire's wearing thin"; keep at it after 12 minutes and it may be broken ("the deal's off").
 - [ ] `/companion faction parley red blue` starts one on demand.
 
+### 45. Defection (0.15.6)
+- [ ] Dynamic mode, several factions, one at war: over time `latest.log` shows "X thinks about leaving ..." and now and then "X left blue for red (recruited by ...)" or "(went on its own)". The member walks to its new base; `/companion faction info` lists it under the new faction. Aggressive ones tend toward the best-armed faction, cautious ones toward ones at peace.
+- [ ] Leaders never leave; a faction with 3 members keeps them; no faction loses more than one member per ~6 minutes.
+
 ### Performance
 - [ ] With 5 companions, `/debug start` … `/debug stop` shows no TPS drop. In the profiler, Botcraft work runs under the server tick and stays within `tickBudgetMs`.
