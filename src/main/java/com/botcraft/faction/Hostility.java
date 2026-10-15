@@ -38,9 +38,28 @@ public final class Hostility {
 		if (self == null || other == self || !other.isAlive() || other.isSpectator() || other.isCreative()) {
 			return false;
 		}
-		if (com.botcraft.brain.Popbob.is(c)) {
+		CompanionManager mgr = CompanionManager.get();
+		Companion otherC = mgr == null ? null : mgr.byPlayer(other);
+		String otherName = other.getGameProfile().getName();
+		// Easter eggs that belong to nobody stay out of faction quarrels (see brain.EasterEggs).
+		var egg = com.botcraft.brain.EasterEggs.of(c);
+		if (egg == com.botcraft.brain.EasterEggs.Kind.POPBOB) {
 			// popbob answers to nobody's warfare: whoever just hit it is fair game, once it's armed.
-			return com.botcraft.brain.Popbob.geared(self) && c.relations().grudge(other.getGameProfile().getName(), GRUDGE_TICKS);
+			return com.botcraft.brain.Popbob.geared(self) && c.relations().grudge(otherName, GRUDGE_TICKS);
+		}
+		if (egg == com.botcraft.brain.EasterEggs.Kind.HAUSEMASTER) {
+			// Passive to everyone; only popbob, having started it, gets a fight.
+			return otherC != null && com.botcraft.brain.Popbob.is(otherC) && c.relations().grudge(otherName, GRUDGE_TICKS);
+		}
+		if (egg == com.botcraft.brain.EasterEggs.Kind.HEROBRINE) {
+			return false; // never fights people: it vanishes instead
+		}
+		if (otherC != null && com.botcraft.brain.Popbob.is(otherC)) {
+			// popbob is everyone's problem once it's armed (or once it's hit us).
+			return com.botcraft.brain.Popbob.geared(other) || c.relations().grudge(otherName, GRUDGE_TICKS);
+		}
+		if (otherC != null && com.botcraft.brain.EasterEggs.factionless(otherC)) {
+			return c.relations().grudge(otherName, GRUDGE_TICKS); // nobody's enemy unless they started it
 		}
 		Faction mine = Factions.of(c);
 		String warfare = Factions.warfare(mine);

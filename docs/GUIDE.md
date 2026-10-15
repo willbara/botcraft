@@ -570,7 +570,8 @@ Underneath, each is an ordinary companion with its own touches on top: it still 
 
 **Herobrine**:
 - Silent: never says a word, ignores chat. Wears no armour (takes it off). Belongs to no faction.
-- Picks someone (a player or a companion, within 96 blocks) and stalks them. At night it stands at the edge of sight (24-40 blocks) and stares; by day it keeps further off. Come within 10 blocks and it's gone, 60-110 blocks away.
+- Never fights people, and nobody counts it an enemy (not even a faction at war with the colony) unless it's attacked them, which it doesn't.
+- Picks someone to stalk within 96 blocks, real players before companions. At night it stands at the edge of sight (24-40 blocks) and stares, moving to a new spot every half a minute or so; by day it keeps further off, circling round. It's gone (60-110 blocks away) the moment anyone comes within 10 blocks (7 for companions), a player looks straight at it for 3 seconds, or someone hits it.
 - By day it makes signs (gathering wood if it has none) and leaves them about, blank, and now and then strips the leaves off a tree.
 - Wears Herobrine's skin (the `MHF_Herobrine` account, else `Herobrine`), fetched when it joins if it isn't on.
 
@@ -581,8 +582,8 @@ Underneath, each is an ordinary companion with its own touches on top: it still 
 
 **Hausemaster**:
 - Plays for itself: free mode, no faction, no orders, never a word.
+- Passive to everyone, and nobody counts it an enemy unless it's been attacked by them. The one fight it'll have: popbob, once popbob has taken a swing at it.
 - Can't be hurt (falling out of the world puts it back on solid ground).
-- If popbob comes near (or takes a swing at it), it teleports away, 48-96 blocks.
 - Wears the Hausemaster account's skin, fetched when it joins if it isn't on.
 
 Skins are looked up only with `allowSkinLookup` on, once per session. Remove any of them with `/companion remove <name>`.
